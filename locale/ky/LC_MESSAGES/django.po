@@ -1,0 +1,31 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: ky\n"
+
+msgid "Admin"
+msgstr "Админ"
+
+msgid "Teacher"
+msgstr "Мугалим"
+
+msgid "Company admin"
+msgstr "Компания админи"
+
+msgid "Present"
+msgstr "Келди"
+
+msgid "Absent"
+msgstr "Келген жок"
+
+msgid "Excused"
+msgstr "Уруксат алды"
+
+msgid "Paid"
+msgstr "Төлөндү"
+
+msgid "Debt"
+msgstr "Карыз"
+
+msgid "Invalid credentials."
+msgstr "Логин же сырсөз туура эмес."

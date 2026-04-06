@@ -1,0 +1,31 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: ru\n"
+
+msgid "Admin"
+msgstr "Администратор"
+
+msgid "Teacher"
+msgstr "Преподаватель"
+
+msgid "Company admin"
+msgstr "Администратор компании"
+
+msgid "Present"
+msgstr "Был"
+
+msgid "Absent"
+msgstr "Не был"
+
+msgid "Excused"
+msgstr "Отпросился"
+
+msgid "Paid"
+msgstr "Оплачено"
+
+msgid "Debt"
+msgstr "Долг"
+
+msgid "Invalid credentials."
+msgstr "Неверный логин или пароль."

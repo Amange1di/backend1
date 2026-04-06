@@ -1,0 +1,37 @@
+from rest_framework.permissions import BasePermission, SAFE_METHODS
+
+from .models import User
+
+
+class IsAdmin(BasePermission):
+    def has_permission(self, request, view) -> bool:
+        return request.user.is_authenticated and (
+            request.user.role == User.Role.ADMIN or request.user.is_superuser
+        )
+
+
+class IsCourseAdmin(BasePermission):
+    def has_permission(self, request, view) -> bool:
+        return request.user.is_authenticated and request.user.role == User.Role.COURSE_ADMIN
+
+
+class IsCourseAdminOrTeacherReadOnly(BasePermission):
+    def has_permission(self, request, view) -> bool:
+        if not request.user.is_authenticated:
+            return False
+        if request.user.role == User.Role.COURSE_ADMIN:
+            return True
+        if request.user.role == User.Role.TEACHER:
+            return request.method in SAFE_METHODS
+        return False
+
+
+class IsTeacherOrCourseAdminReadOnly(BasePermission):
+    def has_permission(self, request, view) -> bool:
+        if not request.user.is_authenticated:
+            return False
+        if request.user.role == User.Role.TEACHER:
+            return True
+        if request.user.role == User.Role.COURSE_ADMIN:
+            return request.method in SAFE_METHODS
+        return False
