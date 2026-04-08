@@ -11,21 +11,27 @@ from .views import (
     CourseAdminDetailView,
     GroupViewSet,
     LoginView,
+    ManagerViewSet,
     MeView,
     PaymentViewSet,
     RegisterView,
     StudentViewSet,
+    TaskViewSet,
     TeacherViewSet,
+    TrialLeadViewSet,
 )
 
 router = DefaultRouter()
 router.register("courses", CourseViewSet)
 router.register("teachers", TeacherViewSet)
+router.register("managers", ManagerViewSet, basename="managers")
 router.register("students", StudentViewSet)
 router.register("groups", GroupViewSet)
 router.register("auditoriums", AuditoriumViewSet)
 router.register("attendance", AttendanceViewSet)
 router.register("payments", PaymentViewSet)
+router.register("trial-leads", TrialLeadViewSet, basename="trial-leads")
+router.register("tasks", TaskViewSet, basename="tasks")
 
 urlpatterns = [
     path("auth/register/", RegisterView.as_view(), name="auth-register"),

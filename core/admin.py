@@ -13,7 +13,7 @@ class UserAdmin(BaseUserAdmin):
             "Personal info",
             {"fields": ("first_name", "last_name", "phone", "address", "telegram")},
         ),
-        ("Company", {"fields": ("company_name", "created_by")}),
+        ("Company", {"fields": ("company_name", "max_managers", "created_by")}),
         (
             "Permissions",
             {
@@ -44,6 +44,7 @@ class UserAdmin(BaseUserAdmin):
                     "address",
                     "telegram",
                     "company_name",
+                    "max_managers",
                     "role",
                 ),
             },
@@ -54,6 +55,7 @@ class UserAdmin(BaseUserAdmin):
         "phone",
         "telegram",
         "company_name",
+        "max_managers",
         "role",
         "is_staff",
         "is_active",
@@ -83,6 +85,7 @@ class CourseAdmin(admin.ModelAdmin):
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
     list_display = (
+        "user",
         "first_name",
         "last_name",
         "phone",
