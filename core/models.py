@@ -16,6 +16,9 @@ class User(AbstractUser):
     phone = models.CharField(max_length=50, blank=True)
     address = models.CharField(max_length=255, blank=True)
     telegram = models.CharField(max_length=100, blank=True)
+    salary_rate = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    working_hours = models.CharField(max_length=255, blank=True)
+    color = models.CharField(max_length=7, default="#45B2EF")
     company_name = models.CharField(max_length=200, blank=True)
     max_managers = models.PositiveIntegerField(
         default=0, help_text="Maximum number of managers this course admin can create"
@@ -26,6 +29,11 @@ class User(AbstractUser):
         null=True,
         blank=True,
         related_name="created_users",
+    )
+    teaching_courses = models.ManyToManyField(
+        "Course",
+        related_name="teachers",
+        blank=True,
     )
 
     def __str__(self) -> str:

@@ -44,6 +44,8 @@ from .serializers import (
     PaymentSerializer,
     RegisterSerializer,
     StudentSerializer,
+    TeacherCreateSerializer,
+    TeacherUpdateSerializer,
     TrialLeadSerializer,
     TaskSerializer,
     UserUpdateSerializer,
@@ -550,13 +552,20 @@ class TeacherViewSet(viewsets.ModelViewSet):
     permission_classes = [IsCourseAdminOrManagerReadOnly]
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().prefetch_related("teaching_courses")
         user = self.request.user
         if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
-            return queryset.filter(company_name=user.company_name)
-        if user.is_authenticated and user.role == User.Role.MANAGER:
-            return queryset.filter(company_name=user.company_name)
-        return queryset
+            queryset = queryset.filter(company_name=user.company_name)
+        elif user.is_authenticated and user.role == User.Role.MANAGER:
+            queryset = queryset.filter(company_name=user.company_name)
+        course_param = self.request.query_params.get("course")
+        if course_param:
+            try:
+                course_id = int(course_param)
+            except (TypeError, ValueError):
+                return queryset.none()
+            queryset = queryset.filter(teaching_courses__id=course_id)
+        return queryset.distinct()
 
     def create(self, request, *args, **kwargs):
         user = request.user
@@ -564,11 +573,11 @@ class TeacherViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Admins cannot create teachers.")
         if user.role == User.Role.MANAGER:
             raise PermissionDenied("Managers cannot create teachers.")
-        serializer = RegisterSerializer(
-            data=request.data, context={"force_role": User.Role.TEACHER}
+        serializer = TeacherCreateSerializer(
+            data=request.data, context={"request": request}
         )
         serializer.is_valid(raise_exception=True)
-        teacher = serializer.save(created_by=user, company_name=user.company_name)
+        teacher = serializer.save()
         return Response(
             UserSerializer(teacher).data,
             status=status.HTTP_201_CREATED,
@@ -598,7 +607,7 @@ class TeacherViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         if self.action in ["update", "partial_update"]:
-            return UserUpdateSerializer
+            return TeacherUpdateSerializer
         return super().get_serializer_class()
 
 
@@ -676,6 +685,8 @@ class GroupViewSet(viewsets.ModelViewSet):
             teacher = serializer.validated_data.get("teacher")
             if teacher and teacher.company_name != user.company_name:
                 raise PermissionDenied("Teacher must belong to the same company.")
+            if teacher and not teacher.teaching_courses.filter(id=course.id).exists():
+                raise PermissionDenied("Teacher is not assigned to this course.")
             auditorium = serializer.validated_data.get("auditorium")
             if auditorium and auditorium.company_name != user.company_name:
                 raise PermissionDenied("Auditorium must belong to the same company.")
@@ -693,6 +704,7 @@ class GroupViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         user = self.request.user
+        instance = self.get_object()
         if user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
             course = serializer.validated_data.get("course", None)
             if course:
@@ -703,9 +715,18 @@ class GroupViewSet(viewsets.ModelViewSet):
                     ).exists()
                 if not allowed:
                     raise PermissionDenied("Not allowed for this course.")
-            teacher = serializer.validated_data.get("teacher")
-            if teacher and teacher.company_name != user.company_name:
+            selected_teacher = serializer.validated_data.get("teacher", instance.teacher)
+            if selected_teacher and selected_teacher.company_name != user.company_name:
                 raise PermissionDenied("Teacher must belong to the same company.")
+            course_for_teacher = course or instance.course
+            if (
+                selected_teacher
+                and course_for_teacher
+                and not selected_teacher.teaching_courses.filter(
+                    id=course_for_teacher.id
+                ).exists()
+            ):
+                raise PermissionDenied("Teacher is not assigned to this course.")
             auditorium = serializer.validated_data.get("auditorium")
             if auditorium and auditorium.company_name != user.company_name:
                 raise PermissionDenied("Auditorium must belong to the same company.")
@@ -713,7 +734,6 @@ class GroupViewSet(viewsets.ModelViewSet):
             for student in student_ids:
                 if student.company_name != user.company_name:
                     raise PermissionDenied("Student must belong to the same company.")
-        instance = self.get_object()
         self._ensure_auditorium_available(serializer, instance=instance)
         start_date = serializer.validated_data.get("start_date", instance.start_date)
         schedule_days = serializer.validated_data.get(
