@@ -1,4 +1,5 @@
 import os
+import importlib
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -131,9 +132,25 @@ STATIC_URL = "static/"
 # Настройки для Render (WhiteNoise)
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+MEDIA_URL = "/media/"
+MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "core.User"
+
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
+]
+
+try:
+    importlib.import_module("bcrypt")
+except ImportError:
+    pass
+else:
+    PASSWORD_HASHERS.insert(
+        0, "django.contrib.auth.hashers.BCryptSHA256PasswordHasher"
+    )
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

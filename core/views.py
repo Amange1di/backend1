@@ -5,10 +5,12 @@ import re
 from django.db import models
 from django.db.models import Sum
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.authtoken.models import Token
+from rest_framework.parsers import FormParser, MultiPartParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -17,6 +19,12 @@ from .models import (
     Auditorium,
     Course,
     Group,
+    LandingHeaderLink,
+    LandingPage,
+    LandingSection,
+    HomeworkTaskAttachment,
+    HomeworkSubmission,
+    HomeworkTask,
     Payment,
     Student,
     TrialLead,
@@ -40,9 +48,17 @@ from .serializers import (
     CourseAdminUpdateSerializer,
     CourseSerializer,
     GroupSerializer,
+    LandingHeaderLinkSerializer,
+    LandingPageSerializer,
+    LandingPublicPageSerializer,
+    HomeworkSubmissionSerializer,
+    HomeworkTaskSerializer,
     LoginSerializer,
     PaymentSerializer,
     RegisterSerializer,
+    StudentIdentityLoginSerializer,
+    StudentProfileSerializer,
+    StudentSetPasswordSerializer,
     StudentSerializer,
     TeacherCreateSerializer,
     TeacherUpdateSerializer,
@@ -50,6 +66,8 @@ from .serializers import (
     TaskSerializer,
     UserUpdateSerializer,
     UserSerializer,
+    normalize_phone,
+    sync_student_user,
 )
 
 
@@ -132,6 +150,166 @@ class LoginView(APIView):
         user = serializer.validated_data["user"]
         token, _ = Token.objects.get_or_create(user=user)
         return Response({"token": token.key, "user": UserSerializer(user).data})
+
+
+class StudentLoginView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = StudentIdentityLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        phone_number = serializer.validated_data["phone_number"].strip()
+        first_name = serializer.validated_data["first_name"].strip()
+        password = serializer.validated_data.get("password", "")
+        normalized_phone = normalize_phone(phone_number)
+
+        candidates = [
+            student
+            for student in Student.objects.select_related("user")
+            .filter(first_name__iexact=first_name)
+            .order_by("id")
+            if normalize_phone(student.phone) == normalized_phone
+        ]
+
+        if not candidates:
+            return Response(
+                {"detail": "Invalid student credentials."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        accessible_students = []
+        for student in candidates:
+            if not student.user:
+                sync_student_user(student)
+                student.refresh_from_db()
+            try:
+                ensure_student_access_allowed(student)
+                accessible_students.append(student)
+            except PermissionDenied:
+                continue
+
+        if not accessible_students:
+            return Response(
+                {"detail": "Student access is disabled."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if len(accessible_students) > 1:
+            return Response(
+                {"detail": "Multiple student accounts matched. Contact your administrator."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        student = accessible_students[0]
+        user = student.user
+        token, _ = Token.objects.get_or_create(user=user)
+
+        if user.must_set_password or not user.has_usable_password():
+            return Response(
+                {
+                    "token": token.key,
+                    "user": UserSerializer(user).data,
+                    "student": StudentSerializer(student, context={"request": request}).data,
+                    "requires_password_setup": True,
+                }
+            )
+
+        if not password:
+            return Response(
+                {
+                    "detail": "Password is required.",
+                    "code": "password_required",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not user.check_password(password):
+            return Response(
+                {"detail": "Invalid student credentials."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "token": token.key,
+                "user": UserSerializer(user).data,
+                "student": StudentSerializer(student, context={"request": request}).data,
+                "requires_password_setup": False,
+            }
+        )
+
+
+class StudentSetPasswordView(APIView):
+    def post(self, request):
+        if request.user.role != User.Role.STUDENT:
+            raise PermissionDenied("Only students can set this password.")
+        serializer = StudentSetPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        request.user.set_password(serializer.validated_data["password"])
+        request.user.must_set_password = False
+        request.user.save(update_fields=["password", "must_set_password"])
+        token, _ = Token.objects.get_or_create(user=request.user)
+        return Response({"token": token.key, "user": UserSerializer(request.user).data})
+
+
+class StudentProfileView(APIView):
+    def get(self, request):
+        if request.user.role != User.Role.STUDENT:
+            raise PermissionDenied("Only students can access this profile.")
+        student = getattr(request.user, "student_profile", None)
+        if not student:
+            return Response({"detail": "Student profile not found."}, status=status.HTTP_404_NOT_FOUND)
+        ensure_student_access_allowed(student)
+        return Response(
+            {
+                "id": student.id,
+                "first_name": student.first_name,
+                "last_name": student.last_name,
+                "phone": student.phone,
+                "telegram": student.telegram,
+                "company_name": student.company_name,
+                "can_login": student.can_login,
+                "must_set_password": request.user.must_set_password,
+            }
+        )
+
+    def patch(self, request):
+        if request.user.role != User.Role.STUDENT:
+            raise PermissionDenied("Only students can update this profile.")
+        student = getattr(request.user, "student_profile", None)
+        if not student:
+            return Response({"detail": "Student profile not found."}, status=status.HTTP_404_NOT_FOUND)
+        ensure_student_access_allowed(student)
+        serializer = StudentProfileSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        student_fields = []
+        user_fields = []
+        phone = serializer.validated_data.get("phone")
+        telegram = serializer.validated_data.get("telegram")
+        password = serializer.validated_data.get("password")
+
+        if phone is not None and phone != student.phone:
+            student.phone = phone
+            request.user.phone = phone
+            student_fields.append("phone")
+            user_fields.append("phone")
+        if telegram is not None and telegram != student.telegram:
+            student.telegram = telegram
+            request.user.telegram = telegram
+            student_fields.append("telegram")
+            user_fields.append("telegram")
+        if student_fields:
+            student.save(update_fields=student_fields)
+        if password:
+            request.user.set_password(password)
+            request.user.must_set_password = False
+            user_fields.extend(["password", "must_set_password"])
+        if user_fields:
+            request.user.save(update_fields=list(dict.fromkeys(user_fields)))
+
+        return self.get(request)
 
 
 class CourseAdminCreateView(APIView):
@@ -250,6 +428,51 @@ def resolve_support_telegram(user: User) -> str:
     if user.role == User.Role.ADMIN:
         return user.telegram or ""
     return ""
+
+
+def get_company_student_cabinet_enabled(company_name: str) -> bool:
+    if not company_name:
+        return False
+    return User.objects.filter(
+        role=User.Role.COURSE_ADMIN,
+        company_name=company_name,
+        is_student_cabinet_enabled=True,
+    ).exists()
+
+
+def student_has_allowed_group(student: Student) -> bool:
+    groups = student.groups.all()
+    if not groups.exists():
+        return True
+    return groups.filter(is_login_allowed=True).exists()
+
+
+def ensure_student_access_allowed(student: Student):
+    if not student.company_name or not get_company_student_cabinet_enabled(student.company_name):
+        raise PermissionDenied("Student cabinet is disabled for this company.")
+    if not student.can_login:
+        raise PermissionDenied("Student login is disabled for this account.")
+    if not student_has_allowed_group(student):
+        raise PermissionDenied("Student login is disabled for this group.")
+    if not student.user or student.user.role != User.Role.STUDENT:
+        raise PermissionDenied("Student account is not configured.")
+    if not student.user.is_active:
+        raise PermissionDenied("Student account is inactive.")
+
+
+def _student_can_access_homework_task(task: HomeworkTask, student: Student) -> bool:
+    if task.target_type == HomeworkTask.TargetType.SPECIFIC_STUDENTS:
+        return task.students.filter(id=student.id).exists()
+    return task.group.students.filter(id=student.id).exists()
+
+
+def _is_submission_locked(task: HomeworkTask) -> bool:
+    if not task.hard_deadline:
+        return False
+    grace_delta = timedelta(minutes=task.grace_period_minutes or 0)
+    if task.allow_late:
+        return False
+    return timezone.now() > (task.deadline + grace_delta)
 
 
 def parse_schedule_days(value: str) -> set[int]:
@@ -496,13 +719,17 @@ class StudentViewSet(viewsets.ModelViewSet):
                 save_kwargs["primary_course"] = course
             elif auto_course:
                 save_kwargs["primary_course"] = auto_course
-            serializer.save(**save_kwargs)
+            student = serializer.save(**save_kwargs)
+            sync_student_user(student, created_by=user)
             return
-        serializer.save()
+        student = serializer.save()
+        sync_student_user(student, created_by=user if user.is_authenticated else None)
 
     def perform_update(self, serializer):
         user = self.request.user
         if user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            if user.role == User.Role.MANAGER and "can_login" in serializer.validated_data:
+                raise PermissionDenied("Managers cannot change student login access.")
             course = serializer.validated_data.get("primary_course", None)
             if course:
                 allowed = course.admins.filter(id=user.id).exists()
@@ -536,14 +763,32 @@ class StudentViewSet(viewsets.ModelViewSet):
                 save_kwargs["primary_course"] = course
             elif auto_course:
                 save_kwargs["primary_course"] = auto_course
-            serializer.save(**save_kwargs)
+            student = serializer.save(**save_kwargs)
+            sync_student_user(student, created_by=user)
             return
-        serializer.save()
+        student = serializer.save()
+        sync_student_user(student, created_by=user if user.is_authenticated else None)
 
     def destroy(self, request, *args, **kwargs):
         if request.user.role in (User.Role.MANAGER, User.Role.STUDENT):
             raise PermissionDenied("Not allowed to delete students.")
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=["post"], url_path="reset-password")
+    def reset_password(self, request, pk=None):
+        if request.user.role != User.Role.COURSE_ADMIN:
+            raise PermissionDenied("Only course admins can reset student passwords.")
+        student = self.get_object()
+        if student.company_name != request.user.company_name:
+            raise PermissionDenied("Not allowed for this student.")
+        if not student.user:
+            sync_student_user(student, created_by=request.user)
+            student.refresh_from_db()
+        student.user.set_unusable_password()
+        student.user.must_set_password = True
+        student.user.save(update_fields=["password", "must_set_password"])
+        Token.objects.filter(user=student.user).delete()
+        return Response({"detail": "Student password was reset.", "must_set_password": True})
 
 
 class TeacherViewSet(viewsets.ModelViewSet):
@@ -706,6 +951,8 @@ class GroupViewSet(viewsets.ModelViewSet):
         user = self.request.user
         instance = self.get_object()
         if user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            if user.role == User.Role.MANAGER and "is_login_allowed" in serializer.validated_data:
+                raise PermissionDenied("Managers cannot change group login access.")
             course = serializer.validated_data.get("course", None)
             if course:
                 allowed = course.admins.filter(id=user.id).exists()
@@ -842,7 +1089,7 @@ class AuditoriumViewSet(viewsets.ModelViewSet):
 class AttendanceViewSet(viewsets.ModelViewSet):
     queryset = Attendance.objects.all().order_by("-created_at")
     serializer_class = AttendanceSerializer
-    permission_classes = [IsTeacherOrCourseAdminReadOnly]
+    permission_classes = [IsCourseAdminOrTeacherReadOnly]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -855,7 +1102,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         if user.is_authenticated and user.role == User.Role.TEACHER:
             return queryset.filter(group__teacher=user)
         if user.is_authenticated and user.role == User.Role.STUDENT:
-            return queryset.none()
+            return queryset.filter(student__user=user)
         return queryset
 
     def perform_create(self, serializer):
@@ -964,6 +1211,206 @@ class DashboardView(APIView):
                 "total_debt": total_debt,
             }
         )
+
+
+class LandingPageViewSet(viewsets.ModelViewSet):
+    queryset = LandingPage.objects.all().prefetch_related("sections")
+    serializer_class = LandingPageSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if user.role == User.Role.COURSE_ADMIN:
+            return queryset.filter(company_name=user.company_name)
+        if user.role == User.Role.ADMIN or user.is_superuser:
+            status_filter = self.request.query_params.get("status", "").strip()
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+            company_name = self.request.query_params.get("company_name", "").strip()
+            if company_name:
+                queryset = queryset.filter(company_name=company_name)
+            return queryset
+        return queryset.none()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.role != User.Role.COURSE_ADMIN:
+            raise PermissionDenied("Only course admins can create landing pages.")
+        if not user.can_create_landing_page():
+            raise PermissionDenied(
+                f"Landing pages limit reached. Maximum: {user.max_pages}, "
+                f"Current: {user.get_pages_count()}"
+            )
+        serializer.save(owner=user, company_name=user.company_name)
+
+    def perform_update(self, serializer):
+        page = self.get_object()
+        user = self.request.user
+        if user.role == User.Role.COURSE_ADMIN:
+            if page.company_name != user.company_name:
+                raise PermissionDenied("Not allowed for this landing page.")
+            serializer.save()
+            return
+        if user.role == User.Role.ADMIN or user.is_superuser:
+            serializer.save()
+            return
+        raise PermissionDenied("Not allowed.")
+
+    def destroy(self, request, *args, **kwargs):
+        page = self.get_object()
+        user = request.user
+        if user.role == User.Role.COURSE_ADMIN and page.company_name != user.company_name:
+            raise PermissionDenied("Not allowed for this landing page.")
+        if user.role not in (User.Role.COURSE_ADMIN, User.Role.ADMIN) and not user.is_superuser:
+            raise PermissionDenied("Not allowed to delete this landing page.")
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=["post"], url_path="submit")
+    def submit(self, request, pk=None):
+        page = self.get_object()
+        user = request.user
+        if user.role != User.Role.COURSE_ADMIN or page.company_name != user.company_name:
+            raise PermissionDenied("Only the owning course admin can submit this landing page.")
+        if page.status == LandingPage.Status.PENDING:
+            raise PermissionDenied("This landing page is already pending moderation.")
+        validate_landing_page_for_publication(page, user)
+        page.status = LandingPage.Status.PENDING
+        page.moderation_comment = ""
+        page.submitted_at = timezone.now()
+        page.save(update_fields=["status", "moderation_comment", "submitted_at", "updated_at"])
+        return Response(self.get_serializer(page).data)
+
+    @action(detail=True, methods=["post"], url_path="approve")
+    def approve(self, request, pk=None):
+        page = self.get_object()
+        user = request.user
+        if user.role != User.Role.ADMIN and not user.is_superuser:
+            raise PermissionDenied("Only admins can approve landing pages.")
+        if page.status != LandingPage.Status.PENDING:
+            raise PermissionDenied("Only pending landing pages can be approved.")
+        validate_landing_page_for_publication(page, page.owner)
+        page.status = LandingPage.Status.ACTIVE
+        page.moderation_comment = ""
+        page.moderated_at = timezone.now()
+        page.moderated_by = user
+        page.published_at = page.published_at or timezone.now()
+        page.save(
+            update_fields=[
+                "status",
+                "moderation_comment",
+                "moderated_at",
+                "moderated_by",
+                "published_at",
+                "updated_at",
+            ]
+        )
+        return Response(self.get_serializer(page).data)
+
+    @action(detail=True, methods=["post"], url_path="reject")
+    def reject(self, request, pk=None):
+        page = self.get_object()
+        user = request.user
+        if user.role != User.Role.ADMIN and not user.is_superuser:
+            raise PermissionDenied("Only admins can reject landing pages.")
+        if page.status != LandingPage.Status.PENDING:
+            raise PermissionDenied("Only pending landing pages can be rejected.")
+        comment = (request.data.get("comment") or "").strip()
+        if not comment:
+            return Response(
+                {"detail": "Moderation comment is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        page.status = LandingPage.Status.REJECTED
+        page.moderation_comment = comment
+        page.moderated_at = timezone.now()
+        page.moderated_by = user
+        page.save(
+            update_fields=[
+                "status",
+                "moderation_comment",
+                "moderated_at",
+                "moderated_by",
+                "updated_at",
+            ]
+        )
+        return Response(self.get_serializer(page).data)
+
+
+class LandingHeaderLinkViewSet(viewsets.ModelViewSet):
+    queryset = LandingHeaderLink.objects.all().select_related("target_page")
+    serializer_class = LandingHeaderLinkSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if user.role == User.Role.COURSE_ADMIN:
+            return queryset.filter(company_name=user.company_name)
+        if user.role == User.Role.ADMIN or user.is_superuser:
+            company_name = self.request.query_params.get("company_name", "").strip()
+            if company_name:
+                queryset = queryset.filter(company_name=company_name)
+            return queryset
+        return queryset.none()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.role != User.Role.COURSE_ADMIN:
+            raise PermissionDenied("Only course admins can manage landing header links.")
+        serializer.save(company_name=user.company_name)
+
+    def perform_update(self, serializer):
+        link = self.get_object()
+        user = self.request.user
+        if user.role != User.Role.COURSE_ADMIN or link.company_name != user.company_name:
+            raise PermissionDenied("Only the owning course admin can update this header link.")
+        serializer.save()
+
+    def destroy(self, request, *args, **kwargs):
+        link = self.get_object()
+        if request.user.role != User.Role.COURSE_ADMIN or link.company_name != request.user.company_name:
+            raise PermissionDenied("Only the owning course admin can delete this header link.")
+        return super().destroy(request, *args, **kwargs)
+
+
+class PublicLandingDetailView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, slug: str):
+        page = get_object_or_404(
+            LandingPage.objects.prefetch_related("sections"),
+            slug=slug,
+            status=LandingPage.Status.ACTIVE,
+        )
+        return Response(LandingPublicPageSerializer(page, context={"request": request}).data)
+
+
+class PublicLandingLeadCreateView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, slug: str):
+        page = get_object_or_404(
+            LandingPage,
+            slug=slug,
+            status=LandingPage.Status.ACTIVE,
+        )
+        full_name = (request.data.get("full_name") or "").strip()
+        phone = (request.data.get("phone") or "").strip()
+        if not full_name or not phone:
+            return Response(
+                {"detail": "Full name and phone are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        lead = TrialLead.objects.create(
+            full_name=full_name,
+            phone=phone,
+            course_interest=(request.data.get("course_interest") or "").strip(),
+            source=f"landing:{page.slug}",
+            comment=(request.data.get("comment") or "").strip(),
+            company_name=page.company_name,
+        )
+        return Response(TrialLeadSerializer(lead).data, status=status.HTTP_201_CREATED)
 
 
 class TrialLeadViewSet(viewsets.ModelViewSet):
@@ -1190,6 +1637,181 @@ class TaskViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(id__in=ids)
         updated = queryset.update(is_seen=True)
         return Response({"updated": updated})
+
+
+def validate_landing_page_for_publication(page: LandingPage, owner: User | None):
+    if owner and owner.role == User.Role.COURSE_ADMIN and page.sections.count() > owner.max_blocks:
+        raise PermissionDenied(
+            f"Page exceeds the allowed number of blocks ({owner.max_blocks})."
+        )
+    total_pages = LandingPage.objects.filter(company_name=page.company_name).count()
+    if total_pages > 1:
+        links = LandingHeaderLink.objects.filter(company_name=page.company_name)
+        if not links.exists():
+            raise PermissionDenied(
+                "Header navigation must be configured when more than one landing page exists."
+            )
+        invalid_target_exists = links.exclude(target_page__company_name=page.company_name).exists()
+        if invalid_target_exists:
+            raise PermissionDenied("All header links must target pages from the same company.")
+
+
+class HomeworkTaskViewSet(viewsets.ModelViewSet):
+    queryset = HomeworkTask.objects.all().select_related("group", "teacher").prefetch_related("attachments", "students", "submissions").order_by("-created_at")
+    serializer_class = HomeworkTaskSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if user.is_authenticated and user.role == User.Role.STUDENT:
+            now = timezone.now()
+            return queryset.filter(
+                is_published=True,
+            ).filter(
+                models.Q(publish_at__isnull=True) | models.Q(publish_at__lte=now)
+            ).filter(
+                models.Q(
+                    target_type=HomeworkTask.TargetType.ALL_GROUP,
+                    group__students__user=user,
+                )
+                | models.Q(
+                    target_type=HomeworkTask.TargetType.SPECIFIC_STUDENTS,
+                    students__user=user,
+                )
+            ).distinct()
+        if user.is_authenticated and user.role == User.Role.TEACHER:
+            return queryset.filter(teacher=user)
+        if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
+            return queryset.filter(company_name=user.company_name)
+        return queryset.none()
+
+    def create(self, request, *args, **kwargs):
+        user = request.user
+        if user.role != User.Role.TEACHER:
+            raise PermissionDenied("Only teachers can create homework tasks.")
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        group = serializer.validated_data.get("group")
+        if not group or group.teacher_id != user.id:
+            raise PermissionDenied("Homework can only be created for your own groups.")
+        instance = serializer.save(teacher=user, company_name=user.company_name)
+        self._save_attachments(instance)
+        data = self.get_serializer(instance).data
+        headers = self.get_success_headers(data)
+        return Response(data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        instance = self.get_object()
+        if user.role == User.Role.TEACHER:
+            if instance.teacher_id != user.id:
+                raise PermissionDenied("Not allowed for this homework task.")
+            group = serializer.validated_data.get("group", instance.group)
+            if group.teacher_id != user.id:
+                raise PermissionDenied("Homework can only belong to your own groups.")
+            instance = serializer.save()
+            self._save_attachments(instance, replace=True)
+            return
+        if user.role == User.Role.COURSE_ADMIN:
+            if instance.company_name != user.company_name:
+                raise PermissionDenied("Not allowed for this homework task.")
+            updated = serializer.save()
+            self._save_attachments(updated, replace=True)
+            return
+        raise PermissionDenied("Not allowed.")
+
+    def destroy(self, request, *args, **kwargs):
+        user = request.user
+        instance = self.get_object()
+        if user.role == User.Role.TEACHER and instance.teacher_id == user.id:
+            return super().destroy(request, *args, **kwargs)
+        if user.role == User.Role.COURSE_ADMIN and instance.company_name == user.company_name:
+            return super().destroy(request, *args, **kwargs)
+        raise PermissionDenied("Not allowed to delete this homework task.")
+
+    def _save_attachments(self, instance: HomeworkTask, replace: bool = False):
+        files = self.request.FILES.getlist("files")
+        if replace:
+            clear_files = self.request.data.get("clear_files")
+            if str(clear_files).lower() in {"1", "true", "yes"}:
+                instance.attachments.all().delete()
+        for file_obj in files:
+            HomeworkTaskAttachment.objects.create(task=instance, file=file_obj)
+
+
+class HomeworkSubmissionViewSet(viewsets.ModelViewSet):
+    queryset = HomeworkSubmission.objects.all().select_related("task", "student", "student__user").order_by("-submitted_at")
+    serializer_class = HomeworkSubmissionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if user.is_authenticated and user.role == User.Role.STUDENT:
+            return queryset.filter(student__user=user)
+        if user.is_authenticated and user.role == User.Role.TEACHER:
+            return queryset.filter(task__teacher=user)
+        if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
+            return queryset.filter(task__company_name=user.company_name)
+        return queryset.none()
+
+    def create(self, request, *args, **kwargs):
+        user = request.user
+        if user.role != User.Role.STUDENT:
+            raise PermissionDenied("Only students can submit homework.")
+        student = getattr(user, "student_profile", None)
+        if not student:
+            raise PermissionDenied("Student profile not found.")
+        task_id = request.data.get("task")
+        task = get_object_or_404(HomeworkTask, pk=task_id)
+        if not _student_can_access_homework_task(task, student):
+            raise PermissionDenied("You can submit homework only for your own groups.")
+        if _is_submission_locked(task):
+            raise PermissionDenied("Submission deadline has passed.")
+        if HomeworkSubmission.objects.filter(task=task, student=student).exists():
+            raise PermissionDenied("Submission already exists for this task.")
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(student=student)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        instance = self.get_object()
+        if user.role == User.Role.STUDENT:
+            if instance.student.user_id != user.id:
+                raise PermissionDenied("Not allowed for this submission.")
+            allowed_fields = {"answer_text", "file"}
+            update_fields = set(serializer.validated_data.keys())
+            if not update_fields.issubset(allowed_fields):
+                raise PermissionDenied("Students can only update submission content.")
+            if _is_submission_locked(instance.task):
+                raise PermissionDenied("Submission deadline has passed.")
+            serializer.save(status=HomeworkSubmission.Status.PENDING)
+            return
+        if user.role == User.Role.TEACHER:
+            if instance.task.teacher_id != user.id:
+                raise PermissionDenied("Not allowed for this submission.")
+            allowed_fields = {"status", "grade", "teacher_comment"}
+            update_fields = set(serializer.validated_data.keys())
+            if not update_fields.issubset(allowed_fields):
+                raise PermissionDenied("Teachers can only review homework submissions.")
+            serializer.save()
+            return
+        raise PermissionDenied("Not allowed.")
+
+    def destroy(self, request, *args, **kwargs):
+        user = request.user
+        instance = self.get_object()
+        if user.role == User.Role.STUDENT and instance.student.user_id == user.id:
+            return super().destroy(request, *args, **kwargs)
+        if user.role == User.Role.TEACHER and instance.task.teacher_id == user.id:
+            return super().destroy(request, *args, **kwargs)
+        raise PermissionDenied("Not allowed to delete this submission.")
 
 
 def build_task_instances(validated_data, user):

@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils.text import slugify
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -20,8 +21,16 @@ class User(AbstractUser):
     working_hours = models.CharField(max_length=255, blank=True)
     color = models.CharField(max_length=7, default="#45B2EF")
     company_name = models.CharField(max_length=200, blank=True)
+    is_student_cabinet_enabled = models.BooleanField(default=True)
+    must_set_password = models.BooleanField(default=False)
     max_managers = models.PositiveIntegerField(
         default=0, help_text="Maximum number of managers this course admin can create"
+    )
+    max_pages = models.PositiveIntegerField(
+        default=1, help_text="Maximum number of landing pages this course admin can create"
+    )
+    max_blocks = models.PositiveIntegerField(
+        default=7, help_text="Maximum number of sections allowed on a single landing page"
     )
     created_by = models.ForeignKey(
         "self",
@@ -50,6 +59,16 @@ class User(AbstractUser):
         if self.role != self.Role.COURSE_ADMIN:
             return False
         return self.get_managers_count() < self.max_managers
+
+    def get_pages_count(self) -> int:
+        if self.role != self.Role.COURSE_ADMIN or not self.company_name:
+            return 0
+        return LandingPage.objects.filter(company_name=self.company_name).count()
+
+    def can_create_landing_page(self) -> bool:
+        if self.role != self.Role.COURSE_ADMIN:
+            return False
+        return self.get_pages_count() < self.max_pages
 
 
 class Course(models.Model):
@@ -96,6 +115,7 @@ class Student(models.Model):
     phone = models.CharField(max_length=50)
     telegram = models.CharField(max_length=100, blank=True)
     company_name = models.CharField(max_length=200, blank=True)
+    can_login = models.BooleanField(default=True)
     primary_course = models.ForeignKey(
         Course,
         on_delete=models.SET_NULL,
@@ -129,6 +149,7 @@ class Group(models.Model):
     )
     students = models.ManyToManyField(Student, related_name="groups", blank=True)
     company_name = models.CharField(max_length=200, blank=True)
+    is_login_allowed = models.BooleanField(default=True)
     schedule_days = models.CharField(max_length=200, blank=True)
     schedule_time = models.CharField(max_length=50, blank=True)
     auditorium = models.ForeignKey(
@@ -275,3 +296,227 @@ class Task(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+
+class LandingPage(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "draft", _("Draft")
+        PENDING = "pending", _("Pending")
+        ACTIVE = "active", _("Active")
+        REJECTED = "rejected", _("Rejected")
+
+    title = models.CharField(max_length=200)
+    slug = models.SlugField(max_length=150, unique=True)
+    company_name = models.CharField(max_length=200, blank=True)
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="landing_pages",
+        limit_choices_to={"role": User.Role.COURSE_ADMIN},
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DRAFT,
+    )
+    moderation_comment = models.TextField(blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    moderated_at = models.DateTimeField(null=True, blank=True)
+    moderated_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="moderated_landing_pages",
+        limit_choices_to={"role": User.Role.ADMIN},
+    )
+    published_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-updated_at", "-created_at")
+
+    def __str__(self) -> str:
+        return self.title
+
+
+class LandingSection(models.Model):
+    class SectionType(models.TextChoices):
+        HERO = "hero", _("Hero Section")
+        ABOUT = "about", _("About Us")
+        COURSE_GRID = "course_grid", _("Course Grid")
+        TEACHER_SLIDER = "teacher_slider", _("Teacher Slider")
+        STATISTICS = "statistics", _("Statistics")
+        LEAD_FORM = "lead_form", _("Lead Form")
+        TESTIMONIALS = "testimonials", _("Testimonials")
+        FAQ = "faq", _("FAQ")
+        PRICING = "pricing", _("Pricing Table")
+        VIDEO = "video", _("Video Block")
+        GALLERY = "gallery", _("Gallery")
+        CONTACTS = "contacts", _("Contacts & Map")
+        CTA = "cta", _("Call To Action")
+        PARTNERS = "partners", _("Partners")
+        BENEFITS = "benefits", _("Benefits")
+
+    page = models.ForeignKey(
+        LandingPage,
+        on_delete=models.CASCADE,
+        related_name="sections",
+    )
+    section_type = models.CharField(max_length=32, choices=SectionType.choices)
+    order = models.PositiveIntegerField(default=0)
+    content = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("order", "id")
+
+    def __str__(self) -> str:
+        return f"{self.page_id}:{self.section_type}:{self.order}"
+
+
+class LandingHeaderLink(models.Model):
+    company_name = models.CharField(max_length=200)
+    label = models.CharField(max_length=120)
+    target_page = models.ForeignKey(
+        LandingPage,
+        on_delete=models.CASCADE,
+        related_name="incoming_header_links",
+    )
+    order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("order", "id")
+
+    def __str__(self) -> str:
+        return f"{self.company_name}: {self.label} -> {self.target_page.slug}"
+
+
+def build_homework_upload_path(instance, filename: str) -> str:
+    company_name = ""
+    if hasattr(instance, "company_name") and instance.company_name:
+        company_name = instance.company_name
+    elif hasattr(instance, "task") and instance.task and instance.task.company_name:
+        company_name = instance.task.company_name
+    prefix = slugify(company_name) or "shared"
+    return f"homework/{prefix}/{filename}"
+
+
+class HomeworkTask(models.Model):
+    class TargetType(models.TextChoices):
+        ALL_GROUP = "all_group", _("All group")
+        SPECIFIC_STUDENTS = "specific_students", _("Specific students")
+
+    class TaskType(models.TextChoices):
+        HOMEWORK = "homework", _("Homework")
+        QUIZ = "quiz", _("Quiz")
+        PROJECT = "project", _("Project")
+        EXAM = "exam", _("Exam")
+
+    group = models.ForeignKey(
+        Group,
+        on_delete=models.CASCADE,
+        related_name="homework_tasks",
+    )
+    teacher = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="homework_tasks",
+        limit_choices_to={"role": User.Role.TEACHER},
+    )
+    company_name = models.CharField(max_length=200, blank=True)
+    lesson_number = models.PositiveIntegerField(null=True, blank=True)
+    is_extra_task = models.BooleanField(default=False)
+    target_type = models.CharField(
+        max_length=32,
+        choices=TargetType.choices,
+        default=TargetType.ALL_GROUP,
+    )
+    students = models.ManyToManyField(
+        Student,
+        related_name="individual_tasks",
+        blank=True,
+    )
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    attachment = models.FileField(
+        upload_to=build_homework_upload_path,
+        blank=True,
+        null=True,
+    )
+    task_type = models.CharField(
+        max_length=20,
+        choices=TaskType.choices,
+        default=TaskType.HOMEWORK,
+    )
+    deadline = models.DateTimeField()
+    hard_deadline = models.BooleanField(default=False)
+    allow_late = models.BooleanField(default=False)
+    grace_period_minutes = models.PositiveIntegerField(default=0)
+    publish_at = models.DateTimeField(null=True, blank=True)
+    is_published = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+
+    def __str__(self) -> str:
+        return self.title
+
+
+class HomeworkTaskAttachment(models.Model):
+    task = models.ForeignKey(
+        HomeworkTask,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+    )
+    file = models.FileField(upload_to=build_homework_upload_path)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"Attachment #{self.pk} for {self.task_id}"
+
+
+class HomeworkSubmission(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", _("Pending")
+        REVIEWED = "reviewed", _("Reviewed")
+        REJECTED = "rejected", _("Rejected")
+
+    task = models.ForeignKey(
+        HomeworkTask,
+        on_delete=models.CASCADE,
+        related_name="submissions",
+    )
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        related_name="homework_submissions",
+    )
+    answer_text = models.TextField(blank=True)
+    file = models.FileField(
+        upload_to=build_homework_upload_path,
+        blank=True,
+        null=True,
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    grade = models.PositiveIntegerField(null=True, blank=True)
+    teacher_comment = models.TextField(blank=True)
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-submitted_at",)
+        unique_together = ("task", "student")
+
+    def __str__(self) -> str:
+        return f"{self.student} -> {self.task}"
