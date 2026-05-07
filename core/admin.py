@@ -79,7 +79,7 @@ class UserAdmin(BaseUserAdmin):
 class CourseAdmin(admin.ModelAdmin):
     list_display = ("title", "price", "duration_weeks", "created_at")
     search_fields = ("title",)
-    filter_horizontal = ("admins",)
+    filter_horizontal = ()
 
 
 @admin.register(Student)

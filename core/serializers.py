@@ -21,6 +21,7 @@ from .models import (
     TrialLead,
     Task,
     User,
+    PromoCode,
 )
 
 
@@ -1045,3 +1046,21 @@ class LandingPublicPageSerializer(serializers.ModelSerializer):
             target_page__status=LandingPage.Status.ACTIVE,
         ).select_related("target_page")
         return LandingHeaderLinkSerializer(links, many=True, context=self.context).data
+
+
+class PromoCodeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PromoCode
+        fields = (
+            "id",
+            "code",
+            "reward_type",
+            "reward_value",
+            "max_usages",
+            "current_usages",
+            "expiry_date",
+            "is_active",
+            "created_by",
+            "created_at",
+        )
+        read_only_fields = ("current_usages", "created_by", "created_at")

@@ -17,6 +17,8 @@ from .views import (
     LoginView,
     ManagerViewSet,
     MeView,
+    UserBalanceHistoryView,
+    UserBalanceMeView,
     PaymentViewSet,
     PublicLandingDetailView,
     PublicLandingLeadCreateView,
@@ -28,6 +30,7 @@ from .views import (
     TaskViewSet,
     TeacherViewSet,
     TrialLeadViewSet,
+    PromoCodeViewSet,
 )
 
 router = DefaultRouter()
@@ -45,6 +48,7 @@ router.register("homework-tasks", HomeworkTaskViewSet, basename="homework-tasks"
 router.register("homework-submissions", HomeworkSubmissionViewSet, basename="homework-submissions")
 router.register("trial-leads", TrialLeadViewSet, basename="trial-leads")
 router.register("tasks", TaskViewSet, basename="tasks")
+router.register("admin/promo-codes", PromoCodeViewSet, basename="promo-codes")
 
 urlpatterns = [
     path("auth/register/", RegisterView.as_view(), name="auth-register"),
@@ -55,6 +59,8 @@ urlpatterns = [
     path("auth/student/set-password/", StudentSetPasswordView.as_view(), name="auth-student-set-password"),
     path("auth/student/profile/", StudentProfileView.as_view(), name="auth-student-profile"),
     path("auth/me/", MeView.as_view(), name="auth-me"),
+    path("user/balance/me/", UserBalanceMeView.as_view(), name="user-balance-me"),
+    path("user/balance/history/", UserBalanceHistoryView.as_view(), name="user-balance-history"),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
     path("attendance/mark/", AttendanceMarkView.as_view(), name="attendance-mark"),
     path("public/landing-pages/<slug:slug>/", PublicLandingDetailView.as_view(), name="public-landing-detail"),

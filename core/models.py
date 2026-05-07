@@ -85,6 +85,11 @@ class Course(models.Model):
         limit_choices_to={"role": User.Role.COURSE_ADMIN},
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    is_promoted = models.BooleanField(default=False, help_text="Продвигается ли курс (TOP)")
+    promoted_until = models.DateTimeField(null=True, blank=True, help_text="До какой даты продвигается")
+
+    class Meta:
+        ordering = ["-is_promoted", "-created_at"]
 
     def __str__(self) -> str:
         return self.title
@@ -520,3 +525,532 @@ class HomeworkSubmission(models.Model):
 
     def __str__(self) -> str:
         return f"{self.student} -> {self.task}"
+
+
+# Marketplace Application Models
+class ApplicationStatus(models.TextChoices):
+    NEW = "new", _("New")
+    PROCESSING = "processing", _("In Processing")
+    APPROVED = "approved", _("Approved")
+    REJECTED = "rejected", _("Rejected")
+
+
+class ApplicationType(models.TextChoices):
+    TEACHER = "teacher", _("Teacher")
+    STUDENT = "student", _("Student")
+
+
+class TeacherApplication(models.Model):
+    """Model for teacher applications to join companies"""
+
+    full_name = models.CharField(max_length=200, verbose_name="Full Name")
+    phone = models.CharField(max_length=50, verbose_name="Phone Number")
+    email = models.EmailField(verbose_name="Email")
+    experience = models.PositiveIntegerField(
+        default=0, verbose_name="Years of Experience"
+    )
+    specialization = models.CharField(
+        max_length=500, blank=True, verbose_name="Specialization"
+    )
+    expected_salary = models.CharField(
+        max_length=100, blank=True, verbose_name="Expected Salary"
+    )
+    education = models.TextField(blank=True, verbose_name="Education")
+    about = models.TextField(blank=True, verbose_name="About Me")
+    availability = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Available Time Slots",
+        help_text="Dictionary with keys like 'mon-morning', 'tue-afternoon', etc.",
+    )
+    format = models.CharField(
+        max_length=20,
+        choices=[("online", "Online"), ("offline", "Offline"), ("both", "Both")],
+        default="online",
+        verbose_name="Teaching Format",
+    )
+    company_name = models.CharField(
+        max_length=200, blank=True, verbose_name="Company Name"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=ApplicationStatus.choices,
+        default=ApplicationStatus.NEW,
+        verbose_name="Status",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Teacher Application"
+        verbose_name_plural = "Teacher Applications"
+        ordering = ("-created_at",)
+
+    def __str__(self) -> str:
+        return f"{self.full_name} - {self.get_status_display()}"
+
+
+class StudentApplication(models.Model):
+    """Model for student applications to enroll in courses"""
+
+    full_name = models.CharField(max_length=200, verbose_name="Full Name")
+    phone = models.CharField(max_length=50, verbose_name="Phone Number")
+    email = models.EmailField(verbose_name="Email", blank=True)
+    age = models.PositiveIntegerField(null=True, blank=True, verbose_name="Age")
+    course_interest = models.CharField(
+        max_length=200, blank=True, verbose_name="Course of Interest"
+    )
+    experience_level = models.CharField(
+        max_length=50,
+        choices=[
+            ("beginner", "Beginner"),
+            ("elementary", "Elementary"),
+            ("intermediate", "Intermediate"),
+            ("upper-intermediate", "Upper-Intermediate"),
+            ("advanced", "Advanced"),
+        ],
+        default="beginner",
+        verbose_name="Experience Level",
+    )
+    learning_goal = models.CharField(
+        max_length=300, blank=True, verbose_name="Learning Goal"
+    )
+    budget = models.CharField(max_length=100, blank=True, verbose_name="Budget")
+    schedule_preference = models.CharField(
+        max_length=100, blank=True, verbose_name="Schedule Preference"
+    )
+    source = models.CharField(
+        max_length=200, blank=True, verbose_name="How Did You Find Us?"
+    )
+    company_name = models.CharField(
+        max_length=200, blank=True, verbose_name="Company Name"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=ApplicationStatus.choices,
+        default=ApplicationStatus.NEW,
+        verbose_name="Status",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Student Application"
+        verbose_name_plural = "Student Applications"
+        ordering = ("-created_at",)
+
+    def __str__(self) -> str:
+        return f"{self.full_name} - {self.get_status_display()}"
+
+
+# Marketplace Public Models
+
+class CompanyCategory(models.TextChoices):
+    LANGUAGES = "languages", "Languages"
+    IT = "it", "IT & Technology"
+    CRAFTS = "crafts", "Crafts & Handmade"
+    SPORTS = "sports", "Sports & Fitness"
+    MUSIC = "music", "Music & Arts"
+    BUSINESS = "business", "Business & Finance"
+    OTHER = "other", "Other"
+
+
+class CompanyCity(models.TextChoices):
+    BISHKEK = "Бишкек", "Бишкек"
+    OSH = "Ош", "Ош"
+    TALAS = "Талас", "Талас"
+    NARYN = "Нарын", "Нарын"
+    JALAL_ABAD = "Джалал-Абад", "Джалал-Абад"
+    KARAKOL = "Каракол", "Каракол"
+    ONLINE = "Онлайн", "Онлайн"
+
+
+class Company(models.Model):
+    """Public company profile for marketplace"""
+    
+    name = models.CharField(max_length=200, verbose_name="Company Name")
+    slug = models.SlugField(max_length=150, unique=True, verbose_name="Slug")
+    logo = models.ImageField(
+        upload_to="companies/logos/",
+        blank=True,
+        null=True,
+        verbose_name="Logo"
+    )
+    description = models.TextField(verbose_name="Description")
+    category = models.CharField(
+        max_length=20,
+        choices=CompanyCategory.choices,
+        verbose_name="Category"
+    )
+    city = models.CharField(
+        max_length=20,
+        choices=CompanyCity.choices,
+        verbose_name="City"
+    )
+    district = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="District"
+    )
+    phone = models.CharField(max_length=50, blank=True, verbose_name="Phone")
+    telegram = models.CharField(max_length=100, blank=True, verbose_name="Telegram")
+    whatsapp = models.CharField(max_length=100, blank=True, verbose_name="WhatsApp")
+    website = models.URLField(blank=True, verbose_name="Website")
+    rating = models.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        default=0,
+        verbose_name="Rating"
+    )
+    reviews_count = models.PositiveIntegerField(default=0, verbose_name="Reviews Count")
+    
+    # Admin user who owns this company
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="companies",
+        limit_choices_to={"role": User.Role.COURSE_ADMIN}
+    )
+    
+    is_active = models.BooleanField(default=True, verbose_name="Is Active")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Company"
+        verbose_name_plural = "Companies"
+        ordering = ("-created_at",)
+
+    def __str__(self) -> str:
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
+
+
+class JobVacancy(models.Model):
+    """Job vacancy posted by companies"""
+    
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="vacancies"
+    )
+    title = models.CharField(max_length=200, verbose_name="Position Title")
+    description = models.TextField(verbose_name="Description")
+    category = models.CharField(
+        max_length=20,
+        choices=CompanyCategory.choices,
+        verbose_name="Category"
+    )
+    city = models.CharField(
+        max_length=20,
+        choices=CompanyCity.choices,
+        verbose_name="City"
+    )
+    district = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="District"
+    )
+    salary_min = models.PositiveIntegerField(null=True, blank=True, verbose_name="Min Salary")
+    salary_max = models.PositiveIntegerField(null=True, blank=True, verbose_name="Max Salary")
+    schedule = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Work Schedule"
+    )
+    requirements = models.TextField(blank=True, verbose_name="Requirements")
+    responsibilities = models.TextField(blank=True, verbose_name="Responsibilities")
+    
+    is_active = models.BooleanField(default=True, verbose_name="Is Active")
+    is_promoted = models.BooleanField(default=False, help_text="Продвигается ли вакансия (TOP)")
+    promoted_until = models.DateTimeField(null=True, blank=True, help_text="До какой даты продвигается")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Job Vacancy"
+        verbose_name_plural = "Job Vacancies"
+        ordering = ["-is_promoted", "-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.title} at {self.company.name}"
+
+
+class PublicCourse(models.Model):
+    """Public course offered by companies"""
+    
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="courses"
+    )
+    title = models.CharField(max_length=200, verbose_name="Course Title")
+    slug = models.SlugField(max_length=150, verbose_name="Slug")
+    price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        verbose_name="Price"
+    )
+    duration_weeks = models.PositiveIntegerField(verbose_name="Duration (weeks)")
+    lesson_duration_minutes = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Lesson Duration (minutes)"
+    )
+    description = models.TextField(verbose_name="Description")
+    category = models.CharField(
+        max_length=20,
+        choices=CompanyCategory.choices,
+        verbose_name="Category"
+    )
+    city = models.CharField(
+        max_length=20,
+        choices=CompanyCity.choices,
+        verbose_name="City"
+    )
+    schedule = models.TextField(blank=True, verbose_name="Schedule")
+    requirements = models.TextField(blank=True, verbose_name="Requirements")
+    
+    # Course materials
+    curriculum = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Curriculum",
+        help_text="List of lessons/modules"
+    )
+    
+    rating = models.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        default=0,
+        verbose_name="Rating"
+    )
+    reviews_count = models.PositiveIntegerField(default=0, verbose_name="Reviews Count")
+    
+    is_active = models.BooleanField(default=True, verbose_name="Is Active")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Public Course"
+        verbose_name_plural = "Public Courses"
+        ordering = ("-created_at",)
+
+    def __str__(self) -> str:
+        return self.title
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.title)
+            slug = base_slug
+            counter = 1
+            while PublicCourse.objects.filter(slug=slug).exclude(id=self.id).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+
+class CourseApplication(models.Model):
+    """Application for a course by students"""
+    
+    course = models.ForeignKey(
+        PublicCourse,
+        on_delete=models.CASCADE,
+        related_name="applications"
+    )
+    full_name = models.CharField(max_length=200, verbose_name="Full Name")
+    phone = models.CharField(max_length=50, verbose_name="Phone")
+    email = models.EmailField(blank=True, verbose_name="Email")
+    age = models.PositiveIntegerField(null=True, blank=True, verbose_name="Age")
+    experience_level = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name="Experience Level"
+    )
+    learning_goal = models.TextField(blank=True, verbose_name="Learning Goal")
+    status = models.CharField(
+        max_length=20,
+        choices=ApplicationStatus.choices,
+        default=ApplicationStatus.NEW,
+        verbose_name="Status"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Course Application"
+        verbose_name_plural = "Course Applications"
+        ordering = ("-created_at",)
+
+    def __str__(self) -> str:
+        return f"{self.full_name} - {self.course.title}"
+
+
+# === Marketplace Monetization Models ===
+
+class CompanyBalance(models.Model):
+    """Общий баланс eduCoin для компании (course_admin и его менеджеры)"""
+    
+    company_name = models.CharField(
+        max_length=200,
+        unique=True,
+        help_text="Название компании"
+    )
+    balance = models.PositiveIntegerField(default=0, help_text="Баланс eduCoins")
+    last_update = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Company Balance"
+        verbose_name_plural = "Company Balances"
+    
+    def __str__(self) -> str:
+        return f"{self.company_name} - {self.balance} eC"
+    
+    def add_coins(self, amount: int, reason: str):
+        """Добавить монеты"""
+        self.balance += amount
+        self.save()
+        Transaction.objects.create(
+            company_name=self.company_name,
+            amount=amount,
+            reason=reason,
+            transaction_type=Transaction.Type.DEPOSIT,
+        )
+    
+    def spend_coins(self, amount: int, reason: str) -> bool:
+        """Списать монеты. Возвращает True если успешно"""
+        if self.balance >= amount:
+            self.balance -= amount
+            self.save()
+            Transaction.objects.create(
+                company_name=self.company_name,
+                amount=-amount,
+                reason=reason,
+                transaction_type=Transaction.Type.WITHDRAWAL,
+            )
+            return True
+        return False
+
+
+class Transaction(models.Model):
+    """История транзакций eduCoin"""
+    
+    class Type(models.TextChoices):
+        DEPOSIT = "deposit", "Пополнение"
+        WITHDRAWAL = "withdrawal", "Списание"
+        BONUS = "bonus", "Бонус"
+    
+    company_name = models.CharField(
+        max_length=200,
+        help_text="Название компании"
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="transactions",
+        help_text="Пользователь, инициировавший транзакцию (необязательно)"
+    )
+    amount = models.IntegerField(help_text="Положительное для пополнения, отрицательное для списания")
+    reason = models.CharField(max_length=500, help_text="Причина транзакции")
+    transaction_type = models.CharField(
+        max_length=20,
+        choices=Type.choices,
+        default=Type.DEPOSIT,
+    )
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "Transaction"
+        verbose_name_plural = "Transactions"
+        ordering = ("-timestamp",)
+        indexes = [
+            models.Index(fields=['company_name', '-timestamp']),
+        ]
+    
+    def __str__(self) -> str:
+        user_str = self.user.username if self.user else "—"
+        return f"{self.company_name} ({user_str}) - {self.amount} eC ({self.reason})"
+
+
+class PromoCode(models.Model):
+    """Промокоды для пополнения баланса и бонусов"""
+    
+    class RewardType(models.TextChoices):
+        COINS = "coins", "eduCoins (монеты)"
+        BONUS_LIMIT = "bonus_limit", "Бонусный лимит курсов"
+    
+    code = models.CharField(
+        max_length=50,
+        unique=True,
+        help_text="Код промокода (например: START2026, OSH500)",
+    )
+    reward_type = models.CharField(
+        max_length=20,
+        choices=RewardType.choices,
+        default=RewardType.COINS,
+    )
+    reward_value = models.PositiveIntegerField(
+        help_text="Количество монет или дополнительный лимит"
+    )
+    max_usages = models.PositiveIntegerField(
+        default=100,
+        help_text="Максимальное количество активаций",
+    )
+    current_usages = models.PositiveIntegerField(default=0)
+    expiry_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Дата истечения действия",
+    )
+    is_active = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_promo_codes",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "Promo Code"
+        verbose_name_plural = "Promo Codes"
+        ordering = ("-created_at",)
+    
+    def __str__(self) -> str:
+        return f"{self.code} - {self.reward_value} eC"
+    
+    def is_valid(self) -> bool:
+        """Проверить действителен ли промокод"""
+        if not self.is_active:
+            return False
+        if self.current_usages >= self.max_usages:
+            return False
+        if self.expiry_date and self.expiry_date < timezone.now():
+            return False
+        return True
+    
+    def activate(self, user: User) -> bool:
+        """Активировать промокод для пользователя"""
+        if not self.is_valid():
+            return False
+        
+        self.current_usages += 1
+        self.save()
+        
+        if self.reward_type == self.RewardType.COINS:
+            balance, created = UserBalance.objects.get_or_create(user=user)
+            balance.add_coins(self.reward_value, f"Промокод: {self.code}")
+        elif self.reward_type == self.RewardType.BONUS_LIMIT:
+            # Увеличиваем лимит курсов (реализуется в бизнес-логике)
+            if user.role == User.Role.COURSE_ADMIN:
+                user.max_courses = getattr(user, "max_courses", 6) + self.reward_value
+                user.save()
+        
+        return True
