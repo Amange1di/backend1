@@ -20,6 +20,14 @@ class User(AbstractUser):
     salary_rate = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     working_hours = models.CharField(max_length=255, blank=True)
     color = models.CharField(max_length=7, default="#45B2EF")
+    company = models.ForeignKey(
+        "Company",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="users",
+    )
+    # Устаревшее поле для миграции
     company_name = models.CharField(max_length=200, blank=True)
     is_student_cabinet_enabled = models.BooleanField(default=True)
     must_set_password = models.BooleanField(default=False)
@@ -61,9 +69,9 @@ class User(AbstractUser):
         return self.get_managers_count() < self.max_managers
 
     def get_pages_count(self) -> int:
-        if self.role != self.Role.COURSE_ADMIN or not self.company_name:
+        if self.role != self.Role.COURSE_ADMIN or not self.company:
             return 0
-        return LandingPage.objects.filter(company_name=self.company_name).count()
+        return LandingPage.objects.filter(company=self.company).count()
 
     def can_create_landing_page(self) -> bool:
         if self.role != self.Role.COURSE_ADMIN:
@@ -98,6 +106,14 @@ class Course(models.Model):
 class Auditorium(models.Model):
     name = models.CharField(max_length=200)
     number = models.CharField(max_length=50, blank=True)
+    company = models.ForeignKey(
+        "Company",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="auditoriums",
+    )
+    # Устаревшее поле для миграции
     company_name = models.CharField(max_length=200, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -119,6 +135,14 @@ class Student(models.Model):
     last_name = models.CharField(max_length=100, blank=True)
     phone = models.CharField(max_length=50)
     telegram = models.CharField(max_length=100, blank=True)
+    company = models.ForeignKey(
+        "Company",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="students",
+    )
+    # Устаревшее поле для миграции
     company_name = models.CharField(max_length=200, blank=True)
     can_login = models.BooleanField(default=True)
     primary_course = models.ForeignKey(
@@ -153,6 +177,14 @@ class Group(models.Model):
         limit_choices_to={"role": User.Role.TEACHER},
     )
     students = models.ManyToManyField(Student, related_name="groups", blank=True)
+    company = models.ForeignKey(
+        "Company",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="groups",
+    )
+    # Устаревшее поле для миграции
     company_name = models.CharField(max_length=200, blank=True)
     is_login_allowed = models.BooleanField(default=True)
     schedule_days = models.CharField(max_length=200, blank=True)
@@ -250,6 +282,14 @@ class TrialLead(models.Model):
     payment_status = models.CharField(
         max_length=20, choices=PaymentStatus.choices, default=PaymentStatus.NOT_PAID
     )
+    company = models.ForeignKey(
+        "Company",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trial_leads",
+    )
+    # Устаревшее поле для миграции
     company_name = models.CharField(max_length=200, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -290,6 +330,14 @@ class Task(models.Model):
         related_name="created_tasks",
         limit_choices_to={"role": User.Role.COURSE_ADMIN},
     )
+    company = models.ForeignKey(
+        "Company",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tasks",
+    )
+    # Устаревшее поле для миграции
     company_name = models.CharField(max_length=200, blank=True)
     due_date = models.DateField()
     due_time = models.TimeField(null=True, blank=True)
@@ -312,6 +360,14 @@ class LandingPage(models.Model):
 
     title = models.CharField(max_length=200)
     slug = models.SlugField(max_length=150, unique=True)
+    company = models.ForeignKey(
+        "Company",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="landing_pages",
+    )
+    # Устаревшее поле для миграции
     company_name = models.CharField(max_length=200, blank=True)
     owner = models.ForeignKey(
         User,
@@ -385,7 +441,15 @@ class LandingSection(models.Model):
 
 
 class LandingHeaderLink(models.Model):
-    company_name = models.CharField(max_length=200)
+    company = models.ForeignKey(
+        "Company",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="header_links",
+    )
+    # Устаревшее поле для миграции
+    company_name = models.CharField(max_length=200, blank=True)
     label = models.CharField(max_length=120)
     target_page = models.ForeignKey(
         LandingPage,
@@ -400,16 +464,24 @@ class LandingHeaderLink(models.Model):
         ordering = ("order", "id")
 
     def __str__(self) -> str:
-        return f"{self.company_name}: {self.label} -> {self.target_page.slug}"
+        return f"{self.company_name or self.company_id}: {self.label} -> {self.target_page.slug}"
 
 
 def build_homework_upload_path(instance, filename: str) -> str:
-    company_name = ""
-    if hasattr(instance, "company_name") and instance.company_name:
-        company_name = instance.company_name
-    elif hasattr(instance, "task") and instance.task and instance.task.company_name:
-        company_name = instance.task.company_name
-    prefix = slugify(company_name) or "shared"
+    company = None
+    if hasattr(instance, "company") and instance.company:
+        company = instance.company
+    elif hasattr(instance, "task") and instance.task and instance.task.company:
+        company = instance.task.company
+    if not company:
+        company_name = ""
+        if hasattr(instance, "company_name") and instance.company_name:
+            company_name = instance.company_name
+        elif hasattr(instance, "task") and instance.task and instance.task.company_name:
+            company_name = instance.task.company_name
+        prefix = slugify(company_name) or "shared"
+        return f"homework/{prefix}/{filename}"
+    prefix = slugify(company.name) or "shared"
     return f"homework/{prefix}/{filename}"
 
 
@@ -435,6 +507,14 @@ class HomeworkTask(models.Model):
         related_name="homework_tasks",
         limit_choices_to={"role": User.Role.TEACHER},
     )
+    company = models.ForeignKey(
+        "Company",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="homework_tasks",
+    )
+    # Устаревшее поле для миграции
     company_name = models.CharField(max_length=200, blank=True)
     lesson_number = models.PositiveIntegerField(null=True, blank=True)
     is_extra_task = models.BooleanField(default=False)
@@ -569,6 +649,15 @@ class TeacherApplication(models.Model):
         default="online",
         verbose_name="Teaching Format",
     )
+    company = models.ForeignKey(
+        "Company",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="teacher_applications",
+        verbose_name="Company",
+    )
+    # Устаревшее поле для миграции
     company_name = models.CharField(
         max_length=200, blank=True, verbose_name="Company Name"
     )
@@ -622,6 +711,15 @@ class StudentApplication(models.Model):
     source = models.CharField(
         max_length=200, blank=True, verbose_name="How Did You Find Us?"
     )
+    company = models.ForeignKey(
+        "Company",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="student_applications",
+        verbose_name="Company",
+    )
+    # Устаревшее поле для миграции
     company_name = models.CharField(
         max_length=200, blank=True, verbose_name="Company Name"
     )
@@ -768,6 +866,10 @@ class JobVacancy(models.Model):
     is_active = models.BooleanField(default=True, verbose_name="Is Active")
     is_promoted = models.BooleanField(default=False, help_text="Продвигается ли вакансия (TOP)")
     promoted_until = models.DateTimeField(null=True, blank=True, help_text="До какой даты продвигается")
+    is_urgent = models.BooleanField(default=False, help_text="Срочный бейдж")
+    urgent_until = models.DateTimeField(null=True, blank=True, help_text="До какой даты бейдж")
+    views = models.PositiveIntegerField(default=0, verbose_name="Views")
+    applications = models.PositiveIntegerField(default=0, verbose_name="Applications")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -832,6 +934,18 @@ class PublicCourse(models.Model):
     reviews_count = models.PositiveIntegerField(default=0, verbose_name="Reviews Count")
     
     is_active = models.BooleanField(default=True, verbose_name="Is Active")
+    is_promoted = models.BooleanField(default=False, help_text="Продвигается ли курс (TOP)")
+    promoted_until = models.DateTimeField(null=True, blank=True, help_text="До какой даты продвигается")
+    is_urgent = models.BooleanField(default=False, help_text="Срочный бейдж")
+    urgent_until = models.DateTimeField(null=True, blank=True, help_text="До какой даты бейдж")
+    image = models.ImageField(
+        upload_to="courses/images/",
+        blank=True,
+        null=True,
+        verbose_name="Course Image"
+    )
+    views = models.PositiveIntegerField(default=0, verbose_name="Views")
+    applications_count = models.PositiveIntegerField(default=0, verbose_name="Applications Count")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -895,10 +1009,19 @@ class CourseApplication(models.Model):
 class CompanyBalance(models.Model):
     """Общий баланс eduCoin для компании (course_admin и его менеджеры)"""
     
+    company = models.OneToOneField(
+        "Company",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="balance",
+        help_text="Компания"
+    )
+    # Устаревшее поле для миграции
     company_name = models.CharField(
         max_length=200,
         unique=True,
-        help_text="Название компании"
+        help_text="Название компании (устаревшее)"
     )
     balance = models.PositiveIntegerField(default=0, help_text="Баланс eduCoins")
     last_update = models.DateTimeField(auto_now=True)
@@ -908,13 +1031,15 @@ class CompanyBalance(models.Model):
         verbose_name_plural = "Company Balances"
     
     def __str__(self) -> str:
-        return f"{self.company_name} - {self.balance} eC"
+        company_str = self.company.name if self.company else self.company_name
+        return f"{company_str} - {self.balance} eC"
     
     def add_coins(self, amount: int, reason: str):
         """Добавить монеты"""
         self.balance += amount
         self.save()
         Transaction.objects.create(
+            company=self.company,
             company_name=self.company_name,
             amount=amount,
             reason=reason,
@@ -927,6 +1052,7 @@ class CompanyBalance(models.Model):
             self.balance -= amount
             self.save()
             Transaction.objects.create(
+                company=self.company,
                 company_name=self.company_name,
                 amount=-amount,
                 reason=reason,
@@ -944,9 +1070,18 @@ class Transaction(models.Model):
         WITHDRAWAL = "withdrawal", "Списание"
         BONUS = "bonus", "Бонус"
     
+    company = models.ForeignKey(
+        "Company",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="transactions",
+        help_text="Компания"
+    )
+    # Устаревшее поле для миграции
     company_name = models.CharField(
         max_length=200,
-        help_text="Название компании"
+        help_text="Название компании (устаревшее)"
     )
     user = models.ForeignKey(
         User,
@@ -970,12 +1105,14 @@ class Transaction(models.Model):
         verbose_name_plural = "Transactions"
         ordering = ("-timestamp",)
         indexes = [
+            models.Index(fields=['company', '-timestamp']),
             models.Index(fields=['company_name', '-timestamp']),
         ]
     
     def __str__(self) -> str:
+        company_str = self.company.name if self.company else self.company_name
         user_str = self.user.username if self.user else "—"
-        return f"{self.company_name} ({user_str}) - {self.amount} eC ({self.reason})"
+        return f"{company_str} ({user_str}) - {self.amount} eC ({self.reason})"
 
 
 class PromoCode(models.Model):

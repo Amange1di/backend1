@@ -33,6 +33,10 @@ from .models import (
     CompanyBalance,
     PromoCode,
     Transaction,
+    Company,
+    PublicCourse,
+    JobVacancy,
+    StudentApplication,
 )
 from .permissions import (
     IsAdmin,
@@ -68,6 +72,10 @@ from .serializers import (
     UserUpdateSerializer,
     UserSerializer,
     PromoCodeSerializer,
+    CompanySerializer,
+    PublicCourseSerializer,
+    JobVacancySerializer,
+    CompanyCreateUpdateSerializer,
     normalize_phone,
     sync_student_user,
 )
@@ -2180,6 +2188,465 @@ class AttendanceMarkView(APIView):
                 "date": target_date.isoformat(),
             }
         )
+
+
+# === Marketplace Views ===
+
+class MarketplaceCompanyViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing companies"""
+    queryset = Company.objects.all()
+    serializer_class = CompanySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = Company.objects.filter(is_active=True).order_by("-created_at")
+        user = self.request.user
+        if user.role == User.Role.COURSE_ADMIN:
+            queryset = queryset.filter(owner=user)
+        elif user.role == User.Role.MANAGER:
+            if user.company_name:
+                queryset = queryset.filter(owner__company_name=user.company_name)
+            else:
+                queryset = queryset.none()
+        elif user.role in (User.Role.TEACHER, User.Role.STUDENT):
+            queryset = queryset.none()
+        return queryset
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            raise PermissionDenied("Only course admins and managers can create companies.")
+        owner = user if user.role == User.Role.COURSE_ADMIN else user.created_by
+        serializer.save(owner=owner)
+
+
+class MarketplaceCourseViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing public courses"""
+    queryset = PublicCourse.objects.all().order_by("-is_promoted", "-created_at")
+    serializer_class = PublicCourseSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_queryset(self):
+        queryset = PublicCourse.objects.filter(is_active=True)
+        user = self.request.user
+        
+        # Public access for viewing
+        if not user.is_authenticated:
+            return queryset
+        
+        if user.role == User.Role.COURSE_ADMIN:
+            return queryset.filter(company__owner=user)
+        elif user.role == User.Role.MANAGER:
+            if user.company_name:
+                return queryset.filter(company__owner__company_name=user.company_name)
+            return queryset.none()
+        elif user.role == User.Role.STUDENT:
+            # Students can only view active courses
+            return queryset.filter(is_active=True)
+        
+        return queryset
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            raise PermissionDenied("Only course admins and managers can create courses.")
+        
+        owner = user if user.role == User.Role.COURSE_ADMIN else user.created_by
+        company = serializer.validated_data.get("company")
+        
+        if not company:
+            company = Company.objects.filter(owner=owner).first()
+            if not company:
+                raise PermissionDenied("No company found. Create a company first.")
+        
+        serializer.save(company=company)
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        course = self.get_object()
+        
+        if user.role == User.Role.COURSE_ADMIN and course.company.owner != user:
+            raise PermissionDenied("Not allowed for this course.")
+        if user.role == User.Role.MANAGER:
+            if not course.company.owner__company_name == user.company_name:
+                raise PermissionDenied("Not allowed for this course.")
+        
+        serializer.save()
+
+
+class MarketplaceJobViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing job vacancies"""
+    queryset = JobVacancy.objects.all().order_by("-is_promoted", "-created_at")
+    serializer_class = JobVacancySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = JobVacancy.objects.filter(is_active=True)
+        user = self.request.user
+        
+        if not user.is_authenticated:
+            return queryset
+        
+        if user.role == User.Role.COURSE_ADMIN:
+            return queryset.filter(company__owner=user)
+        elif user.role == User.Role.MANAGER:
+            if user.company_name:
+                return queryset.filter(company__owner__company_name=user.company_name)
+            return queryset.none()
+        
+        return queryset
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            raise PermissionDenied("Only course admins and managers can create jobs.")
+        
+        owner = user if user.role == User.Role.COURSE_ADMIN else user.created_by
+        company = serializer.validated_data.get("company")
+        
+        if not company:
+            company = Company.objects.filter(owner=owner).first()
+            if not company:
+                raise PermissionDenied("No company found. Create a company first.")
+        
+        serializer.save(company=company)
+
+
+class MyCoursesView(APIView):
+    """Get all courses owned by the user"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            return Response(
+                {"detail": "Доступно только для course_admin и manager."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        
+        if user.role == User.Role.COURSE_ADMIN:
+            courses = PublicCourse.objects.filter(company__owner=user, is_active=True)
+        else:
+            if not user.company_name:
+                return Response([])
+            courses = PublicCourse.objects.filter(
+                company__owner__company_name=user.company_name,
+                is_active=True
+            )
+        
+        # Add view and application counts
+        data = []
+        for course in courses:
+            course_data = PublicCourseSerializer(course).data
+            course_data['views'] = course.views
+            course_data['applications'] = course.applications_count
+            course_data['status'] = 'approved'  # Can be extended with moderation
+            data.append(course_data)
+        
+        return Response(data)
+
+
+class MyJobsView(APIView):
+    """Get all jobs owned by the user"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            return Response(
+                {"detail": "Доступно только для course_admin и manager."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        
+        if user.role == User.Role.COURSE_ADMIN:
+            jobs = JobVacancy.objects.filter(company__owner=user, is_active=True)
+        else:
+            if not user.company_name:
+                return Response([])
+            jobs = JobVacancy.objects.filter(
+                company__owner__company_name=user.company_name,
+                is_active=True
+            )
+        
+        # Add view and application counts
+        data = []
+        for job in jobs:
+            job_data = JobVacancySerializer(job).data
+            job_data['views'] = job.views
+            job_data['applications'] = job.applications_count
+            job_data['status'] = 'approved'
+            data.append(job_data)
+        
+        return Response(data)
+
+
+class BoostCourseView(APIView):
+    """Boost a course (promote to TOP)"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        user = request.user
+        if user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            return Response(
+                {"detail": "Доступно только для course_admin и manager."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        
+        course = get_object_or_404(PublicCourse, pk=pk)
+        
+        # Check ownership
+        if user.role == User.Role.COURSE_ADMIN and course.company.owner != user:
+            return Response({"detail": "Недостаточно прав."}, status=status.HTTP_403_FORBIDDEN)
+        if user.role == User.Role.MANAGER and course.company.owner__company_name != user.company_name:
+            return Response({"detail": "Недостаточно прав."}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Check balance
+        BOOST_COST = 500
+        try:
+            company_balance = CompanyBalance.objects.get(company_name=user.company_name)
+            if company_balance.balance < BOOST_COST:
+                return Response(
+                    {"detail": f"Недостаточно средств. Требуется {BOOST_COST} eC."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        except CompanyBalance.DoesNotExist:
+            return Response(
+                {"detail": f"Недостаточно средств. Требуется {BOOST_COST} eC."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        # Boost the course
+        course.is_promoted = True
+        course.promoted_until = timezone.now() + timedelta(days=7)
+        course.save()
+        
+        # Deduct balance
+        company_balance.balance -= BOOST_COST
+        company_balance.save()
+        
+        Transaction.objects.create(
+            company_name=user.company_name,
+            amount=-BOOST_COST,
+            reason=f"Продвижение курса: {course.title}",
+            transaction_type=Transaction.TransactionType.BOOST,
+        )
+        
+        return Response(PublicCourseSerializer(course).data)
+
+
+class BoostJobView(APIView):
+    """Boost a job vacancy (promote to TOP)"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        user = request.user
+        if user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            return Response(
+                {"detail": "Доступно только для course_admin и manager."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        
+        job = get_object_or_404(JobVacancy, pk=pk)
+        
+        # Check ownership
+        if user.role == User.Role.COURSE_ADMIN and job.company.owner != user:
+            return Response({"detail": "Недостаточно прав."}, status=status.HTTP_403_FORBIDDEN)
+        if user.role == User.Role.MANAGER and job.company.owner__company_name != user.company_name:
+            return Response({"detail": "Недостаточно прав."}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Check balance
+        BOOST_COST = 500
+        try:
+            company_balance = CompanyBalance.objects.get(company_name=user.company_name)
+            if company_balance.balance < BOOST_COST:
+                return Response(
+                    {"detail": f"Недостаточно средств. Требуется {BOOST_COST} eC."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        except CompanyBalance.DoesNotExist:
+            return Response(
+                {"detail": f"Недостаточно средств. Требуется {BOOST_COST} eC."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        # Boost the job
+        job.is_promoted = True
+        job.promoted_until = timezone.now() + timedelta(days=7)
+        job.save()
+        
+        # Deduct balance
+        company_balance.balance -= BOOST_COST
+        company_balance.save()
+        
+        Transaction.objects.create(
+            company_name=user.company_name,
+            amount=-BOOST_COST,
+            reason=f"Продвижение вакансии: {job.title}",
+            transaction_type=Transaction.TransactionType.BOOST,
+        )
+        
+        return Response(JobVacancySerializer(job).data)
+
+
+class UrgentCourseView(APIView):
+    """Add urgent badge to a course"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        user = request.user
+        if user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            return Response(
+                {"detail": "Доступно только для course_admin и manager."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        
+        course = get_object_or_404(PublicCourse, pk=pk)
+        
+        # Check ownership
+        if user.role == User.Role.COURSE_ADMIN and course.company.owner != user:
+            return Response({"detail": "Недостаточно прав."}, status=status.HTTP_403_FORBIDDEN)
+        if user.role == User.Role.MANAGER and course.company.owner__company_name != user.company_name:
+            return Response({"detail": "Недостаточно прав."}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Check balance
+        URGENT_COST = 200
+        try:
+            company_balance = CompanyBalance.objects.get(company_name=user.company_name)
+            if company_balance.balance < URGENT_COST:
+                return Response(
+                    {"detail": f"Недостаточно средств. Требуется {URGENT_COST} eC."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        except CompanyBalance.DoesNotExist:
+            return Response(
+                {"detail": f"Недостаточно средств. Требуется {URGENT_COST} eC."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        # Add urgent badge
+        course.is_urgent = True
+        course.urgent_until = timezone.now() + timedelta(days=3)
+        course.save()
+        
+        # Deduct balance
+        company_balance.balance -= URGENT_COST
+        company_balance.save()
+        
+        Transaction.objects.create(
+            company_name=user.company_name,
+            amount=-URGENT_COST,
+            reason=f"Срочный бейдж для курса: {course.title}",
+            transaction_type=Transaction.TransactionType.URGENT,
+        )
+        
+        return Response(PublicCourseSerializer(course).data)
+
+
+class UrgentJobView(APIView):
+    """Add urgent badge to a job vacancy"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        user = request.user
+        if user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            return Response(
+                {"detail": "Доступно только для course_admin и manager."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        
+        job = get_object_or_404(JobVacancy, pk=pk)
+        
+        # Check ownership
+        if user.role == User.Role.COURSE_ADMIN and job.company.owner != user:
+            return Response({"detail": "Недостаточно прав."}, status=status.HTTP_403_FORBIDDEN)
+        if user.role == User.Role.MANAGER and job.company.owner__company_name != user.company_name:
+            return Response({"detail": "Недостаточно прав."}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Check balance
+        URGENT_COST = 200
+        try:
+            company_balance = CompanyBalance.objects.get(company_name=user.company_name)
+            if company_balance.balance < URGENT_COST:
+                return Response(
+                    {"detail": f"Недостаточно средств. Требуется {URGENT_COST} eC."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        except CompanyBalance.DoesNotExist:
+            return Response(
+                {"detail": f"Недостаточно средств. Требуется {URGENT_COST} eC."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        # Add urgent badge
+        job.is_urgent = True
+        job.urgent_until = timezone.now() + timedelta(days=3)
+        job.save()
+        
+        # Deduct balance
+        company_balance.balance -= URGENT_COST
+        company_balance.save()
+        
+        Transaction.objects.create(
+            company_name=user.company_name,
+            amount=-URGENT_COST,
+            reason=f"Срочный бейдж для вакансии: {job.title}",
+            transaction_type=Transaction.TransactionType.URGENT,
+        )
+        
+        return Response(JobVacancySerializer(job).data)
+
+
+class PublicCourseViewSet(viewsets.ReadOnlyModelViewSet):
+    """Public course listing for marketplace (no auth required)"""
+    queryset = PublicCourse.objects.filter(is_active=True).order_by("-is_promoted", "-created_at")
+    serializer_class = PublicCourseSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        
+        # Filter by category
+        category = self.request.query_params.get('category')
+        if category:
+            queryset = queryset.filter(category=category)
+        
+        # Filter by city
+        city = self.request.query_params.get('city')
+        if city:
+            queryset = queryset.filter(city=city)
+        
+        # Filter by language in schedule or requirements
+        language = self.request.query_params.get('language')
+        if language:
+            queryset = queryset.filter(
+                models.Q(schedule__icontains=language) |
+                models.Q(requirements__icontains=language)
+            )
+        
+        # Search by title or description
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                models.Q(title__icontains=search) |
+                models.Q(description__icontains=search)
+            )
+        
+        # Filter by price range
+        min_price = self.request.query_params.get('min_price')
+        max_price = self.request.query_params.get('max_price')
+        if min_price:
+            try:
+                queryset = queryset.filter(price__gte=float(min_price))
+            except (ValueError, TypeError):
+                pass
+        if max_price:
+            try:
+                queryset = queryset.filter(price__lte=float(max_price))
+            except (ValueError, TypeError):
+                pass
+        
+        return queryset
 
 
 # Create your views here.

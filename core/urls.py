@@ -31,6 +31,16 @@ from .views import (
     TeacherViewSet,
     TrialLeadViewSet,
     PromoCodeViewSet,
+    MarketplaceCompanyViewSet,
+    MarketplaceCourseViewSet,
+    MarketplaceJobViewSet,
+    MyCoursesView,
+    MyJobsView,
+    BoostCourseView,
+    BoostJobView,
+    UrgentCourseView,
+    UrgentJobView,
+    PublicCourseViewSet,
 )
 
 router = DefaultRouter()
@@ -50,6 +60,14 @@ router.register("trial-leads", TrialLeadViewSet, basename="trial-leads")
 router.register("tasks", TaskViewSet, basename="tasks")
 router.register("admin/promo-codes", PromoCodeViewSet, basename="promo-codes")
 
+# Marketplace routers
+router.register("marketplace/companies", MarketplaceCompanyViewSet, basename="marketplace-companies")
+router.register("marketplace/courses", MarketplaceCourseViewSet, basename="marketplace-courses")
+router.register("marketplace/jobs", MarketplaceJobViewSet, basename="marketplace-jobs")
+
+# Public marketplace
+router.register("public/courses", PublicCourseViewSet, basename="public-courses")
+
 urlpatterns = [
     path("auth/register/", RegisterView.as_view(), name="auth-register"),
     path("auth/course-admins/", CourseAdminCreateView.as_view(), name="auth-course-admins"),
@@ -65,5 +83,14 @@ urlpatterns = [
     path("attendance/mark/", AttendanceMarkView.as_view(), name="attendance-mark"),
     path("public/landing-pages/<slug:slug>/", PublicLandingDetailView.as_view(), name="public-landing-detail"),
     path("public/landing-pages/<slug:slug>/lead/", PublicLandingLeadCreateView.as_view(), name="public-landing-lead"),
+    
+    # Marketplace endpoints
+    path("marketplace/my-courses/", MyCoursesView.as_view(), name="marketplace-my-courses"),
+    path("marketplace/my-jobs/", MyJobsView.as_view(), name="marketplace-my-jobs"),
+    path("marketplace/boost-course/<int:pk>/", BoostCourseView.as_view(), name="marketplace-boost-course"),
+    path("marketplace/boost-job/<int:pk>/", BoostJobView.as_view(), name="marketplace-boost-job"),
+    path("marketplace/urgent-course/<int:pk>/", UrgentCourseView.as_view(), name="marketplace-urgent-course"),
+    path("marketplace/urgent-job/<int:pk>/", UrgentJobView.as_view(), name="marketplace-urgent-job"),
+    
     path("", include(router.urls)),
 ]
