@@ -41,6 +41,8 @@ from .views import (
     UrgentCourseView,
     UrgentJobView,
     PublicCourseViewSet,
+    PublicJobViewSet,
+    SuperAdminStatsView,
 )
 
 router = DefaultRouter()
@@ -67,6 +69,7 @@ router.register("marketplace/jobs", MarketplaceJobViewSet, basename="marketplace
 
 # Public marketplace
 router.register("public/courses", PublicCourseViewSet, basename="public-courses")
+router.register("public/jobs", PublicJobViewSet, basename="public-jobs")
 
 urlpatterns = [
     path("auth/register/", RegisterView.as_view(), name="auth-register"),
@@ -80,9 +83,8 @@ urlpatterns = [
     path("user/balance/me/", UserBalanceMeView.as_view(), name="user-balance-me"),
     path("user/balance/history/", UserBalanceHistoryView.as_view(), name="user-balance-history"),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
+    path("super-admin/stats/", SuperAdminStatsView.as_view(), name="super-admin-stats"),
     path("attendance/mark/", AttendanceMarkView.as_view(), name="attendance-mark"),
-    path("public/landing-pages/<slug:slug>/", PublicLandingDetailView.as_view(), name="public-landing-detail"),
-    path("public/landing-pages/<slug:slug>/lead/", PublicLandingLeadCreateView.as_view(), name="public-landing-lead"),
     
     # Marketplace endpoints
     path("marketplace/my-courses/", MyCoursesView.as_view(), name="marketplace-my-courses"),
@@ -92,5 +94,10 @@ urlpatterns = [
     path("marketplace/urgent-course/<int:pk>/", UrgentCourseView.as_view(), name="marketplace-urgent-course"),
     path("marketplace/urgent-job/<int:pk>/", UrgentJobView.as_view(), name="marketplace-urgent-job"),
     
+    # Public landing pages (must be after router.urls to avoid conflicting with public/courses and public/jobs)
+    path("public/landing-pages/<slug:slug>/", PublicLandingDetailView.as_view(), name="public-landing-detail"),
+    path("public/landing-pages/<slug:slug>/lead/", PublicLandingLeadCreateView.as_view(), name="public-landing-lead"),
+    
+    # Router URLs (must be before generic public/ paths)
     path("", include(router.urls)),
 ]

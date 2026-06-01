@@ -29,6 +29,7 @@ from .models import (
     Student,
     TrialLead,
     Task,
+    TaskLead,
     User,
     CompanyBalance,
     PromoCode,
@@ -170,14 +171,13 @@ class StudentLoginView(APIView):
         serializer.is_valid(raise_exception=True)
 
         phone_number = serializer.validated_data["phone_number"].strip()
-        first_name = serializer.validated_data["first_name"].strip()
         password = serializer.validated_data.get("password", "")
         normalized_phone = normalize_phone(phone_number)
 
         candidates = [
             student
             for student in Student.objects.select_related("user")
-            .filter(first_name__iexact=first_name)
+            .all()
             .order_by("id")
             if normalize_phone(student.phone) == normalized_phone
         ]
@@ -407,6 +407,21 @@ class MeView(APIView):
         )
 
 
+def resolve_user_company_name(user: User) -> str:
+    company_name = (getattr(user, "company_name", "") or "").strip()
+    if company_name:
+        return company_name
+    if getattr(user, "company", None) and user.company.name:
+        return user.company.name.strip()
+    if user.role == User.Role.MANAGER and user.created_by:
+        manager_company = (getattr(user.created_by, "company_name", "") or "").strip()
+        if manager_company:
+            return manager_company
+        if getattr(user.created_by, "company", None) and user.created_by.company.name:
+            return user.created_by.company.name.strip()
+    return ""
+
+
 class UserBalanceHistoryView(APIView):
     """История транзакций eduCoin для компании"""
     permission_classes = [permissions.IsAuthenticated]
@@ -418,7 +433,7 @@ class UserBalanceHistoryView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
         
-        company_name = getattr(request.user, 'company_name', None)
+        company_name = resolve_user_company_name(request.user)
         if not company_name:
             return Response(
                 {"detail": "Компания не найдена."},
@@ -467,7 +482,7 @@ class UserBalanceMeView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
         
-        company_name = getattr(request.user, 'company_name', None)
+        company_name = resolve_user_company_name(request.user)
         if not company_name:
             return Response(
                 {"balance": 0},
@@ -658,9 +673,9 @@ class CourseViewSet(viewsets.ModelViewSet):
         if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
             return queryset.filter(admins=user)
         if user.is_authenticated and user.role == User.Role.MANAGER:
-            if not user.company_name:
+            if not user.company:
                 return queryset.none()
-            return queryset.filter(admins__company_name=user.company_name).distinct()
+            return queryset.filter(admins__company=user.company).distinct()
         return queryset
 
     def create(self, request, *args, **kwargs):
@@ -754,12 +769,13 @@ class StudentViewSet(viewsets.ModelViewSet):
                 | models.Q(groups__course__admins=user)
             ).distinct()
         if user.is_authenticated and user.role == User.Role.MANAGER:
-            if not user.company_name:
+            if not user.company:
                 return queryset.none()
             return queryset.filter(
-                models.Q(company_name=user.company_name)
-                | models.Q(primary_course__admins__company_name=user.company_name)
-                | models.Q(groups__company_name=user.company_name)
+                models.Q(company=user.company)
+                | models.Q(primary_course__admins=user)
+                | models.Q(groups__company=user.company)
+                | models.Q(groups__course__admins=user)
             ).distinct()
         if user.is_authenticated and user.role == User.Role.STUDENT:
             return queryset.filter(user=user)
@@ -888,10 +904,11 @@ class TeacherViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset().prefetch_related("teaching_courses")
         user = self.request.user
-        if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
-            queryset = queryset.filter(company_name=user.company_name)
-        elif user.is_authenticated and user.role == User.Role.MANAGER:
-            queryset = queryset.filter(company_name=user.company_name)
+        if user.is_authenticated and user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            if user.company:
+                queryset = queryset.filter(company=user.company)
+            else:
+                queryset = queryset.none()
         course_param = self.request.query_params.get("course")
         if course_param:
             try:
@@ -948,13 +965,19 @@ class TeacherViewSet(viewsets.ModelViewSet):
 class ManagerViewSet(viewsets.ModelViewSet):
     queryset = User.objects.filter(role=User.Role.MANAGER).order_by("-date_joined")
     serializer_class = UserSerializer
-    permission_classes = [IsCourseAdmin]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         queryset = super().get_queryset()
         user = self.request.user
         if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
-            return queryset.filter(created_by=user)
+            if user.company:
+                return queryset.filter(company=user.company)
+            return queryset.none()
+        if user.is_authenticated and user.role == User.Role.MANAGER:
+            if user.company:
+                return queryset.filter(company=user.company)
+            return queryset.none()
         return queryset.none()
 
     def create(self, request, *args, **kwargs):
@@ -989,12 +1012,12 @@ class GroupViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
             return queryset.filter(
-                models.Q(course__admins=user) | models.Q(company_name=user.company_name)
+                models.Q(course__admins=user) | models.Q(company=user.company)
             ).distinct()
         if user.is_authenticated and user.role == User.Role.MANAGER:
             return queryset.filter(
-                models.Q(course__admins__company_name=user.company_name)
-                | models.Q(company_name=user.company_name)
+                models.Q(course__admins__company=user.company)
+                | models.Q(company=user.company)
             ).distinct()
         if user.is_authenticated and user.role == User.Role.TEACHER:
             return queryset.filter(teacher=user)
@@ -1163,16 +1186,20 @@ class AuditoriumViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         user = self.request.user
         if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
-            return queryset.filter(company_name=user.company_name)
+            if user.company:
+                return queryset.filter(company=user.company)
+            return queryset.none()
         if user.is_authenticated and user.role == User.Role.MANAGER:
-            return queryset.filter(company_name=user.company_name)
+            if user.company:
+                return queryset.filter(company=user.company)
+            return queryset.none()
         return queryset.none()
 
     def perform_create(self, serializer):
         user = self.request.user
         if user.role == User.Role.MANAGER:
             raise PermissionDenied("Managers cannot create auditoriums.")
-        serializer.save(company_name=user.company_name)
+        serializer.save(company=user.company)
 
 
 class AttendanceViewSet(viewsets.ModelViewSet):
@@ -1213,20 +1240,11 @@ class PaymentViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         user = self.request.user
         if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
-            return queryset.filter(
-                models.Q(student__primary_course__admins=user)
-                | models.Q(group__course__admins=user)
-                | models.Q(group__company_name=user.company_name)
-            )
+            return queryset.filter(company__owner=user).distinct()
         if user.is_authenticated and user.role == User.Role.MANAGER:
-            if not user.company_name:
+            if not user.company:
                 return queryset.none()
-            return queryset.filter(
-                models.Q(student__company_name=user.company_name)
-                | models.Q(student__primary_course__admins__company_name=user.company_name)
-                | models.Q(group__company_name=user.company_name)
-                | models.Q(group__course__admins__company_name=user.company_name)
-            ).distinct()
+            return queryset.filter(company=user.company).distinct()
         if user.is_authenticated and user.role == User.Role.STUDENT:
             return queryset.filter(student__user=user)
         return queryset
@@ -1264,7 +1282,15 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 raise PermissionDenied("Not allowed for this course.")
         elif user.role == User.Role.STUDENT:
             raise PermissionDenied("Students cannot create payments.")
-        serializer.save()
+        student = serializer.validated_data.get("student")
+        group = serializer.validated_data.get("group")
+        company = serializer.validated_data.get("company")
+        if not company:
+            company = (
+                (student.company if student and student.company else None)
+                or (group.company if group and group.company else None)
+            )
+        serializer.save(company=company)
 
     def destroy(self, request, *args, **kwargs):
         if request.user.role in (
@@ -1300,6 +1326,247 @@ class DashboardView(APIView):
                 "total_debt": total_debt,
             }
         )
+
+
+class SuperAdminStatsView(APIView):
+    """Полная статистика для супер-админа"""
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        # Фильтры
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+        company_id = request.query_params.get('company_id')
+        search = request.query_params.get('search', '').strip()
+        
+        # Основная статистика
+        companies = Company.objects.all()
+        
+        # Фильтр компаний
+        if company_id:
+            companies = companies.filter(id=company_id)
+        if search:
+            companies = companies.filter(name__icontains=search)
+        
+        companies_count = companies.count()
+        
+        students = Student.objects.all()
+        students_count = students.count()
+        
+        users = User.objects.all()
+        superadmins = users.filter(role=User.Role.SUPER_ADMIN).count()
+        admins = users.filter(role=User.Role.ADMIN).count()
+        course_admins = users.filter(role=User.Role.COURSE_ADMIN).count()
+        managers = users.filter(role=User.Role.MANAGER).count()
+        teachers = users.filter(role=User.Role.TEACHER).count()
+        students_users = users.filter(role=User.Role.STUDENT).count()
+        
+        # Балансы
+        balances = CompanyBalance.objects.all()
+        total_balance = sum(b.balance for b in balances)
+        
+        # Средний баланс
+        avg_balance = total_balance / companies.count() if companies.count() > 0 else 0
+        
+        # Транзакции
+        transactions_count = Transaction.objects.count()
+        
+        # Группы
+        groups_count = Group.objects.count()
+        
+        # Курсы
+        courses_count = Course.objects.count()
+        
+        # Публичные курсы
+        public_courses_count = PublicCourse.objects.all()
+        if date_from or date_to:
+            from django.utils import timezone
+            from datetime import datetime
+            if date_from:
+                public_courses_count = public_courses_count.filter(created_at__gte=date_from)
+            if date_to:
+                public_courses_count = public_courses_count.filter(created_at__lte=date_to)
+        public_courses_count = public_courses_count.count()
+        
+        # Аудитории
+        auditoriums_count = Auditorium.objects.count()
+        
+        # Платежи с фильтрами по дате
+        payments = Payment.objects.all()
+        if date_from:
+            payments = payments.filter(paid_at__gte=date_from)
+        if date_to:
+            payments = payments.filter(paid_at__lte=date_to)
+        payments_count = payments.count()
+        paid_count = payments.filter(status=Payment.Status.PAID).count()
+        debt_count = payments.filter(status=Payment.Status.DEBT).count()
+        total_paid = payments.filter(status=Payment.Status.PAID).aggregate(Sum('amount'))['amount__sum'] or 0
+        
+        # Task Leads
+        task_leads_count = TaskLead.objects.count()
+        
+        # Задачи с фильтрами
+        tasks = Task.objects.all()
+        if date_from:
+            tasks = tasks.filter(created_at__gte=date_from)
+        if date_to:
+            tasks = tasks.filter(created_at__lte=date_to)
+        tasks_count = tasks.count()
+        pending_tasks = tasks.filter(status=Task.Status.PENDING).count()
+        in_progress_tasks = tasks.filter(status=Task.Status.IN_PROGRESS).count()
+        completed_tasks = tasks.filter(status=Task.Status.COMPLETED).count()
+        
+        # Домашние задания
+        homework_tasks_count = HomeworkTask.objects.count()
+        
+        # Сданные задания
+        submissions = HomeworkSubmission.objects.all()
+        submissions_count = submissions.count()
+        reviewed_submissions = submissions.filter(status=HomeworkSubmission.Status.REVIEWED).count()
+        pending_submissions = submissions.filter(status=HomeworkSubmission.Status.PENDING).count()
+        
+        # Trial Leads
+        trial_leads = TrialLead.objects.all()
+        if date_from:
+            trial_leads = trial_leads.filter(created_at__gte=date_from)
+        if date_to:
+            trial_leads = trial_leads.filter(created_at__lte=date_to)
+        trial_leads_count = trial_leads.count()
+        converted_trial_leads = trial_leads.filter(status=TrialLead.Status.CONVERTED).count()
+        
+        # Конверсия пробных уроков
+        conversion_rate = (converted_trial_leads / trial_leads_count * 100) if trial_leads_count > 0 else 0
+        
+        # Вакансии
+        vacancies_count = JobVacancy.objects.all().count()
+        
+        # Новые регистрации за сегодня
+        today = timezone.now().date()
+        new_students_today = Student.objects.filter(created_at__date=today).count()
+        new_companies_today = Company.objects.filter(created_at__date=today).count()
+        new_users_today = User.objects.filter(date_joined__date=today).count()
+        
+        # Компании без баланса
+        companies_no_balance = companies.filter(id__in=CompanyBalance.objects.values('company').annotate(count=models.Count('id')).filter(count=0).values('company')).count()
+        
+        # Детализация по компаниям
+        companies_data = []
+        for company in companies:
+            balance = CompanyBalance.objects.filter(company=company).first()
+            bal = balance.balance if balance else 0
+            students_count_company = company.students.count()
+            managers_count_company = company.users.filter(role=User.Role.MANAGER).count()
+            course_admins_company = company.users.filter(role=User.Role.COURSE_ADMIN).count()
+            teachers_count_company = company.users.filter(role=User.Role.TEACHER).count()
+            groups_count_company = company.groups.count()
+            is_active = company.is_active
+            
+            companies_data.append({
+                "id": company.id,
+                "name": company.name,
+                "slug": company.slug,
+                "city": company.city,
+                "category": company.category,
+                "students_count": students_count_company,
+                "managers_count": managers_count_company,
+                "course_admins_count": course_admins_company,
+                "teachers_count": teachers_count_company,
+                "groups_count": groups_count_company,
+                "balance": bal,
+                "is_active": is_active,
+                "created_at": company.created_at.isoformat(),
+            })
+        
+        # Данные для графиков (динамика по месяцам)
+        from django.db.models import Count, Q
+        from django.db.models.functions import TruncMonth
+        
+        # Студенты по месяцам
+        monthly_students = Student.objects.annotate(
+            month=TruncMonth('created_at')
+        ).values('month').annotate(
+            count=Count('id')
+        ).order_by('month')
+        
+        monthly_students_data = [{'month': m['month'].isoformat(), 'count': m['count']} for m in monthly_students[:12]]
+        
+        # Платежи по месяцам
+        monthly_payments = Payment.objects.filter(status=Payment.Status.PAID).annotate(
+            month=TruncMonth('paid_at')
+        ).values('month').annotate(
+            total=Sum('amount'),
+            count=Count('id')
+        ).order_by('month')
+        
+        monthly_payments_data = [{'month': m['month'].isoformat(), 'total': m['total'] or 0, 'count': m['count']} for m in monthly_payments[:12]]
+        
+        return Response({
+            # Основная статистика
+            "total_companies": companies_count,
+            "total_students": students_count,
+            "total_users": users.count(),
+            "total_balance": total_balance,
+            "avg_balance": round(avg_balance, 2),
+            
+            # Пользователи по ролям
+            "superadmins": superadmins,
+            "admins": admins,
+            "course_admins": course_admins,
+            "managers": managers,
+            "teachers": teachers,
+            "students_users": students_users,
+            
+            # Новые регистрации за сегодня
+            "new_students_today": new_students_today,
+            "new_companies_today": new_companies_today,
+            "new_users_today": new_users_today,
+            
+            # Другие данные
+            "transactions": transactions_count,
+            "groups": groups_count,
+            "courses": courses_count,
+            "public_courses": public_courses_count,
+            "auditoriums": auditoriums_count,
+            
+            # Платежи
+            "payments_total": payments_count,
+            "payments_paid": paid_count,
+            "payments_debt": debt_count,
+            "total_paid": total_paid,
+            
+            # Задачи
+            "task_leads": task_leads_count,
+            "tasks_total": tasks_count,
+            "tasks_pending": pending_tasks,
+            "tasks_in_progress": in_progress_tasks,
+            "tasks_completed": completed_tasks,
+            
+            # Домашние задания
+            "homework_tasks": homework_tasks_count,
+            "submissions_total": submissions_count,
+            "submissions_reviewed": reviewed_submissions,
+            "submissions_pending": pending_submissions,
+            
+            # Trial Leads
+            "trial_leads_total": trial_leads_count,
+            "trial_leads_converted": converted_trial_leads,
+            "conversion_rate": round(conversion_rate, 2),
+            
+            # Вакансии
+            "vacancies": vacancies_count,
+            
+            # Статус компаний
+            "companies_no_balance": companies_no_balance,
+            
+            # Детализация по компаниям
+            "companies": companies_data,
+            
+            # Графики
+            "charts": {
+                "monthly_students": monthly_students_data,
+                "monthly_payments": monthly_payments_data,
+            }
+        })
 
 
 class LandingPageViewSet(viewsets.ModelViewSet):
@@ -1477,6 +1744,7 @@ class PublicLandingDetailView(APIView):
 
 class PublicLandingLeadCreateView(APIView):
     permission_classes = [permissions.AllowAny]
+    parser_classes = [JSONParser]
 
     def post(self, request, slug: str):
         page = get_object_or_404(
@@ -1497,7 +1765,8 @@ class PublicLandingLeadCreateView(APIView):
             course_interest=(request.data.get("course_interest") or "").strip(),
             source=f"landing:{page.slug}",
             comment=(request.data.get("comment") or "").strip(),
-            company_name=page.company_name,
+            company_name=page.company.name if page.company else page.company_name,
+            company=page.company,
         )
         return Response(TrialLeadSerializer(lead).data, status=status.HTTP_201_CREATED)
 
@@ -1511,8 +1780,12 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         user = self.request.user
         if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
+            if user.company:
+                return queryset.filter(company=user.company)
             return queryset.filter(company_name=user.company_name)
         if user.is_authenticated and user.role == User.Role.MANAGER:
+            if user.company:
+                return queryset.filter(company=user.company)
             return queryset.filter(company_name=user.company_name)
         return queryset.none()
 
@@ -1668,9 +1941,13 @@ class TaskViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         user = self.request.user
         if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
-            return queryset.filter(company_name=user.company_name)
+            if not user.company:
+                return queryset.none()
+            return queryset.filter(company=user.company)
         if user.is_authenticated and user.role == User.Role.MANAGER:
-            return queryset.filter(assigned_to=user)
+            if not user.company:
+                return queryset.none()
+            return queryset.filter(assigned_to=user, company=user.company)
         return queryset.none()
 
     def create(self, request, *args, **kwargs):
@@ -1682,7 +1959,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         assigned_to = serializer.validated_data.get("assigned_to")
         if not assigned_to or assigned_to.role != User.Role.MANAGER:
             raise PermissionDenied("Task must be assigned to a manager.")
-        if assigned_to.company_name != user.company_name:
+        if resolve_user_company_name(assigned_to) != resolve_user_company_name(user):
             raise PermissionDenied("Manager must belong to the same company.")
 
         tasks = build_task_instances(serializer.validated_data, user)
@@ -1704,7 +1981,7 @@ class TaskViewSet(viewsets.ModelViewSet):
             return
         if user.role == User.Role.COURSE_ADMIN:
             assigned_to = serializer.validated_data.get("assigned_to")
-            if assigned_to and assigned_to.company_name != user.company_name:
+            if assigned_to and resolve_user_company_name(assigned_to) != resolve_user_company_name(user):
                 raise PermissionDenied("Manager must belong to the same company.")
             serializer.save()
             return
@@ -1720,10 +1997,31 @@ class TaskViewSet(viewsets.ModelViewSet):
         user = request.user
         if user.role != User.Role.MANAGER:
             raise PermissionDenied("Only managers can mark tasks as seen.")
-        ids = request.data.get("ids", [])
+        data = request.data
+        ids = []
+        if isinstance(data, dict):
+            ids = data.get("ids", []) or []
+        elif isinstance(data, list):
+            ids = data
+        elif isinstance(data, str):
+            # Allow plain payloads like "1,2,3" or "5"
+            raw = data.strip()
+            if raw:
+                if "," in raw:
+                    ids = [item.strip() for item in raw.split(",") if item.strip()]
+                else:
+                    ids = [raw]
+
+        normalized_ids = []
+        for item in ids:
+            try:
+                normalized_ids.append(int(item))
+            except (TypeError, ValueError):
+                continue
+
         queryset = self.get_queryset()
-        if ids:
-            queryset = queryset.filter(id__in=ids)
+        if normalized_ids:
+            queryset = queryset.filter(id__in=normalized_ids)
         updated = queryset.update(is_seen=True)
         return Response({"updated": updated})
 
@@ -1844,7 +2142,13 @@ class HomeworkSubmissionViewSet(viewsets.ModelViewSet):
         if user.is_authenticated and user.role == User.Role.TEACHER:
             return queryset.filter(task__teacher=user)
         if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
-            return queryset.filter(task__company_name=user.company_name)
+            if user.company:
+                return queryset.filter(task__company=user.company)
+            return queryset.none()
+        if user.is_authenticated and user.role == User.Role.MANAGER:
+            if user.company:
+                return queryset.filter(task__company=user.company)
+            return queryset.none()
         return queryset.none()
 
     def create(self, request, *args, **kwargs):
@@ -1981,7 +2285,7 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.role == User.Role.ADMIN:
+        if user.is_superuser or user.role in (User.Role.ADMIN, User.Role.SUPER_ADMIN):
             return PromoCode.objects.all().order_by("-created_at")
         if user.role == User.Role.COURSE_ADMIN:
             return PromoCode.objects.filter(created_by=user).order_by("-created_at")
@@ -1989,9 +2293,15 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
             return PromoCode.objects.filter(created_by__role=User.Role.ADMIN).order_by("-created_at")
         return PromoCode.objects.none()
 
+    def create(self, request, *args, **kwargs):
+        print(f"🔹 PromoCodeViewSet.create - data: {request.data}")
+        print(f"🔹 Content-Type: {request.content_type}")
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
-        if self.request.user.role != User.Role.ADMIN:
-            raise PermissionDenied("Только супер-админ может создавать промокоды.")
+        user = self.request.user
+        if not (user.is_superuser or user.role in (User.Role.ADMIN, User.Role.SUPER_ADMIN)):
+            raise PermissionDenied("Только админ может создавать промокоды.")
         serializer.save(created_by=self.request.user)
 
     @action(detail=False, methods=["post"], url_path="activate")
@@ -2017,7 +2327,12 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
         
         # Курс-админ и менеджер могут активировать только промокоды созданные супер-админом
         if user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
-            if not promo_code.created_by or promo_code.created_by.role != User.Role.ADMIN:
+            creator = promo_code.created_by
+            creator_is_admin = (
+                creator
+                and (creator.is_superuser or creator.role in (User.Role.ADMIN, User.Role.SUPER_ADMIN))
+            )
+            if not creator_is_admin:
                 return Response(
                     {"detail": "Вы можете активировать только промокоды созданные супер-админом."},
                     status=status.HTTP_403_FORBIDDEN,
@@ -2043,7 +2358,7 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
             promo_code.save(update_fields=["is_active"])
         
         # Получаем или создаем баланс компании
-        company_name = getattr(user, 'company_name', None)
+        company_name = resolve_user_company_name(user)
         if not company_name:
             return Response(
                 {"detail": "Компания не найдена."},
@@ -2222,13 +2537,13 @@ class MarketplaceCompanyViewSet(viewsets.ModelViewSet):
 
 class MarketplaceCourseViewSet(viewsets.ModelViewSet):
     """ViewSet for managing public courses"""
-    queryset = PublicCourse.objects.all().order_by("-is_promoted", "-created_at")
+    queryset = PublicCourse.objects.all().order_by("-is_promoted", "-created_at").select_related("company")
     serializer_class = PublicCourseSerializer
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
-        queryset = PublicCourse.objects.filter(is_active=True)
+        queryset = PublicCourse.objects.filter(is_active=True).select_related("company").prefetch_related("company__landing_pages")
         user = self.request.user
         
         # Public access for viewing
@@ -2238,8 +2553,9 @@ class MarketplaceCourseViewSet(viewsets.ModelViewSet):
         if user.role == User.Role.COURSE_ADMIN:
             return queryset.filter(company__owner=user)
         elif user.role == User.Role.MANAGER:
-            if user.company_name:
-                return queryset.filter(company__owner__company_name=user.company_name)
+            company_name = resolve_user_company_name(user)
+            if company_name:
+                return queryset.filter(company__name=company_name)
             return queryset.none()
         elif user.role == User.Role.STUDENT:
             # Students can only view active courses
@@ -2325,15 +2641,13 @@ class MyCoursesView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
         
+        if not user.company:
+            return Response([])
+        
         if user.role == User.Role.COURSE_ADMIN:
-            courses = PublicCourse.objects.filter(company__owner=user, is_active=True)
+            courses = PublicCourse.objects.filter(company=user.company, is_active=True)
         else:
-            if not user.company_name:
-                return Response([])
-            courses = PublicCourse.objects.filter(
-                company__owner__company_name=user.company_name,
-                is_active=True
-            )
+            courses = PublicCourse.objects.filter(company=user.company, is_active=True)
         
         # Add view and application counts
         data = []
@@ -2359,22 +2673,20 @@ class MyJobsView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
         
+        if not user.company:
+            return Response([])
+        
         if user.role == User.Role.COURSE_ADMIN:
-            jobs = JobVacancy.objects.filter(company__owner=user, is_active=True)
+            jobs = JobVacancy.objects.filter(company=user.company, is_active=True)
         else:
-            if not user.company_name:
-                return Response([])
-            jobs = JobVacancy.objects.filter(
-                company__owner__company_name=user.company_name,
-                is_active=True
-            )
+            jobs = JobVacancy.objects.filter(company=user.company, is_active=True)
         
         # Add view and application counts
         data = []
         for job in jobs:
             job_data = JobVacancySerializer(job).data
-            job_data['views'] = job.views
-            job_data['applications'] = job.applications_count
+            job_data['views'] = getattr(job, "views", 0)
+            job_data['applications'] = getattr(job, "applications_count", 0)
             job_data['status'] = 'approved'
             data.append(job_data)
         
@@ -2599,12 +2911,16 @@ class UrgentJobView(APIView):
 
 class PublicCourseViewSet(viewsets.ReadOnlyModelViewSet):
     """Public course listing for marketplace (no auth required)"""
-    queryset = PublicCourse.objects.filter(is_active=True).order_by("-is_promoted", "-created_at")
+    queryset = PublicCourse.objects.filter(is_active=True).order_by("-is_promoted", "-created_at").select_related("company").prefetch_related("company__landing_pages")
     serializer_class = PublicCourseSerializer
     permission_classes = [permissions.AllowAny]
+    lookup_field = "slug"
+
+    def get_serializer_class(self):
+        return PublicCourseSerializer
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().select_related("company").prefetch_related("company__landing_pages")
         
         # Filter by category
         category = self.request.query_params.get('category')
@@ -2649,5 +2965,59 @@ class PublicCourseViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset
 
 
-# Create your views here.
+class PublicJobViewSet(viewsets.ReadOnlyModelViewSet):
+    """Public job listing for marketplace (no auth required)"""
+    queryset = JobVacancy.objects.filter(is_active=True).order_by("-is_promoted", "-created_at").select_related("company").prefetch_related("company__landing_pages")
+    serializer_class = JobVacancySerializer
+    permission_classes = [permissions.AllowAny]
 
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            from .serializers import JobVacancyDetailSerializer
+            return JobVacancyDetailSerializer
+        return JobVacancySerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset().select_related("company").prefetch_related("company__landing_pages")
+        
+        # Filter by category
+        category = self.request.query_params.get('category')
+        if category:
+            queryset = queryset.filter(category=category)
+        
+        # Filter by city
+        city = self.request.query_params.get('city')
+        if city:
+            queryset = queryset.filter(city=city)
+        
+        # Filter by schedule
+        schedule = self.request.query_params.get('schedule')
+        if schedule:
+            queryset = queryset.filter(schedule__icontains=schedule)
+        
+        # Search by title or description
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                models.Q(title__icontains=search) |
+                models.Q(description__icontains=search)
+            )
+        
+        # Filter by salary range
+        salary_min = self.request.query_params.get('salary_min')
+        salary_max = self.request.query_params.get('salary_max')
+        if salary_min:
+            try:
+                queryset = queryset.filter(salary_min__gte=int(salary_min))
+            except (ValueError, TypeError):
+                pass
+        if salary_max:
+            try:
+                queryset = queryset.filter(salary_max__lte=int(salary_max))
+            except (ValueError, TypeError):
+                pass
+        
+        return queryset
+
+
+# Create your views here.

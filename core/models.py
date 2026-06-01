@@ -240,6 +240,13 @@ class Payment(models.Model):
     group = models.ForeignKey(
         Group, on_delete=models.SET_NULL, null=True, blank=True, related_name="payments"
     )
+    company = models.ForeignKey(
+        "Company",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="payments",
+    )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.CharField(max_length=10, choices=Status.choices)
     paid_at = models.DateField(default=timezone.localdate)
@@ -298,6 +305,92 @@ class TrialLead(models.Model):
         return self.full_name
 
 
+class TaskLead(models.Model):
+    """Task Lead - менеджер с особыми правами для управления задачами и командой"""
+    
+    class Role(models.TextChoices):
+        TASK_LEAD = "task_lead", _("Task Lead")
+        TEAM_LEAD = "team_lead", _("Team Lead")
+        PROJECT_MANAGER = "project_manager", _("Project Manager")
+    
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="task_lead_profile",
+        limit_choices_to={"role": User.Role.MANAGER},
+    )
+    role = models.CharField(
+        max_length=30,
+        choices=Role.choices,
+        default=Role.TASK_LEAD,
+        verbose_name="Роль в команде"
+    )
+    company = models.ForeignKey(
+        "Company",
+        on_delete=models.CASCADE,
+        related_name="task_leads",
+        verbose_name="Компания"
+    )
+    team_size = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Размер команды",
+        help_text="Количество подчинённых менеджеров"
+    )
+    max_tasks = models.PositiveIntegerField(
+        default=50,
+        verbose_name="Максимальное количество задач",
+        help_text="Максимальное количество активных задач"
+    )
+    performance_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        verbose_name="Оценка эффективности",
+        help_text="От 0 до 100"
+    )
+    responsibilities = models.TextField(
+        blank=True,
+        verbose_name="Обязанности",
+        help_text="Описание основных обязанностей"
+    )
+    target_metrics = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Целевые показатели",
+        help_text="Ключевые показатели эффективности (KPI)"
+    )
+    start_date = models.DateField(
+        default=timezone.localdate,
+        verbose_name="Дата начала работы"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Активен"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Task Lead"
+        verbose_name_plural = "Task Leads"
+        ordering = ("-created_at",)
+
+    def __str__(self) -> str:
+        return f"{self.user.get_full_name()} - {self.get_role_display()}"
+    
+    def get_active_tasks_count(self) -> int:
+        """Получить количество активных задач"""
+        return Task.objects.filter(
+            assigned_to__task_lead_profile__isnull=False,
+            company=self.company,
+            status__in=[Task.Status.PENDING, Task.Status.IN_PROGRESS]
+        ).count()
+    
+    def can_create_task(self) -> bool:
+        """Проверить можно ли создавать новые задачи"""
+        return self.get_active_tasks_count() < self.max_tasks
+
+
 class Task(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", _("Pending")
@@ -331,6 +424,14 @@ class Task(models.Model):
         related_name="created_tasks",
         limit_choices_to={"role": User.Role.COURSE_ADMIN},
     )
+    task_lead = models.ForeignKey(
+        TaskLead,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tasks",
+        help_text="Task Lead, ответственный за задачу"
+    )
     company = models.ForeignKey(
         "Company",
         on_delete=models.SET_NULL,
@@ -346,7 +447,12 @@ class Task(models.Model):
     priority = models.CharField(max_length=20, choices=Priority.choices, default=Priority.MEDIUM)
     repeat_type = models.CharField(max_length=20, choices=RepeatType.choices, default=RepeatType.NONE)
     is_seen = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True, verbose_name="Дата завершения")
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-priority", "due_date"]
 
     def __str__(self) -> str:
         return self.title
@@ -795,6 +901,8 @@ class Company(models.Model):
     telegram = models.CharField(max_length=100, blank=True, verbose_name="Telegram")
     whatsapp = models.CharField(max_length=100, blank=True, verbose_name="WhatsApp")
     website = models.URLField(blank=True, verbose_name="Website")
+    instagram = models.CharField(max_length=100, blank=True, verbose_name="Instagram")
+    facebook = models.CharField(max_length=100, blank=True, verbose_name="Facebook")
     rating = models.DecimalField(
         max_digits=3,
         decimal_places=2,
@@ -1116,6 +1224,173 @@ class Transaction(models.Model):
         return f"{company_str} ({user_str}) - {self.amount} eC ({self.reason})"
 
 
+class UserBalance(models.Model):
+    """Баланс пользователя для системы eduCoin"""
+    
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="user_balance",
+        help_text="Пользователь"
+    )
+    balance = models.PositiveIntegerField(default=0, help_text="Баланс eduCoins")
+    last_update = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "User Balance"
+        verbose_name_plural = "User Balances"
+    
+    def __str__(self) -> str:
+        return f"{self.user.username} - {self.balance} eC"
+    
+    def add_coins(self, amount: int, reason: str):
+        """Добавить монеты"""
+        self.balance += amount
+        self.save()
+        UserTransaction.objects.create(
+            user=self.user,
+            amount=amount,
+            reason=reason,
+            transaction_type=UserTransaction.Type.DEPOSIT,
+        )
+    
+    def spend_coins(self, amount: int, reason: str) -> bool:
+        """Списать монеты. Возвращает True если успешно"""
+        if self.balance >= amount:
+            self.balance -= amount
+            self.save()
+            UserTransaction.objects.create(
+                user=self.user,
+                amount=-amount,
+                reason=reason,
+                transaction_type=UserTransaction.Type.WITHDRAWAL,
+            )
+            return True
+        return False
+
+
+class UserTransaction(models.Model):
+    """История транзакций пользователя eduCoin"""
+    
+    class Type(models.TextChoices):
+        DEPOSIT = "deposit", "Пополнение"
+        WITHDRAWAL = "withdrawal", "Списание"
+        BONUS = "bonus", "Бонус"
+    
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="user_transactions",
+        help_text="Пользователь"
+    )
+    amount = models.IntegerField(help_text="Положительное для пополнения, отрицательное для списания")
+    reason = models.CharField(max_length=500, help_text="Причина транзакции")
+    transaction_type = models.CharField(
+        max_length=20,
+        choices=Type.choices,
+        default=Type.DEPOSIT,
+    )
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "User Transaction"
+        verbose_name_plural = "User Transactions"
+        ordering = ("-timestamp",)
+        indexes = [
+            models.Index(fields=['user', '-timestamp']),
+        ]
+    
+    def __str__(self) -> str:
+        user_str = self.user.username if self.user else "—"
+        return f"{user_str} - {self.amount} eC ({self.reason})"
+
+
+class PromoBalance(models.Model):
+    """Баланс промокода — отдельный счёт для хранения монет промокода"""
+    
+    promo_code = models.OneToOneField(
+        "PromoCode",
+        on_delete=models.CASCADE,
+        related_name="balance",
+        help_text="Промокод"
+    )
+    balance = models.PositiveIntegerField(default=0, help_text="Остаток монет промокода")
+    last_update = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Promo Balance"
+        verbose_name_plural = "Promo Balances"
+    
+    def __str__(self) -> str:
+        return f"{self.promo_code.code} - {self.balance} eC"
+    
+    def add_coins(self, amount: int):
+        """Добавить монеты на баланс промокода"""
+        self.balance += amount
+        self.save()
+        PromoTransaction.objects.create(
+            promo_code=self.promo_code,
+            amount=amount,
+            transaction_type=PromoTransaction.Type.DEPOSIT,
+        )
+    
+    def spend_coins(self, amount: int) -> bool:
+        """Списать монеты с баланса промокода. Возвращает True если успешно"""
+        if self.balance >= amount:
+            self.balance -= amount
+            self.save()
+            PromoTransaction.objects.create(
+                promo_code=self.promo_code,
+                amount=-amount,
+                transaction_type=PromoTransaction.Type.WITHDRAWAL,
+            )
+            return True
+        return False
+
+
+class PromoTransaction(models.Model):
+    """История транзакций промокода"""
+    
+    class Type(models.TextChoices):
+        DEPOSIT = "deposit", "Пополнение"
+        WITHDRAWAL = "withdrawal", "Списание (выплата)"
+    
+    promo_code = models.ForeignKey(
+        "PromoCode",
+        on_delete=models.CASCADE,
+        related_name="transactions",
+        help_text="Промокод"
+    )
+    amount = models.IntegerField(help_text="Положительное для пополнения, отрицательное для списания")
+    transaction_type = models.CharField(
+        max_length=20,
+        choices=Type.choices,
+        default=Type.DEPOSIT,
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="promo_transactions",
+        help_text="Пользователь, получивший выплату (при WITHDRAWAL)"
+    )
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "Promo Transaction"
+        verbose_name_plural = "Promo Transactions"
+        ordering = ("-timestamp",)
+        indexes = [
+            models.Index(fields=['promo_code', '-timestamp']),
+        ]
+    
+    def __str__(self) -> str:
+        promo_str = self.promo_code.code if self.promo_code else "—"
+        user_str = self.user.username if self.user else "—"
+        return f"{promo_str} ({user_str}) - {self.amount} eC"
+
+
 class PromoCode(models.Model):
     """Промокоды для пополнения баланса и бонусов"""
     
@@ -1172,6 +1447,10 @@ class PromoCode(models.Model):
             return False
         if self.expiry_date and self.expiry_date < timezone.now():
             return False
+        # Проверка баланса промокода
+        if self.reward_type == self.RewardType.COINS:
+            if hasattr(self, 'balance') and self.balance.balance < self.reward_value:
+                return False
         return True
     
     def activate(self, user: User) -> bool:
@@ -1183,8 +1462,20 @@ class PromoCode(models.Model):
         self.save()
         
         if self.reward_type == self.RewardType.COINS:
-            balance, created = UserBalance.objects.get_or_create(user=user)
-            balance.add_coins(self.reward_value, f"Промокод: {self.code}")
+            # Проверяем и используем баланс промокода
+            if hasattr(self, 'balance') and self.balance.balance >= self.reward_value:
+                self.balance.spend_coins(self.reward_value)
+                
+                # Если это курс-админ (компания) — зачисляем на CompanyBalance
+                if user.role == User.Role.COURSE_ADMIN and user.company:
+                    company_balance, created = CompanyBalance.objects.get_or_create(company=user.company)
+                    company_balance.add_coins(self.reward_value, f"Промокод: {self.code}")
+                else:
+                    # Иначе — на личный баланс пользователя
+                    user_balance, created = UserBalance.objects.get_or_create(user=user)
+                    user_balance.add_coins(self.reward_value, f"Промокод: {self.code}")
+            else:
+                return False  # Недостаточно средств на промокоде
         elif self.reward_type == self.RewardType.BONUS_LIMIT:
             # Увеличиваем лимит курсов (реализуется в бизнес-логике)
             if user.role == User.Role.COURSE_ADMIN:

@@ -1,6 +1,7 @@
 import re
 
 from django.contrib.auth import authenticate
+from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
@@ -99,6 +100,7 @@ class UserSerializer(serializers.ModelSerializer):
     managers_count = serializers.SerializerMethodField(read_only=True)
     course_ids = serializers.SerializerMethodField(read_only=True)
     course_titles = serializers.SerializerMethodField(read_only=True)
+    company_name = serializers.SerializerMethodField(read_only=True)
     company_id = serializers.PrimaryKeyRelatedField(
         source="company",
         queryset=Company.objects.all(),
@@ -141,14 +143,33 @@ class UserSerializer(serializers.ModelSerializer):
         return obj.get_managers_count() if obj.role == User.Role.COURSE_ADMIN else 0
 
     def get_course_ids(self, obj):
-        if obj.role != User.Role.TEACHER:
+        if obj.role == User.Role.COURSE_ADMIN:
+            return list(obj.teaching_courses.values_list("id", flat=True))
+        if obj.role == User.Role.TEACHER:
+            # Для преподавателей получаем курсы через компанию
+            if obj.company:
+                course_ids = list(
+                    Course.objects.filter(admins=obj).values_list("id", flat=True)
+                )
+                return course_ids
             return []
-        return list(obj.teaching_courses.values_list("id", flat=True))
+        return []
 
     def get_course_titles(self, obj):
-        if obj.role != User.Role.TEACHER:
+        if obj.role == User.Role.COURSE_ADMIN:
+            return list(obj.teaching_courses.values_list("title", flat=True))
+        if obj.role == User.Role.TEACHER:
+            # Для преподавателей получаем курсы через компанию
+            if obj.company:
+                course_titles = list(
+                    Course.objects.filter(admins=obj).values_list("title", flat=True)
+                )
+                return course_titles
             return []
-        return list(obj.teaching_courses.values_list("title", flat=True))
+        return []
+
+    def get_company_name(self, obj):
+        return obj.company.name if hasattr(obj, "company") and obj.company else None
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -442,7 +463,6 @@ class LoginSerializer(serializers.Serializer):
 
 class StudentIdentityLoginSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
-    first_name = serializers.CharField()
     password = serializers.CharField(
         write_only=True, required=False, allow_blank=True, trim_whitespace=False
     )
@@ -470,7 +490,9 @@ class CourseSerializer(serializers.ModelSerializer):
     admins = serializers.PrimaryKeyRelatedField(
         many=True,
         required=False,
-        queryset=User.objects.filter(role=User.Role.COURSE_ADMIN),
+        queryset=User.objects.filter(
+            models.Q(role=User.Role.COURSE_ADMIN) | models.Q(role=User.Role.TEACHER)
+        ),
     )
 
     class Meta:
@@ -654,9 +676,16 @@ class AttendanceSerializer(serializers.ModelSerializer):
 
 
 class PaymentSerializer(serializers.ModelSerializer):
+    company_id = serializers.PrimaryKeyRelatedField(
+        source="company",
+        queryset=Company.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+
     class Meta:
         model = Payment
-        fields = ("id", "student", "group", "amount", "status", "paid_at", "created_at")
+        fields = ("id", "student", "group", "company", "company_id", "amount", "status", "paid_at", "created_at")
 
 
 class HomeworkSubmissionSerializer(serializers.ModelSerializer):
@@ -1136,6 +1165,7 @@ class LandingPublicSectionSerializer(serializers.ModelSerializer):
 class LandingPublicPageSerializer(serializers.ModelSerializer):
     sections = LandingPublicSectionSerializer(many=True, read_only=True)
     header_links = serializers.SerializerMethodField()
+    company_data = serializers.SerializerMethodField()
 
     class Meta:
         model = LandingPage
@@ -1145,6 +1175,7 @@ class LandingPublicPageSerializer(serializers.ModelSerializer):
             "slug",
             "company",
             "company_name",
+            "company_data",
             "status",
             "published_at",
             "sections",
@@ -1158,8 +1189,26 @@ class LandingPublicPageSerializer(serializers.ModelSerializer):
         ).select_related("target_page")
         return LandingHeaderLinkSerializer(links, many=True, context=self.context).data
 
+    def get_company_data(self, obj):
+        if not obj.company:
+            return None
+        return {
+            "id": obj.company.id,
+            "name": obj.company.name,
+            "slug": obj.company.slug,
+            "phone": obj.company.phone,
+            "telegram": obj.company.telegram,
+            "whatsapp": obj.company.whatsapp,
+            "address": obj.company.district,
+            "website": obj.company.website,
+            "instagram": getattr(obj.company, 'instagram', None),
+            "facebook": getattr(obj.company, 'facebook', None),
+        }
+
 
 class PromoCodeSerializer(serializers.ModelSerializer):
+    balance = serializers.SerializerMethodField()
+
     class Meta:
         model = PromoCode
         fields = (
@@ -1171,10 +1220,18 @@ class PromoCodeSerializer(serializers.ModelSerializer):
             "current_usages",
             "expiry_date",
             "is_active",
+            "balance",
             "created_by",
             "created_at",
         )
-        read_only_fields = ("current_usages", "created_by", "created_at")
+        read_only_fields = ("current_usages", "created_by", "created_at", "balance")
+
+    def get_balance(self, obj):
+        """Получить баланс промокода"""
+        try:
+            return obj.balance.balance if hasattr(obj, 'balance') and obj.balance else 0
+        except Exception:
+            return 0
 
 
 # Marketplace Serializers
@@ -1195,32 +1252,68 @@ class CompanySerializer(serializers.ModelSerializer):
 class PublicCourseSerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(source="company.name", read_only=True)
     company_slug = serializers.CharField(source="company.slug", read_only=True)
+    landing_page_slug = serializers.SerializerMethodField()
     applications_count = serializers.IntegerField(read_only=True)
     
     class Meta:
         model = PublicCourse
         fields = (
-            "id", "company", "company_name", "company_slug", "title", "slug",
+            "id", "company", "company_name", "company_slug", "landing_page_slug", "title", "slug",
             "price", "duration_weeks", "lesson_duration_minutes", "description",
             "category", "city", "schedule", "requirements", "curriculum",
             "rating", "reviews_count", "is_active", "is_promoted", "is_urgent",
             "image", "views", "applications_count", "created_at", "updated_at",
         )
         read_only_fields = ("slug", "rating", "reviews_count", "views", "applications_count")
+    
+    def get_landing_page_slug(self, obj):
+        if obj.company:
+            try:
+                landing = obj.company.landing_pages.filter(status="active").first()
+                return landing.slug if landing else None
+            except Exception:
+                return None
+        return None
 
 
 class JobVacancySerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(source="company.name", read_only=True)
     company_slug = serializers.CharField(source="company.slug", read_only=True)
+    landing_page_slug = serializers.SerializerMethodField()
     applications_count = serializers.IntegerField(read_only=True)
     
     class Meta:
         model = JobVacancy
         fields = (
-            "id", "company", "company_name", "company_slug", "title", "description",
+            "id", "company", "company_name", "company_slug", "landing_page_slug", "title", "description",
             "category", "city", "district", "salary_min", "salary_max", "schedule",
             "requirements", "responsibilities", "is_active", "is_promoted", "is_urgent",
             "views", "applications_count", "created_at", "updated_at",
+        )
+        read_only_fields = ("views", "applications_count")
+    
+    def get_landing_page_slug(self, obj):
+        if obj.company:
+            landing = obj.company.landing_pages.filter(status="active").first()
+            return landing.slug if landing else None
+        return None
+
+
+class JobVacancyDetailSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source="company.name", read_only=True)
+    company_slug = serializers.CharField(source="company.slug", read_only=True)
+    company_phone = serializers.CharField(source="company.phone", read_only=True)
+    company_website = serializers.CharField(source="company.website", read_only=True)
+    applications_count = serializers.IntegerField(read_only=True)
+    
+    class Meta:
+        model = JobVacancy
+        fields = (
+            "id", "company", "company_name", "company_slug", "company_phone", 
+            "company_website", "title", "description",
+            "category", "city", "district", "salary_min", "salary_max", "schedule",
+            "requirements", "responsibilities", "is_active", "is_promoted", 
+            "is_urgent", "views", "applications_count", "created_at", "updated_at",
         )
         read_only_fields = ("views", "applications_count")
 
