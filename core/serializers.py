@@ -140,7 +140,11 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ("company_name",)
 
     def get_managers_count(self, obj):
-        return obj.get_managers_count() if obj.role == User.Role.COURSE_ADMIN else 0
+        if obj.role != User.Role.COURSE_ADMIN:
+            return 0
+        if not hasattr(obj, 'get_managers_count'):
+            return 0
+        return obj.get_managers_count()
 
     def get_course_ids(self, obj):
         if obj.role == User.Role.COURSE_ADMIN:
@@ -612,6 +616,7 @@ class GroupSerializer(serializers.ModelSerializer):
             "teacher_color",
             "students",
             "student_ids",
+            "status",
             "is_login_allowed",
             "schedule_days",
             "schedule_time",
@@ -626,6 +631,7 @@ class GroupSerializer(serializers.ModelSerializer):
             "company_id",
             "company_name",
         )
+        read_only_fields = ("status",)
 
     def get_fields(self):
         fields = super().get_fields()
@@ -899,6 +905,7 @@ class TrialLeadSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
+    assigned_manager = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = TrialLead
@@ -920,9 +927,23 @@ class TrialLeadSerializer(serializers.ModelSerializer):
             "company",
             "company_id",
             "company_name",
+            "assigned_manager",
             "created_at",
         )
         read_only_fields = ("company_name",)
+
+    def get_assigned_manager(self, obj):
+        """Get the manager who claimed this lead via Telegram bot"""
+        assignment = getattr(obj, "assignment", None)
+        if assignment and assignment.manager:
+            manager = assignment.manager
+            full_name = f"{manager.first_name} {manager.last_name}".strip()
+            return {
+                "id": manager.id,
+                "name": full_name or manager.username,
+                "username": manager.username,
+            }
+        return None
 
 
 class TaskSerializer(serializers.ModelSerializer):
@@ -962,6 +983,15 @@ class TaskSerializer(serializers.ModelSerializer):
             return ""
         full_name = f"{obj.assigned_to.first_name} {obj.assigned_to.last_name}".strip()
         return full_name or obj.assigned_to.username
+
+
+class TransferGroupSerializer(serializers.Serializer):
+    """
+    Serializer for transferring a student from one group to another.
+    Keeps all legacy data (attendance, payments, homework) in the old group.
+    """
+    new_group = serializers.PrimaryKeyRelatedField(queryset=Group.objects.all())
+    note = serializers.CharField(required=False, allow_blank=True)
 
 
 class LandingSectionSerializer(serializers.ModelSerializer):

@@ -6,6 +6,8 @@ from django.db import models
 from django.db.models import Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -13,6 +15,8 @@ from rest_framework.authtoken.models import Token
 from rest_framework.parsers import FormParser, MultiPartParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.throttling import AnonRateThrottle
+from django.conf import settings
 
 from .models import (
     Attendance,
@@ -31,6 +35,7 @@ from .models import (
     Task,
     TaskLead,
     User,
+    TelegramBindCode,
     CompanyBalance,
     PromoCode,
     Transaction,
@@ -39,6 +44,26 @@ from .models import (
     JobVacancy,
     StudentApplication,
 )
+from .permissions import (
+    IsAdmin,
+    IsCourseAdmin,
+    IsCourseAdminOrManager,
+    IsCourseAdminOrManagerReadOnly,
+    IsCourseAdminOrManagerOrStudentReadOnly,
+    IsCourseAdminOrTeacherReadOnly,
+    IsTeacherOrCourseAdminReadOnly,
+)
+
+
+class LoginThrottle(AnonRateThrottle):
+    """Rate limiting для login endpoints"""
+    rate = '1000/hour'
+
+
+class RegisterThrottle(AnonRateThrottle):
+    """Rate limiting для registration endpoints"""
+    rate = '1000/hour'
+
 from .permissions import (
     IsAdmin,
     IsCourseAdmin,
@@ -68,6 +93,7 @@ from .serializers import (
     StudentSerializer,
     TeacherCreateSerializer,
     TeacherUpdateSerializer,
+    TransferGroupSerializer,
     TrialLeadSerializer,
     TaskSerializer,
     UserUpdateSerializer,
@@ -152,15 +178,44 @@ class RegisterView(APIView):
         )
 
 
+@method_decorator(ensure_csrf_cookie, name='dispatch')
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [LoginThrottle]
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
         token, _ = Token.objects.get_or_create(user=user)
-        return Response({"token": token.key, "user": UserSerializer(user).data})
+        
+        # Устанавливаем CSRF cookie явно
+        response = Response({"token": token.key, "user": UserSerializer(user).data})
+        response.set_cookie(
+            key="csrftoken",
+            value=request.META.get("CSRF_COOKIE", ""),
+            max_age=60 * 60 * 24 * 30,  # 30 дней
+            httponly=False,  # JS может читать для формы
+            samesite="Lax",
+            secure=settings.DEBUG is False,  # Только HTTPS в продакшене
+        )
+        return response
+
+
+class LogoutView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        """Выход из системы - удаление токена"""
+        try:
+            request.user.auth_token.delete()
+        except Exception:
+            pass
+        
+        response = Response({"detail": "Successfully logged out."})
+        # Очищаем CSRF cookie
+        response.delete_cookie("csrftoken")
+        return response
 
 
 class StudentLoginView(APIView):
@@ -895,6 +950,62 @@ class StudentViewSet(viewsets.ModelViewSet):
         Token.objects.filter(user=student.user).delete()
         return Response({"detail": "Student password was reset.", "must_set_password": True})
 
+    @action(detail=True, methods=["post"], url_path="transfer-group")
+    def transfer_group(self, request, pk=None):
+        """
+        Transfer a student to a new group while preserving all legacy data
+        (attendance, payments, homework submissions) in the old group.
+        """
+        student = self.get_object()
+        serializer = TransferGroupSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        new_group = serializer.validated_data["new_group"]
+        note = serializer.validated_data.get("note", "")
+
+        # Permission check
+        user = request.user
+        if user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            raise PermissionDenied("Only course admins and managers can transfer students.")
+
+        # Ensure student and group belong to the same company
+        if student.company_name != new_group.company_name:
+            raise PermissionDenied("Student and new group must belong to the same company.")
+
+        # Check company access
+        if user.role == User.Role.COURSE_ADMIN and student.company_name != user.company_name:
+            raise PermissionDenied("Not allowed for this student.")
+        if user.role == User.Role.COURSE_ADMIN and new_group.company_name != user.company_name:
+            raise PermissionDenied("Not allowed for this group.")
+        if user.role == User.Role.MANAGER and student.company_name != user.company_name:
+            raise PermissionDenied("Not allowed for this student.")
+        if user.role == User.Role.MANAGER and new_group.company_name != user.company_name:
+            raise PermissionDenied("Not allowed for this group.")
+
+        # Unenroll from old group — history stays (FK relationships preserved)
+        student.groups.clear()
+
+        # Enroll in new group
+        student.groups.add(new_group)
+
+        # Update primary_course to match new group's course
+        if new_group.course:
+            student.primary_course = new_group.course
+
+        # Add note about transfer
+        if note:
+            existing = student.notes or ""
+            timestamp = timezone.now().strftime("%d.%m.%Y %H:%M")
+            transfer_note = f"[{timestamp}] Переведён в группу «{new_group.name}». {note}"
+            student.notes = f"{transfer_note}\n{existing}" if existing else transfer_note
+
+        student.save(update_fields=["primary_course", "notes"])
+
+        return Response({
+            "status": "ok",
+            "detail": f"Student transferred to group «{new_group.name}».",
+        })
+
 
 class TeacherViewSet(viewsets.ModelViewSet):
     queryset = User.objects.filter(role=User.Role.TEACHER).order_by("-date_joined")
@@ -1057,11 +1168,17 @@ class GroupViewSet(viewsets.ModelViewSet):
             serializer.validated_data.get("schedule_days", ""),
             serializer.validated_data.get("lessons_count"),
         )
-        serializer.save(company_name=user.company_name, end_date=end_date)
+        save_kwargs = {"company_name": user.company_name, "end_date": end_date}
+        # If teacher is assigned, set status to pending for teacher confirmation
+        teacher = serializer.validated_data.get("teacher")
+        if teacher:
+            save_kwargs["status"] = Group.Status.PENDING
+        serializer.save(**save_kwargs)
 
     def perform_update(self, serializer):
         user = self.request.user
         instance = self.get_object()
+        teacher_changed = False
         if user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
             if user.role == User.Role.MANAGER and "is_login_allowed" in serializer.validated_data:
                 raise PermissionDenied("Managers cannot change group login access.")
@@ -1093,6 +1210,9 @@ class GroupViewSet(viewsets.ModelViewSet):
             for student in student_ids:
                 if student.company_name != user.company_name:
                     raise PermissionDenied("Student must belong to the same company.")
+            # Check if teacher changed
+            if "teacher" in serializer.validated_data and serializer.validated_data["teacher"] != instance.teacher:
+                teacher_changed = True
         self._ensure_auditorium_available(serializer, instance=instance)
         start_date = serializer.validated_data.get("start_date", instance.start_date)
         schedule_days = serializer.validated_data.get(
@@ -1102,7 +1222,11 @@ class GroupViewSet(viewsets.ModelViewSet):
             "lessons_count", instance.lessons_count
         )
         end_date = compute_group_end_date(start_date, schedule_days, lessons_count)
-        serializer.save(end_date=end_date)
+        save_kwargs = {"end_date": end_date}
+        # If teacher changed, reset to pending for new teacher confirmation
+        if teacher_changed and instance.status != Group.Status.PENDING:
+            save_kwargs["status"] = Group.Status.PENDING
+        serializer.save(**save_kwargs)
 
     def destroy(self, request, *args, **kwargs):
         if request.user.role == User.Role.MANAGER:
@@ -1772,7 +1896,7 @@ class PublicLandingLeadCreateView(APIView):
 
 
 class TrialLeadViewSet(viewsets.ModelViewSet):
-    queryset = TrialLead.objects.all().order_by("-created_at")
+    queryset = TrialLead.objects.all().select_related("assignment__manager").order_by("-created_at")
     serializer_class = TrialLeadSerializer
     permission_classes = [IsCourseAdminOrManager]
 
@@ -3021,3 +3145,80 @@ class PublicJobViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 # Create your views here.
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  TELEGRAM BIND CODE GENERATION
+# ═══════════════════════════════════════════════════════════════════════
+
+import random
+
+
+class GenerateTelegramBindCodeView(APIView):
+    """
+    Generate a one-time code for binding a Telegram account.
+
+    POST /api/bot/generate-bind-code/
+    Authenticated user generates a 6-digit code.
+    The code is valid for 10 minutes.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+
+        # Invalidate any existing pending codes for this user
+        TelegramBindCode.objects.filter(
+            user=user,
+            is_used=False,
+            expires_at__gt=timezone.now(),
+        ).update(is_used=True)
+
+        # Generate a 6-digit code
+        code = f"{random.randint(0, 999999):06d}"
+        expires_at = timezone.now() + timedelta(minutes=10)
+
+        bind_code = TelegramBindCode.objects.create(
+            user=user,
+            code=code,
+            expires_at=expires_at,
+            is_used=False,
+        )
+
+        return Response({
+            "code": bind_code.code,
+            "expires_at": bind_code.expires_at.isoformat(),
+            "message": (
+                f"Код действителен 10 минут. "
+                f"Используйте в Telegram: /start {user.username} {bind_code.code}"
+            ),
+        })
+
+
+class GetTelegramBindCodeView(APIView):
+    """
+    Get the current active pending bind code for the authenticated user.
+
+    GET /api/bot/bind-code/
+    Returns the code if one exists and is still valid.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        pending_code = TelegramBindCode.objects.filter(
+            user=user,
+            is_used=False,
+            expires_at__gt=timezone.now(),
+        ).first()
+
+        if not pending_code:
+            return Response({
+                "code": None,
+                "message": "Нет активного кода. Сгенерируйте новый.",
+            })
+
+        return Response({
+            "code": pending_code.code,
+            "expires_at": pending_code.expires_at.isoformat(),
+        })

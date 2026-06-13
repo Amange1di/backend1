@@ -15,6 +15,7 @@ from .views import (
     LandingHeaderLinkViewSet,
     LandingPageViewSet,
     LoginView,
+    LogoutView,
     ManagerViewSet,
     MeView,
     UserBalanceHistoryView,
@@ -43,6 +44,8 @@ from .views import (
     PublicCourseViewSet,
     PublicJobViewSet,
     SuperAdminStatsView,
+    GenerateTelegramBindCodeView,
+    GetTelegramBindCodeView,
 )
 
 router = DefaultRouter()
@@ -80,6 +83,7 @@ urlpatterns = [
     path("auth/student/set-password/", StudentSetPasswordView.as_view(), name="auth-student-set-password"),
     path("auth/student/profile/", StudentProfileView.as_view(), name="auth-student-profile"),
     path("auth/me/", MeView.as_view(), name="auth-me"),
+    path("auth/logout/", LogoutView.as_view(), name="auth-logout"),
     path("user/balance/me/", UserBalanceMeView.as_view(), name="user-balance-me"),
     path("user/balance/history/", UserBalanceHistoryView.as_view(), name="user-balance-history"),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
@@ -93,6 +97,10 @@ urlpatterns = [
     path("marketplace/boost-job/<int:pk>/", BoostJobView.as_view(), name="marketplace-boost-job"),
     path("marketplace/urgent-course/<int:pk>/", UrgentCourseView.as_view(), name="marketplace-urgent-course"),
     path("marketplace/urgent-job/<int:pk>/", UrgentJobView.as_view(), name="marketplace-urgent-job"),
+    
+    # Telegram bind code generation
+    path("bot/generate-bind-code/", GenerateTelegramBindCodeView.as_view(), name="bot-generate-bind-code"),
+    path("bot/bind-code/", GetTelegramBindCodeView.as_view(), name="bot-bind-code"),
     
     # Public landing pages (must be after router.urls to avoid conflicting with public/courses and public/jobs)
     path("public/landing-pages/<slug:slug>/", PublicLandingDetailView.as_view(), name="public-landing-detail"),

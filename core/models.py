@@ -53,9 +53,39 @@ class User(AbstractUser):
         related_name="teachers",
         blank=True,
     )
+    telegram_chat_id = models.BigIntegerField(null=True, blank=True, help_text="Telegram chat ID для уведомлений")
 
     def __str__(self) -> str:
         return f"{self.username} ({self.role})"
+
+
+class TelegramBindCode(models.Model):
+    """
+    Одноразовый код для первичной привязки Telegram аккаунта.
+    Генерируется на сайте пользователем, вводится в боте.
+    """
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="telegram_bind_codes",
+    )
+    code = models.CharField(max_length=6, help_text="6-значный код")
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(help_text="Дата истечения кода")
+    is_used = models.BooleanField(default=False, help_text="Был ли код использован")
+
+    class Meta:
+        verbose_name = "Telegram Bind Code"
+        verbose_name_plural = "Telegram Bind Codes"
+        ordering = ("-created_at",)
+
+    def __str__(self) -> str:
+        return f"{self.user.username}: {self.code} (used={self.is_used})"
+
+    def is_valid(self) -> bool:
+        """Код действителен если не использован и не истёк"""
+        from django.utils import timezone
+        return not self.is_used and self.expires_at > timezone.now()
 
     def get_managers_count(self) -> int:
         """Get count of managers created by this course admin"""
@@ -161,6 +191,11 @@ class Student(models.Model):
 
 
 class Group(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", _("Ожидает подтверждения")
+        ACTIVE = "active", _("Активна")
+        REJECTED = "rejected", _("Отклонена")
+
     name = models.CharField(max_length=200)
     course = models.ForeignKey(
         Course,
@@ -188,6 +223,12 @@ class Group(models.Model):
     # Устаревшее поле для миграции
     company_name = models.CharField(max_length=200, blank=True)
     is_login_allowed = models.BooleanField(default=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+        help_text="Статус группы: active — активна, pending — ожидает подтверждения учителем",
+    )
     schedule_days = models.CharField(max_length=200, blank=True)
     schedule_time = models.CharField(max_length=50, blank=True)
     auditorium = models.ForeignKey(
@@ -203,7 +244,12 @@ class Group(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self) -> str:
-        return self.name
+        status_icon = {
+            self.Status.PENDING: "⏳",
+            self.Status.ACTIVE: "✅",
+            self.Status.REJECTED: "❌",
+        }.get(self.status, "")
+        return f"{status_icon} {self.name}"
 
 
 class Attendance(models.Model):
@@ -303,6 +349,41 @@ class TrialLead(models.Model):
 
     def __str__(self) -> str:
         return self.full_name
+
+    def get_assigned_manager(self):
+        """Get manager who claimed this lead, if any"""
+        assignment = LeadAssignment.objects.filter(lead=self).first()
+        return assignment.manager if assignment else None
+
+
+class LeadAssignment(models.Model):
+    """
+    Tracks which manager claimed a lead via Telegram.
+    First manager to click 'Взять в работу' gets assigned.
+    """
+    lead = models.OneToOneField(
+        TrialLead,
+        on_delete=models.CASCADE,
+        related_name="assignment",
+    )
+    manager = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lead_assignments",
+        limit_choices_to={"role": User.Role.MANAGER},
+    )
+    claimed_at = models.DateTimeField(auto_now_add=True)
+    telegram_message_id = models.IntegerField(null=True, blank=True, help_text="ID сообщения в Telegram")
+    telegram_chat_id = models.BigIntegerField(null=True, blank=True, help_text="Chat ID группы/канала где было отправлено")
+
+    class Meta:
+        verbose_name = "Lead Assignment"
+        verbose_name_plural = "Lead Assignments"
+
+    def __str__(self) -> str:
+        return f"{self.lead.full_name} -> {self.manager}"
 
 
 class TaskLead(models.Model):
