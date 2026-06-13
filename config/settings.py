@@ -21,7 +21,7 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "backend1-1-vmlx.onrender.com,backend1-ritn.onrender.com").split(",") if os.environ.get("ALLOWED_HOSTS") else ["backend1-1-vmlx.onrender.com", "backend1-ritn.onrender.com"]
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get("ALLOWED_HOSTS", "backend1-1-vmlx.onrender.com,backend1-ritn.onrender.com").split(",") if h.strip()]
 
 # Application definition
 INSTALLED_APPS = [
@@ -212,6 +212,7 @@ else:
         "http://localhost:3001",
         "https://eduosh1.vercel.app",
         "https://backend1-ritn.onrender.com",
+        "https://backend1-1-vmlx.onrender.com",
         "http://192.168.31.129:3000",
         "http://192.168.31.129:3001",
         "http://127.0.0.1:3000",
