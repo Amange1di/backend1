@@ -21,7 +21,7 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "").split(",") if os.environ.get("ALLOWED_HOSTS") else []
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "backend1-1-vmlx.onrender.com,backend1-ritn.onrender.com").split(",") if os.environ.get("ALLOWED_HOSTS") else ["backend1-1-vmlx.onrender.com", "backend1-ritn.onrender.com"]
 
 # Application definition
 INSTALLED_APPS = [
