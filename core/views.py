@@ -418,26 +418,27 @@ class CourseAdminCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         
-        # Создаём компанию автоматически
+        # Сначала создаём пользователя без компании
+        user = serializer.save(
+            created_by=request.user,
+            company_name=company_name,
+            company=None,  # Сначала без компании
+            max_managers=max_managers,
+        )
+        
+        # Теперь создаём компанию с этим пользователем как owner
         company = Company.objects.create(
             name=company_name,
-            owner=None,  # Будет установлен после создания пользователя
+            owner=user,
             category=CompanyCategory.OTHER,
             city=CompanyCity.ONLINE,
             description=f"Company for {company_name}",
             is_active=True,
         )
         
-        user = serializer.save(
-            created_by=request.user,
-            company_name=company_name,
-            company=company,
-            max_managers=max_managers,
-        )
-        
-        # Связываем компанию с владельцем
-        company.owner = user
-        company.save()
+        # Обновляем пользователя, связывая с компанией
+        user.company = company
+        user.save()
         
         # Создаём баланс для компании
         CompanyBalance.objects.create(company=company, balance=0)
