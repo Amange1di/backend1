@@ -150,26 +150,16 @@ class UserSerializer(serializers.ModelSerializer):
         if obj.role == User.Role.COURSE_ADMIN:
             return list(obj.teaching_courses.values_list("id", flat=True))
         if obj.role == User.Role.TEACHER:
-            # Для преподавателей получаем курсы через компанию
-            if obj.company:
-                course_ids = list(
-                    Course.objects.filter(admins=obj).values_list("id", flat=True)
-                )
-                return course_ids
-            return []
+            # Для преподавателей используем прямую связь teaching_courses
+            return list(obj.teaching_courses.values_list("id", flat=True))
         return []
 
     def get_course_titles(self, obj):
         if obj.role == User.Role.COURSE_ADMIN:
             return list(obj.teaching_courses.values_list("title", flat=True))
         if obj.role == User.Role.TEACHER:
-            # Для преподавателей получаем курсы через компанию
-            if obj.company:
-                course_titles = list(
-                    Course.objects.filter(admins=obj).values_list("title", flat=True)
-                )
-                return course_titles
-            return []
+            # Для преподавателей используем прямую связь teaching_courses
+            return list(obj.teaching_courses.values_list("title", flat=True))
         return []
 
     def get_company_name(self, obj):
