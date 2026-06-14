@@ -319,6 +319,13 @@ class TeacherCreateSerializer(serializers.Serializer):
         courses = validated_data.pop("course_ids", [])
         request = self.context.get("request")
         creator = request.user if request else None
+        company = creator.company if creator else None
+        # Получаем company_name из компании или из поля creator.company_name
+        company_name = ""
+        if company and company.name:
+            company_name = company.name
+        elif creator:
+            company_name = creator.company_name or ""
         teacher = User(
             username=validated_data["username"],
             email=validated_data.get("email", ""),
@@ -330,8 +337,8 @@ class TeacherCreateSerializer(serializers.Serializer):
             salary_rate=validated_data.get("salary_rate"),
             working_hours=validated_data.get("working_hours", ""),
             color=validated_data.get("color", "#45B2EF"),
-            company=creator.company if creator else None,
-            company_name=creator.company_name if creator else "",
+            company=company,
+            company_name=company_name,
             created_by=creator,
             role=User.Role.TEACHER,
         )

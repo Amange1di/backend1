@@ -9,6 +9,7 @@ from .views import (
     DashboardView,
     CourseAdminCreateView,
     CourseAdminDetailView,
+    CrmContactView,
     GroupViewSet,
     HomeworkSubmissionViewSet,
     HomeworkTaskViewSet,
@@ -102,6 +103,9 @@ urlpatterns = [
     path("bot/generate-bind-code/", GenerateTelegramBindCodeView.as_view(), name="bot-generate-bind-code"),
     path("bot/bind-code/", GetTelegramBindCodeView.as_view(), name="bot-bind-code"),
     
+    # CRM website contact form (public, no slug required)
+    path("public/crm-contact/", CrmContactView.as_view(), name="crm-contact"),
+
     # Public landing pages (must be after router.urls to avoid conflicting with public/courses and public/jobs)
     path("public/landing-pages/<slug:slug>/", PublicLandingDetailView.as_view(), name="public-landing-detail"),
     path("public/landing-pages/<slug:slug>/lead/", PublicLandingLeadCreateView.as_view(), name="public-landing-lead"),

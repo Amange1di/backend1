@@ -17,6 +17,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.throttling import AnonRateThrottle
 from django.conf import settings
+import asyncio
+
+import logging
 
 from .models import (
     Attendance,
@@ -40,6 +43,8 @@ from .models import (
     PromoCode,
     Transaction,
     Company,
+    CompanyCategory,
+    CompanyCity,
     PublicCourse,
     JobVacancy,
     StudentApplication,
@@ -53,6 +58,8 @@ from .permissions import (
     IsCourseAdminOrTeacherReadOnly,
     IsTeacherOrCourseAdminReadOnly,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class LoginThrottle(AnonRateThrottle):
@@ -410,11 +417,31 @@ class CourseAdminCreateView(APIView):
                 {"detail": "Manager limit must be 0 or more."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        
+        # Создаём компанию автоматически
+        company = Company.objects.create(
+            name=company_name,
+            owner=None,  # Будет установлен после создания пользователя
+            category=CompanyCategory.OTHER,
+            city=CompanyCity.ONLINE,
+            description=f"Company for {company_name}",
+            is_active=True,
+        )
+        
         user = serializer.save(
             created_by=request.user,
             company_name=company_name,
+            company=company,
             max_managers=max_managers,
         )
+        
+        # Связываем компанию с владельцем
+        company.owner = user
+        company.save()
+        
+        # Создаём баланс для компании
+        CompanyBalance.objects.create(company=company, balance=0)
+        
         token, _ = Token.objects.get_or_create(user=user)
         return Response(
             {"token": token.key, "user": UserSerializer(user).data},
@@ -1323,7 +1350,14 @@ class AuditoriumViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.role == User.Role.MANAGER:
             raise PermissionDenied("Managers cannot create auditoriums.")
-        serializer.save(company=user.company)
+        # Получаем company_name из компании или из поля user.company_name
+        company = user.company
+        company_name = ""
+        if company and company.name:
+            company_name = company.name
+        elif user.company_name:
+            company_name = user.company_name
+        serializer.save(company=company, company_name=company_name)
 
 
 class AttendanceViewSet(viewsets.ModelViewSet):
@@ -1893,6 +1927,62 @@ class PublicLandingLeadCreateView(APIView):
             company=page.company,
         )
         return Response(TrialLeadSerializer(lead).data, status=status.HTTP_201_CREATED)
+
+
+class CrmContactView(APIView):
+    """Public endpoint for the CRM's own landing page contact form.
+
+    Creates a TrialLead without company association and notifies superadmins.
+    """
+    permission_classes = [permissions.AllowAny]
+    parser_classes = [JSONParser]
+
+    def post(self, request):
+        full_name = (request.data.get("full_name") or "").strip()
+        phone = (request.data.get("phone") or "").strip()
+        if not full_name or not phone:
+            return Response(
+                {"detail": "Full name and phone are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        comment = (request.data.get("comment") or "").strip()
+        telegram = (request.data.get("telegram") or "").strip()
+
+        # Save as TrialLead with source "crm-landing" (no company)
+        comment_parts = []
+        if comment:
+            comment_parts.append(comment)
+        if telegram:
+            comment_parts.append(f"Telegram: {telegram}")
+        lead = TrialLead.objects.create(
+            full_name=full_name,
+            phone=phone,
+            source="crm-landing",
+            comment="\n".join(comment_parts),
+            company_name="",
+            company=None,
+        )
+
+        # Notify superadmins
+        try:
+            from telegram_bot.notifications import send_crm_contact_notification
+
+            loop = asyncio.new_event_loop()
+            loop.run_until_complete(send_crm_contact_notification(
+                full_name=full_name,
+                phone=phone,
+                comment=comment,
+                telegram=telegram,
+            ))
+            loop.close()
+        except Exception as e:
+            logger.warning(f"Failed to send CRM contact notification: {e}")
+
+        return Response(
+            {"id": lead.id, "detail": "Contact request received."},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class TrialLeadViewSet(viewsets.ModelViewSet):

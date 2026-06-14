@@ -19,6 +19,7 @@ from .config import (
     HomeworkSubmission,
     HomeworkTask,
     Task,
+    Student,
 )
 from .helpers import (
     _get_lead_company_name,
@@ -33,6 +34,7 @@ from .helpers import (
     _get_task_created_by_name,
     _get_task_assigned_to_name,
     _get_task_company_name,
+    _get_superadmins,
     sync_to_async,
 )
 
@@ -384,3 +386,78 @@ async def send_daily_lead_summary(company_name: str):
             )
         except Exception as e:
             logger.error(f"Failed to send summary to admin {admin.username}: {e}")
+
+
+async def send_new_student_notification(student: Student):
+    """Send a notification about a new student to all managers of the company."""
+    if not BOT_TOKEN:
+        return
+
+    company_name = getattr(student, "company_name", None)
+    if not company_name and student.company:
+        company_name = student.company.name
+    if not company_name:
+        logger.warning(f"Student {student.id} has no company")
+        return
+
+    managers = await _get_managers_for_company(company_name)
+    if not managers:
+        return
+
+    full_name = f"{student.first_name} {student.last_name}".strip()
+    text = (
+        f"🆕 <b>Новый клиент!</b>\n\n"
+        f"👤 <b>Имя:</b> {full_name}\n"
+        f"📞 <b>Телефон:</b> {student.phone}\n"
+        f"📱 <b>Telegram:</b> {student.telegram or '—'}\n"
+        f"📅 <b>Создан:</b> {student.created_at.strftime('%d.%m.%Y %H:%M') if student.created_at else '—'}"
+    )
+
+    application = _get_application()
+    for manager in managers:
+        try:
+            await application.bot.send_message(
+                chat_id=manager.telegram_chat_id,
+                text=text,
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            logger.error(f"Failed to send new student notification to {manager.username}: {e}")
+
+
+async def send_crm_contact_notification(
+    full_name: str,
+    phone: str,
+    comment: str,
+    telegram: str = "",
+):
+    """Send a notification about a new CRM website contact to all superadmins.
+
+    This is for the CRM's own landing page (not company-specific).
+    """
+    if not BOT_TOKEN:
+        return
+
+    superadmins = await _get_superadmins()
+    if not superadmins:
+        logger.warning("No superadmins with Telegram found")
+        return
+
+    text = (
+        f"🌐 <b>Новая заявка с CRM-сайта!</b>\n\n"
+        f"👤 <b>Имя:</b> {full_name}\n"
+        f"📞 <b>Телефон:</b> {phone}\n"
+        f"{'💬 <b>Telegram:</b> ' + telegram + '\n' if telegram else ''}"
+        f"📝 <b>Сообщение:</b> {comment or '—'}"
+    )
+
+    application = _get_application()
+    for admin in superadmins:
+        try:
+            await application.bot.send_message(
+                chat_id=admin.telegram_chat_id,
+                text=text,
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            logger.error(f"Failed to send CRM contact notification to {admin.username}: {e}")

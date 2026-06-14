@@ -82,6 +82,16 @@ def _get_course_admins_for_company(company_name: str):
 
 
 @sync_to_async
+def _get_superadmins():
+    return list(
+        User.objects.filter(
+            role=User.Role.SUPER_ADMIN,
+            telegram_chat_id__isnull=False,
+        ).exclude(telegram_chat_id=0)
+    )
+
+
+@sync_to_async
 def _get_teachers_with_chat_id():
     return list(
         User.objects.filter(

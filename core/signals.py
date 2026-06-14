@@ -12,7 +12,7 @@ import logging
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from .models import TrialLead, Group, HomeworkSubmission, HomeworkTask, Task
+from .models import TrialLead, Group, HomeworkSubmission, HomeworkTask, Task, Student
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,10 @@ def trial_lead_created(sender, instance, created, **kwargs):
         return
 
     if instance.source and instance.source.startswith("manual"):
+        return
+
+    if instance.source == "crm-landing":
+        # CRM website contacts are handled by CrmContactView directly
         return
 
     logger.info(f"New lead created: {instance.full_name} (source: {instance.source})")
@@ -169,5 +173,21 @@ def homework_submission_reviewed(sender, instance, created, **kwargs):
         from telegram_bot.notifications import send_submission_reviewed_notification
 
         _run_async(send_submission_reviewed_notification(instance))
+    except ImportError:
+        logger.warning("telegram_bot module not available, skipping notification")
+
+
+@receiver(post_save, sender=Student)
+def student_created(sender, instance, created, **kwargs):
+    """Send Telegram notification when a new student/client is created."""
+    if not created:
+        return
+
+    logger.info(f"New student created: {instance.first_name} {instance.last_name}")
+
+    try:
+        from telegram_bot.notifications import send_new_student_notification
+
+        _run_async(send_new_student_notification(instance))
     except ImportError:
         logger.warning("telegram_bot module not available, skipping notification")
