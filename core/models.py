@@ -77,6 +77,12 @@ class User(AbstractUser):
         from .models import LandingPage
         return LandingPage.objects.filter(company=self.company).count()
 
+    def can_create_landing_page(self) -> bool:
+        """Check if this course admin can create another landing page"""
+        if self.role != self.Role.COURSE_ADMIN:
+            return False
+        return self.get_pages_count() < self.max_pages
+
 
 class TelegramBindCode(models.Model):
     """
