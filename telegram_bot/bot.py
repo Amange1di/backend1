@@ -6,6 +6,8 @@ and registers command / callback handlers before starting polling.
 """
 
 import logging
+import sys
+import traceback
 
 from .config import (
     Update,
@@ -55,13 +57,41 @@ from .handlers_admin import (
 logger = logging.getLogger(__name__)
 
 
+def _log(msg: str, level: str = "info"):
+    """Log with immediate flush so Render logs see it in real-time."""
+    getattr(logger, level)(msg)
+    sys.stdout.flush()
+    sys.stderr.flush()
+
+
 def run_bot():
     """Run the Telegram bot in polling mode."""
+    _log("=" * 60)
+    _log("BOT: Starting Telegram bot...")
+    _log(f"BOT: BOT_TOKEN length = {len(BOT_TOKEN) if BOT_TOKEN else 0}")
+    
     if not BOT_TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN is not configured!")
+        _log("BOT: TELEGRAM_BOT_TOKEN is not configured!", "error")
         return
 
-    application = _get_application()
+    try:
+        application = _get_application()
+        _log("BOT: Application instance created successfully")
+    except Exception as e:
+        _log(f"BOT: FAILED to create Application: {e}", "error")
+        _log(f"BOT: Traceback: {traceback.format_exc()}", "error")
+        return
+
+    # Delete any existing webhook before starting polling
+    try:
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(application.bot.delete_webhook(drop_pending_updates=True))
+        loop.close()
+        _log("BOT: Existing webhook deleted (if any)")
+    except Exception as e:
+        _log(f"BOT: Webhook cleanup warning (non-fatal): {e}")
 
     # ── Command handlers ──────────────────────────────────────────────
     application.add_handler(CommandHandler("start", start))
@@ -104,5 +134,13 @@ def run_bot():
     application.add_handler(CallbackQueryHandler(menu_tasks_stats, pattern=r"^menu_tasks_stats$"))
     application.add_handler(CallbackQueryHandler(resubmit_group_callback, pattern=r"^resubmit_group:"))
 
-    logger.info("Telegram bot started, polling...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    _log("BOT: Starting polling...")
+    try:
+        application.run_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
+        )
+    except Exception as e:
+        _log(f"BOT: Polling error: {e}", "error")
+        _log(f"BOT: Traceback: {traceback.format_exc()}", "error")
+        raise
