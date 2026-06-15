@@ -9,6 +9,8 @@ Common handlers — shared by all roles.
 import random
 import time
 
+from core.models import User
+
 from .config import (
     Update,
     ContextTypes,
@@ -16,7 +18,6 @@ from .config import (
     InlineKeyboardMarkup,
     MessageHandler,
     filters,
-    User,
     logger,
     FRONTEND_URL,
 )

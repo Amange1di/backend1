@@ -30,17 +30,9 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.db.models import Q, Count
 from django.utils import timezone
-from core.models import (
-    User,
-    TrialLead,
-    LeadAssignment,
-    Group,
-    HomeworkSubmission,
-    HomeworkTask,
-    Student,
-    Task,
-    TelegramBindCode,
-)
+
+# NOTE: core.models are NOT imported here to avoid "Apps aren't loaded yet"
+# during Django startup. Each module imports models directly from core.models.
 
 # ── Shared globals ────────────────────────────────────────────────────
 logger = logging.getLogger(__name__)

@@ -10,14 +10,13 @@ Callbacks:
   resubmit_group:   — resubmit group after rejection
 """
 
+from core.models import User, Task, Group
+
 from .config import (
     Update,
     ContextTypes,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    User,
-    Task,
-    Group,
     logger,
     _get_application,
     sync_to_async,

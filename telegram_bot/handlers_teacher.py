@@ -14,6 +14,8 @@ Callbacks:
   st_back                — back to group list
 """
 
+from core.models import User, Group, Student
+
 from .config import (
     Update,
     ContextTypes,
@@ -21,9 +23,6 @@ from .config import (
     InlineKeyboardMarkup,
     sync_to_async,
     timedelta,
-    User,
-    Group,
-    Student,
     logger,
     _get_application,
 )

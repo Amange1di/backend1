@@ -7,12 +7,7 @@ Called from Django signals or management commands.
 
 from datetime import date
 
-from .config import (
-    BOT_TOKEN,
-    _get_application,
-    logger,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
+from core.models import (
     User,
     TrialLead,
     Group,
@@ -20,6 +15,14 @@ from .config import (
     HomeworkTask,
     Task,
     Student,
+)
+
+from .config import (
+    BOT_TOKEN,
+    _get_application,
+    logger,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
 )
 from .helpers import (
     _get_lead_company_name,

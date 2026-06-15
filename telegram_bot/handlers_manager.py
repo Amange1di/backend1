@@ -13,14 +13,13 @@ Callbacks:
 
 import re
 
+from core.models import Task, User, TrialLead
+
 from .config import (
     Update,
     ContextTypes,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    Task,
-    User,
-    TrialLead,
     logger,
 )
 from .helpers import (

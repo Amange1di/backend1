@@ -212,7 +212,7 @@ else:
         "http://localhost:3001",
         "https://eduosh1.vercel.app",
         "https://backend1-ritn.onrender.com",
-        "https://backend1-1-vmlx.onrender.com",
+        "http://10.9.0.13:8001",
         "http://192.168.31.129:3000",
         "http://192.168.31.129:3001",
         "http://127.0.0.1:3000",

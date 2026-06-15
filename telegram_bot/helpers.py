@@ -7,19 +7,22 @@ All database access goes through ``@sync_to_async`` wrappers defined here.
 from datetime import timedelta
 from typing import Optional
 
-from .config import (
-    sync_to_async,
-    Q,
-    timezone,
+from core.models import (
     User,
     TrialLead,
+    LeadAssignment,
     Group,
     HomeworkSubmission,
     HomeworkTask,
     Student,
     Task,
-    LeadAssignment,
     TelegramBindCode,
+)
+
+from .config import (
+    sync_to_async,
+    Q,
+    timezone,
     logger,
 )
 
