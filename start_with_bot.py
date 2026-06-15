@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 """
-Start Django with Telegram bot running in a background thread.
+Start Django with Telegram bot running as a separate process.
 For use on Render Web Service (single process deployment).
 """
 
 import os
 import sys
-import threading
+import subprocess
+import signal
 import logging
 
 # Setup logging
@@ -16,57 +17,47 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def run_telegram_bot():
-    """Run Telegram bot in a background thread."""
-    try:
-        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
-        
-        # Load .env if available
-        try:
-            from dotenv import load_dotenv
-            load_dotenv()
-        except ImportError:
-            pass
-        
-        import django
-        django.setup()
-        
-        from telegram_bot.bot import run_bot
-        run_bot()
-    except Exception as e:
-        logger.error(f"Telegram bot error: {e}")
-        import traceback
-        traceback.print_exc()
-
 
 def main():
-    """Start Gunicorn with Telegram bot in background."""
-    # Start Telegram bot in background thread
-    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
-    bot_thread.start()
-    logger.info("Telegram bot thread started")
+    """Start Gunicorn and Telegram bot as separate processes."""
     
-    # Import and run Gunicorn
-    from gunicorn.app.wsgiapp import run
+    # Start Telegram bot as a separate process
+    bot_process = subprocess.Popen(
+        [sys.executable, 'manage.py', 'run_bot'],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True
+    )
+    logger.info(f"Telegram bot process started (PID: {bot_process.pid})")
     
-    # Gunicorn config
-    config = {
-        'bind': f'0.0.0.0:{os.environ.get("PORT", 8000)}',
-        'workers': 2,
-        'accesslog': '-',
-        'errorlog': '-',
-    }
+    # Set up signal handler to clean up bot process
+    def cleanup(signum, frame):
+        logger.info("Shutting down, terminating bot process...")
+        bot_process.terminate()
+        bot_process.wait()
+        sys.exit(0)
     
-    logger.info("Starting Gunicorn web server...")
+    signal.signal(signal.SIGTERM, cleanup)
+    signal.signal(signal.SIGINT, cleanup)
     
-    # Run Gunicorn with WSGI app
-    sys.argv[1:] = [
+    # Run Gunicorn
+    logger.info(f"Starting Gunicorn web server on port {os.environ.get('PORT', 8000)}...")
+    
+    gunicorn_args = [
+        'gunicorn',
         'config.wsgi:application',
         '--bind', f'0.0.0.0:{os.environ.get("PORT", 8000)}',
         '--workers', '2',
     ]
     
-    run()
+    try:
+        subprocess.run(gunicorn_args)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        logger.info("Shutting down bot process...")
+        bot_process.terminate()
+        bot_process.wait()
 
 
 if __name__ == "__main__":
