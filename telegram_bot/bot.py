@@ -33,6 +33,10 @@ from .handlers_teacher import (
     reject_group,
     show_group_students,
     handle_students_back,
+    handle_rejection_comment,
+    confirm_group_yes,
+    reject_group_yes,
+    cancel_action,
 )
 from .handlers_manager import (
     tasks,
@@ -44,6 +48,8 @@ from .handlers_manager import (
 from .handlers_admin import (
     tasks_stats,
     menu_tasks_stats,
+    resubmit_group,
+    resubmit_group_callback,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,9 +71,18 @@ def run_bot():
     application.add_handler(CommandHandler("students", students))
     application.add_handler(CommandHandler("tasks", tasks))
     application.add_handler(CommandHandler("tasks_stats", tasks_stats))
+    application.add_handler(CommandHandler("resubmit_group", resubmit_group))
 
+    # ── Message handler for rejection comment ─────────────────────────
+    # Registered BEFORE the generic code handler to catch rejection comments
+    from telegram.ext import MessageHandler, filters
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND,
+        handle_rejection_comment
+    ))
+    
     # ── Message handler for plain text 6-digit code entry ─────────────
-    # Must be registered after all command handlers so commands take priority
+    # Must be registered after rejection comment handler
     application.add_handler(get_message_handler())
 
     # ── Callback handlers ─────────────────────────────────────────────
@@ -78,12 +93,16 @@ def run_bot():
     application.add_handler(CallbackQueryHandler(menu_back, pattern=r"^menu_back$"))
     application.add_handler(CallbackQueryHandler(claim_lead, pattern=r"^claim:"))
     application.add_handler(CallbackQueryHandler(confirm_group, pattern=r"^confirm_group:"))
+    application.add_handler(CallbackQueryHandler(confirm_group_yes, pattern=r"^confirm_group_yes:"))
+    application.add_handler(CallbackQueryHandler(reject_group_yes, pattern=r"^reject_group_yes:"))
+    application.add_handler(CallbackQueryHandler(cancel_action, pattern=r"^cancel_action:"))
     application.add_handler(CallbackQueryHandler(reject_group, pattern=r"^reject_group:"))
     application.add_handler(CallbackQueryHandler(show_group_students, pattern=r"^st_group:"))
     application.add_handler(CallbackQueryHandler(handle_students_back, pattern=r"^st_back$"))
     application.add_handler(CallbackQueryHandler(task_set_status, pattern=r"^task_set:"))
     application.add_handler(CallbackQueryHandler(task_filter, pattern=r"^task_filter:"))
     application.add_handler(CallbackQueryHandler(menu_tasks_stats, pattern=r"^menu_tasks_stats$"))
+    application.add_handler(CallbackQueryHandler(resubmit_group_callback, pattern=r"^resubmit_group:"))
 
     logger.info("Telegram bot started, polling...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)

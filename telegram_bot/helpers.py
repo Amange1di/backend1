@@ -112,11 +112,11 @@ def _get_group_by_id(group_id: int):
 
 @sync_to_async
 def _get_teacher_groups(teacher: User):
-    """Get all active groups for a teacher, ordered by course name."""
+    """Get all active and pending groups for a teacher, ordered by course name."""
     return list(
         Group.objects.filter(
             teacher=teacher,
-            status=Group.Status.ACTIVE,
+            status__in=[Group.Status.ACTIVE, Group.Status.PENDING],
         ).select_related("course", "auditorium").order_by("course__title", "name")
     )
 
@@ -149,7 +149,7 @@ def _update_group_status(group_id: int, status: str):
 
 @sync_to_async
 def _get_today_groups_for_teacher(teacher: User):
-    """Get active groups for a teacher that have lessons today."""
+    """Get active and pending groups for a teacher that have lessons today."""
     today = timezone.localdate()
     weekday = today.weekday()
     weekday_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
@@ -157,12 +157,12 @@ def _get_today_groups_for_teacher(teacher: User):
     return list(
         Group.objects.filter(
             teacher=teacher,
-            status=Group.Status.ACTIVE,
+            status__in=[Group.Status.ACTIVE, Group.Status.PENDING],
             schedule_days__icontains=weekday_name,
             start_date__lte=today,
         ).filter(
             Q(end_date__gte=today) | Q(end_date__isnull=True)
-        ).select_related("course", "auditorium")
+        ).select_related("course", "auditorium").order_by("course__title", "name")
     )
 
 

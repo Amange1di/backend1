@@ -225,6 +225,49 @@ async def send_homework_assigned_notification(group: Group, task: HomeworkTask):
             logger.error(f"Failed to send homework notification to student {student.id}: {e}")
 
 
+async def send_group_request_notification(group: Group):
+    """Send notification to teacher about a new/re-submitted group request."""
+    if not BOT_TOKEN:
+        return
+
+    # Получаем teacher синхронно через sync_to_async
+    teacher = await sync_to_async(lambda: group.teacher)()
+    if not teacher or not teacher.telegram_chat_id:
+        logger.warning(f"Group {group.id} teacher has no Telegram")
+        return
+
+    course_name = await _get_group_course_name(group)
+    text = (
+        f"🔔 <b>Новый запрос на группу!</b>\n\n"
+        f"📚 <b>Группа:</b> {group.name}\n"
+        f"📖 <b>Курс:</b> {course_name}\n"
+        f"📅 <b>Начало:</b> {group.start_date.strftime('%d.%m.%Y') if group.start_date else '—'}\n"
+        f"⏰ <b>Расписание:</b> {group.schedule_days or '—'} {group.schedule_time or ''}\n\n"
+        f"Пожалуйста, подтвердите или отклоните запрос."
+    )
+
+    # Добавляем кнопки для учителя
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Принять", callback_data=f"confirm_group:{group.id}"),
+            InlineKeyboardButton("❌ Отказаться", callback_data=f"reject_group:{group.id}")
+        ],
+        [InlineKeyboardButton("🔙 В меню", callback_data="menu_back")]
+    ])
+
+    application = _get_application()
+    try:
+        await application.bot.send_message(
+            chat_id=teacher.telegram_chat_id,
+            text=text,
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+        logger.info(f"Sent group request notification to teacher {teacher.id}")
+    except Exception as e:
+        logger.error(f"Failed to send group request notification to teacher {teacher.id}: {e}")
+
+
 async def send_submission_reviewed_notification(submission: HomeworkSubmission):
     """Send notification to student when their homework is reviewed."""
     if not BOT_TOKEN:

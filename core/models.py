@@ -58,6 +58,25 @@ class User(AbstractUser):
     def __str__(self) -> str:
         return f"{self.username} ({self.role})"
 
+    def get_managers_count(self) -> int:
+        """Get count of managers created by this course admin"""
+        if self.role != self.Role.COURSE_ADMIN:
+            return 0
+        return self.created_users.filter(role=self.Role.MANAGER).count()
+
+    def can_create_manager(self) -> bool:
+        """Check if this course admin can create another manager"""
+        if self.role != self.Role.COURSE_ADMIN:
+            return False
+        return self.get_managers_count() < self.max_managers
+
+    def get_pages_count(self) -> int:
+        """Check how many landing pages this course admin has created"""
+        if self.role != self.Role.COURSE_ADMIN or not self.company:
+            return 0
+        from .models import LandingPage
+        return LandingPage.objects.filter(company=self.company).count()
+
 
 class TelegramBindCode(models.Model):
     """
@@ -86,28 +105,6 @@ class TelegramBindCode(models.Model):
         """Код действителен если не использован и не истёк"""
         from django.utils import timezone
         return not self.is_used and self.expires_at > timezone.now()
-
-    def get_managers_count(self) -> int:
-        """Get count of managers created by this course admin"""
-        if self.role != self.Role.COURSE_ADMIN:
-            return 0
-        return self.created_users.filter(role=self.Role.MANAGER).count()
-
-    def can_create_manager(self) -> bool:
-        """Check if this course admin can create another manager"""
-        if self.role != self.Role.COURSE_ADMIN:
-            return False
-        return self.get_managers_count() < self.max_managers
-
-    def get_pages_count(self) -> int:
-        if self.role != self.Role.COURSE_ADMIN or not self.company:
-            return 0
-        return LandingPage.objects.filter(company=self.company).count()
-
-    def can_create_landing_page(self) -> bool:
-        if self.role != self.Role.COURSE_ADMIN:
-            return False
-        return self.get_pages_count() < self.max_pages
 
 
 class Course(models.Model):
@@ -241,6 +238,8 @@ class Group(models.Model):
     lessons_count = models.PositiveIntegerField(null=True, blank=True)
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
+    rejection_comment = models.TextField(blank=True, help_text="Комментарий учителя при отказе")
+    rejection_count = models.PositiveIntegerField(default=0, help_text="Количество отказов учителя")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self) -> str:

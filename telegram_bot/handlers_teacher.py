@@ -38,6 +38,8 @@ from .helpers import (
     _get_course_admins_for_company,
     _update_group_status,
 )
+from .config import _get_application
+from asgiref.sync import sync_to_async
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -350,40 +352,94 @@ async def handle_students_back(update: Update, context: ContextTypes.DEFAULT_TYP
     """Handle the 'Назад к группам' button callback."""
     query = update.callback_query
     await query.answer()
+    await query.edit_message_text(text="🔙 Вы вернулись в главное меню.")
 
+
+async def handle_rejection_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle teacher's rejection comment."""
     chat_id = update.effective_chat.id
-    user = await _get_user_by_chat_id(chat_id)
-    if not user or user.role != User.Role.TEACHER:
-        await query.answer("❌ Доступно только для учителей.", show_alert=True)
+    
+    # Проверяем, ждём ли мы комментарий
+    if not context.user_data.get('waiting_for_rejection_comment'):
         return
-
-    groups = await _get_teacher_groups(user)
-    if not groups:
-        await query.edit_message_text("📚 У вас нет активных групп.")
+    
+    text = update.message.text.strip()
+    group_id = context.user_data.get('rejecting_group_id')
+    
+    if not group_id:
+        await update.message.reply_text("❌ Ошибка: группа не найдена.")
+        context.user_data['waiting_for_rejection_comment'] = False
         return
-
-    lines = [f"📚 <b>Ваши группы</b> ({len(groups)}):"]
-    keyboard = []
-    row = []
-    for g in groups:
-        course_name = await _get_group_course_name(g)
-        student_count = await sync_to_async(lambda g=g: g.students.count())()
-        lines.append(f"\n<b>{g.name}</b> — 👥 {student_count} — 📖 {course_name}")
-        btn = InlineKeyboardButton(f"{g.name}", callback_data=f"st_group:{g.id}")
-        row.append(btn)
-        if len(row) == 2:
-            keyboard.append(row)
-            row = []
-    if row:
-        keyboard.append(row)
-
-    keyboard.append([InlineKeyboardButton("🔙 В меню", callback_data="menu_back")])
-
-    await query.edit_message_text(
-        "\n".join(lines),
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+    
+    try:
+        group = await _get_group_by_id(group_id)
+    except Group.DoesNotExist:
+        await update.message.reply_text("❌ Группа не найдена.")
+        context.user_data['waiting_for_rejection_comment'] = False
+        return
+    
+    # Сохраняем комментарий
+    comment = text if text.lower() not in ['без причины', 'без причины.', 'нет', ''] else '—'
+    group.rejection_comment = comment
+    group.rejection_count = group.rejection_count + 1
+    group.status = Group.Status.REJECTED
+    await sync_to_async(group.save)()
+    
+    course_name = await _get_group_course_name(group)
+    teacher = await _get_user_by_chat_id(chat_id)
+    teacher_name = f"{teacher.first_name} {teacher.last_name}".strip() or teacher.username
+    company_name = await _get_group_company_name(group)
+    
+    # Удаление ожидания
+    context.user_data['waiting_for_rejection_comment'] = False
+    context.user_data.pop('rejecting_group_id', None)
+    
+    # Отправляем подтверждение учителю
+    await update.message.reply_text(
+        f"❌ Ваш отказ зафиксирован.\n"
+        f"Группа «{group.name}» отклонена.\n"
+        f"Комментарий: {comment}"
     )
+    
+    # Уведомляем курс-админов
+    if company_name:
+        admins = await _get_course_admins_for_company(company_name)
+        application = _get_application()
+        if admins:
+            for admin in admins:
+                try:
+                    admin_keyboard = InlineKeyboardMarkup([[
+                        InlineKeyboardButton(
+                            "🔁 Повторить отправку",
+                            callback_data=f"resubmit_group:{group.id}"
+                        )
+                    ]])
+                    
+                    # Формируем текст с учётом количества отказов
+                    if group.rejection_count > 1:
+                        rejection_text = f"⚠️ <b>Это {group.rejection_count}-й отказ учителя!</b>"
+                    else:
+                        rejection_text = "❌ <b>Учитель отказался от группы!</b>"
+                    
+                    await application.bot.send_message(
+                        chat_id=admin.telegram_chat_id,
+                        text=(
+                            f"{rejection_text}\n\n"
+                            f"👨‍🏫 Учитель: {teacher_name}\n"
+                            f"📚 Группа: {group.name}\n"
+                            f"📖 Курс: {course_name}\n"
+                            f"💬 <b>Комментарий:</b> {comment}\n\n"
+                            f"Нажмите кнопку ниже, чтобы повторить отправку запроса."
+                        ),
+                        parse_mode="HTML",
+                        reply_markup=admin_keyboard
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to notify admin {admin.username}: {e}")
+        else:
+            logger.warning(f"No course admins found for company {company_name}")
+    else:
+        logger.warning(f"Group {group.id} has no company, cannot notify admins")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -426,36 +482,25 @@ async def confirm_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await _update_group_status(group_id, Group.Status.ACTIVE)
-
+    # Показываем подтверждение
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Да, подтвердить", callback_data=f"confirm_group_yes:{group_id}"),
+            InlineKeyboardButton("❌ Отмена", callback_data=f"cancel_action:{group_id}")
+        ],
+        [InlineKeyboardButton("🔙 Назад в меню", callback_data="menu_back")]
+    ])
+    
     course_name = await _get_group_course_name(group)
-
     await query.edit_message_reply_markup(reply_markup=None)
     await query.edit_message_text(
-        text=query.message.text + f"\n\n✅ Вы приняли группу «{group.name}» ({course_name})!"
+        text=query.message.text + f"\n\n⚠️ <b>Подтвердите действие:</b>\n\n"
+        f"Вы принимаете группу «{group.name}» ({course_name}).\n"
+        f"Это изменит статус группы на <b>Активна</b>.",
+        parse_mode="HTML",
+        reply_markup=keyboard
     )
-    await query.answer("✅ Группа подтверждена!", show_alert=True)
 
-    # Notify course admins
-    company_name = await _get_group_company_name(group)
-    if company_name:
-        teacher_name = f"{teacher.first_name} {teacher.last_name}".strip() or teacher.username
-        admins = await _get_course_admins_for_company(company_name)
-        application = _get_application()
-        for admin in admins:
-            try:
-                await application.bot.send_message(
-                    chat_id=admin.telegram_chat_id,
-                    text=(
-                        f"✅ <b>Учитель подтвердил группу!</b>\n\n"
-                        f"👨‍🏫 Учитель: {teacher_name}\n"
-                        f"📚 Группа: {group.name}\n"
-                        f"📖 Курс: {course_name}"
-                    ),
-                    parse_mode="HTML",
-                )
-            except Exception as e:
-                logger.error(f"Failed to notify admin {admin.username}: {e}")
 
 
 async def reject_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -492,34 +537,176 @@ async def reject_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text=query.message.text + "\n\n⚠️ Статус группы уже изменён.")
         return
 
-    await _update_group_status(group_id, Group.Status.REJECTED)
-
+    # Показываем подтверждение
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Да, отказаться", callback_data=f"reject_group_yes:{group_id}"),
+            InlineKeyboardButton("❌ Отмена", callback_data=f"cancel_action:{group_id}")
+        ],
+        [InlineKeyboardButton("🔙 Назад в меню", callback_data="menu_back")]
+    ])
+    
     course_name = await _get_group_course_name(group)
-    teacher_name = f"{teacher.first_name} {teacher.last_name}".strip() or teacher.username
-
     await query.edit_message_reply_markup(reply_markup=None)
     await query.edit_message_text(
-        text=query.message.text + f"\n\n❌ Вы отказались от группы «{group.name}»."
+        text=query.message.text + f"\n\n⚠️ <b>Подтвердите действие:</b>\n\n"
+        f"Вы отказываетесь от группы «{group.name}» ({course_name}).\n"
+        f"Это изменит статус группы на <b>Отклонена</b>.\n"
+        f"После этого курс-админ сможет повторить отправку запроса.",
+        parse_mode="HTML",
+        reply_markup=keyboard
     )
-    await query.answer("❌ Группа отклонена", show_alert=True)
+
+
+async def confirm_group_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle teacher confirming group acceptance."""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    if not data.startswith("confirm_group_yes:"):
+        return
+
+    group_id = int(data.split(":")[1])
+    chat_id = update.effective_chat.id
+
+    try:
+        group = await _get_group_by_id(group_id)
+    except Group.DoesNotExist:
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.edit_message_text(text="❌ Группа не найдена.")
+        return
+
+    try:
+        teacher = await _get_user_by_chat_id(chat_id)
+    except User.DoesNotExist:
+        await query.answer("❌ Вы не зарегистрированы.", show_alert=True)
+        return
+
+    if group.teacher_id != teacher.id:
+        await query.answer("❌ Эта группа не вам.", show_alert=True)
+        return
+
+    if group.status != Group.Status.PENDING:
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.edit_message_text(text=f"⚠️ Статус группы уже изменён ({group.status}).")
+        return
+
+    # Подтверждаем
+    await _update_group_status(group_id, Group.Status.ACTIVE)
+
+    course_name = await _get_group_course_name(group)
+    company_name = await _get_group_company_name(group)
+
+    # Build keyboard for course admins
+    keyboard = []
+    if company_name:
+        keyboard.append([
+            InlineKeyboardButton(
+                "🔁 Повторить отправку",
+                callback_data=f"resubmit_group:{group.id}"
+            )
+        ])
+    keyboard.append([
+        InlineKeyboardButton("🔙 Назад в меню", callback_data="menu_back")
+    ])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_reply_markup(reply_markup=reply_markup)
+    await query.edit_message_text(
+        text=query.message.text + f"\n\n✅ Вы приняли группу «{group.name}» ({course_name})!",
+        reply_markup=reply_markup
+    )
+    await query.answer("✅ Группа подтверждена!", show_alert=True)
 
     # Notify course admins
-    company_name = await _get_group_company_name(group)
     if company_name:
+        teacher_name = f"{teacher.first_name} {teacher.last_name}".strip() or teacher.username
         admins = await _get_course_admins_for_company(company_name)
         application = _get_application()
         for admin in admins:
             try:
+                admin_keyboard = InlineKeyboardMarkup([[
+                    InlineKeyboardButton(
+                        "🔁 Повторить отправку",
+                        callback_data=f"resubmit_group:{group.id}"
+                    )
+                ]])
                 await application.bot.send_message(
                     chat_id=admin.telegram_chat_id,
                     text=(
-                        f"❌ <b>Учитель отказался от группы!</b>\n\n"
+                        f"✅ <b>Учитель подтвердил группу!</b>\n\n"
                         f"👨‍🏫 Учитель: {teacher_name}\n"
                         f"📚 Группа: {group.name}\n"
                         f"📖 Курс: {course_name}\n\n"
-                        f"Требуется назначить другого учителя."
+                        f"Нажмите кнопку ниже, если нужно повторить отправку."
                     ),
                     parse_mode="HTML",
+                    reply_markup=admin_keyboard
                 )
             except Exception as e:
                 logger.error(f"Failed to notify admin {admin.username}: {e}")
+
+
+async def reject_group_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle teacher confirming group rejection - then asks for comment."""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    if not data.startswith("reject_group_yes:"):
+        return
+
+    group_id = int(data.split(":")[1])
+    chat_id = update.effective_chat.id
+
+    try:
+        group = await _get_group_by_id(group_id)
+    except Group.DoesNotExist:
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.edit_message_text(text="❌ Группа не найдена.")
+        return
+
+    try:
+        teacher = await _get_user_by_chat_id(chat_id)
+    except User.DoesNotExist:
+        await query.answer("❌ Вы не зарегистрированы.", show_alert=True)
+        return
+
+    if group.teacher_id != teacher.id:
+        await query.answer("❌ Эта группа не вам.", show_alert=True)
+        return
+
+    if group.status != Group.Status.PENDING:
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.edit_message_text(text=f"⚠️ Статус группы уже изменён ({group.status}).")
+        return
+
+    # Запрашиваем комментарий
+    context.user_data['rejecting_group_id'] = group_id
+    context.user_data['rejecting_chat_id'] = chat_id
+    context.user_data['waiting_for_rejection_comment'] = True
+    
+    await query.edit_message_reply_markup(reply_markup=None)
+    await query.edit_message_text(
+        text=query.message.text + f"\n\n❌ Вы подтвердили отказ от группы «{group.name}».\n"
+        f"Теперь напишите причину (комментарий):",
+        parse_mode="HTML"
+    )
+    
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="✏️ Напишите комментарий или «без причины»:"
+    )
+
+
+async def cancel_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle teacher cancelling an action."""
+    query = update.callback_query
+    await query.answer()
+    
+    await query.edit_message_reply_markup(reply_markup=None)
+    await query.edit_message_text(
+        text=query.message.text + "\n\n✅ Действие отменено."
+    )
+    await query.answer("Отменено.")

@@ -1190,18 +1190,44 @@ class GroupViewSet(viewsets.ModelViewSet):
             for student in student_ids:
                 if student.company_name != user.company_name:
                     raise PermissionDenied("Student must belong to the same company.")
-        self._ensure_auditorium_available(serializer)
+        
+        # Вычисляем end_date до проверки аудитории
         end_date = compute_group_end_date(
             serializer.validated_data.get("start_date"),
             serializer.validated_data.get("schedule_days", ""),
             serializer.validated_data.get("lessons_count"),
         )
+        
+        # Проверяем, что дни заполнены
+        schedule_days = serializer.validated_data.get("schedule_days", "")
+        if not schedule_days:
+            raise PermissionDenied("Укажите дни занятий.")
+        
+        # Проверяем доступность аудитории
+        serializer.validated_data["end_date"] = end_date
+        self._ensure_auditorium_available(serializer)
+        
         save_kwargs = {"company_name": user.company_name, "end_date": end_date}
         # If teacher is assigned, set status to pending for teacher confirmation
         teacher = serializer.validated_data.get("teacher")
         if teacher:
             save_kwargs["status"] = Group.Status.PENDING
         serializer.save(**save_kwargs)
+        
+        # Отправить уведомление учителю, если группа назначена
+        if teacher:
+            try:
+                from telegram_bot.notifications import send_group_request_notification
+                import asyncio
+                
+                # Получаем свежий объект группы
+                group = Group.objects.select_related('teacher').get(id=serializer.instance.id)
+                if group.teacher and group.teacher.telegram_chat_id:
+                    asyncio.get_event_loop().run_until_complete(
+                        send_group_request_notification(group)
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to send group notification to teacher: {e}")
 
     def perform_update(self, serializer):
         user = self.request.user
@@ -1260,6 +1286,46 @@ class GroupViewSet(viewsets.ModelViewSet):
         if request.user.role == User.Role.MANAGER:
             raise PermissionDenied("Managers cannot delete groups.")
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=["post"])
+    def resubmit_after_rejection(self, request, pk=None):
+        """Повторная отправка запроса учителю после отказа (только для course_admin)"""
+        user = request.user
+        if user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            raise PermissionDenied("Только курс-админ или менеджер может повторить отправку.")
+
+        group = self.get_object()
+        
+        if group.status != Group.Status.REJECTED:
+            return Response(
+                {"detail": "Можно повторить отправку только для отклонённых групп."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        if not group.teacher:
+            return Response(
+                {"detail": "У группы должен быть назначен учитель."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        group.status = Group.Status.PENDING
+        group.save()
+        
+        # Отправить уведомление учителю через Telegram
+        from telegram_bot.helpers import _get_group_by_id
+        from telegram_bot.notifications import send_group_request_notification
+        from asgiref.sync import async_to_sync
+        
+        try:
+            group_with_teacher = Group.objects.select_related('teacher').get(id=group.id)
+            async_to_sync(send_group_request_notification)(group_with_teacher)
+        except Exception as e:
+            logger.warning(f"Failed to send group request notification: {e}")
+
+        return Response({
+            "detail": "Запрос повторно отправлен учителю.",
+            "status": group.status
+        })
 
     def _ensure_auditorium_available(self, serializer, instance=None):
         auditorium = serializer.validated_data.get(
