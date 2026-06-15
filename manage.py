@@ -13,6 +13,17 @@ def main():
         load_dotenv()
     except ImportError:
         pass
+    
+    # Custom command to run the Telegram bot
+    if len(sys.argv) > 1 and sys.argv[1] == "run_bot":
+        try:
+            from telegram_bot.bot import run_bot
+            run_bot()
+            return
+        except Exception as e:
+            print(f"Error running Telegram bot: {e}")
+            sys.exit(1)
+    
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:
