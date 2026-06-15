@@ -1803,6 +1803,8 @@ class LandingPageViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         user = self.request.user
         if user.role == User.Role.COURSE_ADMIN:
+            if user.company:
+                return queryset.filter(company=user.company)
             return queryset.filter(company_name=user.company_name)
         if user.role == User.Role.ADMIN or user.is_superuser:
             status_filter = self.request.query_params.get("status", "").strip()
@@ -1823,7 +1825,7 @@ class LandingPageViewSet(viewsets.ModelViewSet):
                 f"Landing pages limit reached. Maximum: {user.max_pages}, "
                 f"Current: {user.get_pages_count()}"
             )
-        serializer.save(owner=user, company_name=user.company_name)
+        serializer.save(owner=user, company=user.company, company_name=user.company_name)
 
     def perform_update(self, serializer):
         page = self.get_object()
