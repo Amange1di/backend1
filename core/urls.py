@@ -10,6 +10,10 @@ from .views import (
     CourseAdminCreateView,
     CourseAdminDetailView,
     CrmContactView,
+    ExpenseViewSet,
+    FinanceDashboardView,
+    FinanceExportView,
+    GroupMonthViewSet,
     GroupViewSet,
     HomeworkSubmissionViewSet,
     HomeworkTaskViewSet,
@@ -19,8 +23,6 @@ from .views import (
     LogoutView,
     ManagerViewSet,
     MeView,
-    UserBalanceHistoryView,
-    UserBalanceMeView,
     PaymentViewSet,
     PublicLandingDetailView,
     PublicLandingLeadCreateView,
@@ -32,21 +34,17 @@ from .views import (
     TaskViewSet,
     TeacherViewSet,
     TrialLeadViewSet,
-    PromoCodeViewSet,
     MarketplaceCompanyViewSet,
     MarketplaceCourseViewSet,
     MarketplaceJobViewSet,
     MyCoursesView,
     MyJobsView,
-    BoostCourseView,
-    BoostJobView,
-    UrgentCourseView,
-    UrgentJobView,
     PublicCourseViewSet,
     PublicJobViewSet,
     SuperAdminStatsView,
     GenerateTelegramBindCodeView,
     GetTelegramBindCodeView,
+    UserBalanceMeView,
 )
 
 router = DefaultRouter()
@@ -57,6 +55,8 @@ router.register("students", StudentViewSet)
 router.register("groups", GroupViewSet)
 router.register("auditoriums", AuditoriumViewSet)
 router.register("attendance", AttendanceViewSet)
+router.register("group-months", GroupMonthViewSet)
+router.register("expenses", ExpenseViewSet)
 router.register("payments", PaymentViewSet)
 router.register("landing-pages", LandingPageViewSet, basename="landing-pages")
 router.register("landing-header-links", LandingHeaderLinkViewSet, basename="landing-header-links")
@@ -64,7 +64,6 @@ router.register("homework-tasks", HomeworkTaskViewSet, basename="homework-tasks"
 router.register("homework-submissions", HomeworkSubmissionViewSet, basename="homework-submissions")
 router.register("trial-leads", TrialLeadViewSet, basename="trial-leads")
 router.register("tasks", TaskViewSet, basename="tasks")
-router.register("admin/promo-codes", PromoCodeViewSet, basename="promo-codes")
 
 # Marketplace routers
 router.register("marketplace/companies", MarketplaceCompanyViewSet, basename="marketplace-companies")
@@ -85,19 +84,17 @@ urlpatterns = [
     path("auth/student/profile/", StudentProfileView.as_view(), name="auth-student-profile"),
     path("auth/me/", MeView.as_view(), name="auth-me"),
     path("auth/logout/", LogoutView.as_view(), name="auth-logout"),
-    path("user/balance/me/", UserBalanceMeView.as_view(), name="user-balance-me"),
-    path("user/balance/history/", UserBalanceHistoryView.as_view(), name="user-balance-history"),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
     path("super-admin/stats/", SuperAdminStatsView.as_view(), name="super-admin-stats"),
+    
+    # Finance endpoints
+    path("finance/dashboard/", FinanceDashboardView.as_view(), name="finance-dashboard"),
+    path("finance/export/<str:export_format>/", FinanceExportView.as_view(), name="finance-export"),
     path("attendance/mark/", AttendanceMarkView.as_view(), name="attendance-mark"),
     
     # Marketplace endpoints
     path("marketplace/my-courses/", MyCoursesView.as_view(), name="marketplace-my-courses"),
     path("marketplace/my-jobs/", MyJobsView.as_view(), name="marketplace-my-jobs"),
-    path("marketplace/boost-course/<int:pk>/", BoostCourseView.as_view(), name="marketplace-boost-course"),
-    path("marketplace/boost-job/<int:pk>/", BoostJobView.as_view(), name="marketplace-boost-job"),
-    path("marketplace/urgent-course/<int:pk>/", UrgentCourseView.as_view(), name="marketplace-urgent-course"),
-    path("marketplace/urgent-job/<int:pk>/", UrgentJobView.as_view(), name="marketplace-urgent-job"),
     
     # Telegram bind code generation
     path("bot/generate-bind-code/", GenerateTelegramBindCodeView.as_view(), name="bot-generate-bind-code"),
@@ -105,6 +102,9 @@ urlpatterns = [
     
     # CRM website contact form (public, no slug required)
     path("public/crm-contact/", CrmContactView.as_view(), name="crm-contact"),
+
+    # User balance
+    path("user/balance/me/", UserBalanceMeView.as_view(), name="user-balance-me"),
 
     # Public landing pages (must be after router.urls to avoid conflicting with public/courses and public/jobs)
     path("public/landing-pages/<slug:slug>/", PublicLandingDetailView.as_view(), name="public-landing-detail"),

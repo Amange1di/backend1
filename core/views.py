@@ -25,7 +25,9 @@ from .models import (
     Attendance,
     Auditorium,
     Course,
+    Expense,
     Group,
+    GroupMonth,
     LandingHeaderLink,
     LandingPage,
     LandingSection,
@@ -48,6 +50,7 @@ from .models import (
     PublicCourse,
     JobVacancy,
     StudentApplication,
+    UserBalance,
 )
 from .permissions import (
     IsAdmin,
@@ -85,6 +88,8 @@ from .serializers import (
     AuditoriumSerializer,
     CourseAdminUpdateSerializer,
     CourseSerializer,
+    ExpenseSerializer,
+    GroupMonthSerializer,
     GroupSerializer,
     LandingHeaderLinkSerializer,
     LandingPageSerializer,
@@ -167,17 +172,15 @@ class RegisterView(APIView):
                     )
                 user = serializer.save(
                     force_role=User.Role.MANAGER,
-                    company_name=request.user.company_name,
                     created_by=request.user,
                 )
             else:
                 user = serializer.save(
                     force_role=User.Role.TEACHER,
-                    company_name=request.user.company_name,
                     created_by=request.user,
                 )
         else:
-            user = serializer.save(force_role=User.Role.TEACHER, company_name="")
+            user = serializer.save(force_role=User.Role.TEACHER)
         token, _ = Token.objects.get_or_create(user=user)
         return Response(
             {"token": token.key, "user": UserSerializer(user).data},
@@ -340,7 +343,7 @@ class StudentProfileView(APIView):
                 "last_name": student.last_name,
                 "phone": student.phone,
                 "telegram": student.telegram,
-                "company_name": student.company_name,
+                "company_name": student.company.name if student.company else "",
                 "can_login": student.can_login,
                 "must_set_password": request.user.must_set_password,
             }
@@ -421,7 +424,6 @@ class CourseAdminCreateView(APIView):
         # Сначала создаём пользователя без компании
         user = serializer.save(
             created_by=request.user,
-            company_name=company_name,
             company=None,  # Сначала без компании
             max_managers=max_managers,
         )
@@ -491,15 +493,9 @@ class MeView(APIView):
 
 
 def resolve_user_company_name(user: User) -> str:
-    company_name = (getattr(user, "company_name", "") or "").strip()
-    if company_name:
-        return company_name
     if getattr(user, "company", None) and user.company.name:
         return user.company.name.strip()
     if user.role == User.Role.MANAGER and user.created_by:
-        manager_company = (getattr(user.created_by, "company_name", "") or "").strip()
-        if manager_company:
-            return manager_company
         if getattr(user.created_by, "company", None) and user.created_by.company.name:
             return user.created_by.company.name.strip()
     return ""
@@ -523,14 +519,26 @@ class UserBalanceHistoryView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         
+        # Находим компанию пользователя (учитывая created_by для менеджеров)
+        user_company = request.user.company
+        if not user_company and request.user.role == User.Role.MANAGER:
+            company_name = resolve_user_company_name(request.user)
+            if company_name:
+                user_company = Company.objects.filter(name=company_name).first()
+        if not user_company:
+            return Response(
+                {"detail": "Компания не найдена."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
         transactions = Transaction.objects.filter(
-            company_name=company_name
+            company=user_company
         ).order_by("-timestamp")
         
         # Получаем баланс компании
         balance = 0
         try:
-            company_balance = CompanyBalance.objects.get(company_name=company_name)
+            company_balance = CompanyBalance.objects.get(company=user_company)
             balance = company_balance.balance
         except CompanyBalance.DoesNotExist:
             pass
@@ -549,7 +557,7 @@ class UserBalanceHistoryView(APIView):
             balance -= t.amount
         
         return Response({
-            "balance": CompanyBalance.objects.filter(company_name=company_name).first().balance if CompanyBalance.objects.filter(company_name=company_name).exists() else 0,
+            "balance": CompanyBalance.objects.filter(company=user_company).first().balance if CompanyBalance.objects.filter(company=user_company).exists() else 0,
             "transactions": data,
         })
 
@@ -565,22 +573,27 @@ class UserBalanceMeView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
         
-        company_name = resolve_user_company_name(request.user)
-        if not company_name:
+        # Находим компанию пользователя (учитывая created_by для менеджеров)
+        user_company = request.user.company
+        if not user_company and request.user.role == User.Role.MANAGER:
+            company_name = resolve_user_company_name(request.user)
+            if company_name:
+                user_company = Company.objects.filter(name=company_name).first()
+        if not user_company:
             return Response(
                 {"balance": 0},
             )
         
         balance = 0
         try:
-            company_balance = CompanyBalance.objects.get(company_name=company_name)
+            company_balance = CompanyBalance.objects.get(company=user_company)
             balance = company_balance.balance
         except CompanyBalance.DoesNotExist:
             pass
         
         return Response({
             "balance": balance,
-            "company_name": company_name,
+            "company_name": user_company.name,
         })
 
 
@@ -600,10 +613,10 @@ def resolve_support_telegram(user: User) -> str:
     if user.role in (User.Role.TEACHER, User.Role.MANAGER, User.Role.STUDENT):
         if user.created_by and user.created_by.telegram:
             return user.created_by.telegram
-        if user.company_name:
+        if user.company:
             course_admin = (
                 User.objects.filter(
-                    role=User.Role.COURSE_ADMIN, company_name=user.company_name
+                    role=User.Role.COURSE_ADMIN, company=user.company
                 )
                 .order_by("date_joined")
                 .first()
@@ -617,12 +630,12 @@ def resolve_support_telegram(user: User) -> str:
     return ""
 
 
-def get_company_student_cabinet_enabled(company_name: str) -> bool:
-    if not company_name:
+def get_company_student_cabinet_enabled(company):
+    if not company:
         return False
     return User.objects.filter(
         role=User.Role.COURSE_ADMIN,
-        company_name=company_name,
+        company=company,
         is_student_cabinet_enabled=True,
     ).exists()
 
@@ -635,7 +648,7 @@ def student_has_allowed_group(student: Student) -> bool:
 
 
 def ensure_student_access_allowed(student: Student):
-    if not student.company_name or not get_company_student_cabinet_enabled(student.company_name):
+    if not student.company or not get_company_student_cabinet_enabled(student.company.name if student.company else ""):
         raise PermissionDenied("Student cabinet is disabled for this company.")
     if not student.can_login:
         raise PermissionDenied("Student login is disabled for this account.")
@@ -771,7 +784,7 @@ class CourseViewSet(viewsets.ModelViewSet):
         admins = serializer.validated_data.get("admins", [])
         if user.role == User.Role.COURSE_ADMIN:
             for admin in admins:
-                if admin.company_name != user.company_name:
+                if admin.company != user.company:
                     raise PermissionDenied(
                         "Course admins can only assign their company admins."
                     )
@@ -790,7 +803,7 @@ class CourseViewSet(viewsets.ModelViewSet):
             admins = serializer.validated_data.get("admins", None)
             if admins is not None:
                 for admin in admins:
-                    if admin.company_name != user.company_name:
+                    if admin.company != user.company:
                         raise PermissionDenied(
                             "Course admins can only assign their company admins."
                         )
@@ -875,7 +888,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                 allowed = course.admins.filter(id=user.id).exists()
                 if user.role == User.Role.MANAGER:
                     allowed = course.admins.filter(
-                        company_name=user.company_name
+                        company=user.company
                     ).exists()
                 if not allowed:
                     raise PermissionDenied("Not allowed for this course.")
@@ -884,11 +897,11 @@ class StudentViewSet(viewsets.ModelViewSet):
                     allowed = group.course.admins.filter(id=user.id).exists()
                     if user.role == User.Role.MANAGER:
                         allowed = group.course.admins.filter(
-                            company_name=user.company_name
+                            company=user.company
                         ).exists()
                     if not allowed:
                         raise PermissionDenied("Not allowed for this group.")
-                elif group.company_name and group.company_name != user.company_name:
+                elif group.company and group.company != user.company:
                     raise PermissionDenied("Not allowed for this group.")
             if not course and group_ids:
                 first_course = group_ids[0].course
@@ -898,11 +911,11 @@ class StudentViewSet(viewsets.ModelViewSet):
                     auto_course = first_course
             if (
                 account
-                and account.company_name
-                and account.company_name != user.company_name
+                and account.company
+                and account.company != user.company
             ):
                 raise PermissionDenied("Not allowed for this user.")
-            save_kwargs = {"company_name": user.company_name}
+            save_kwargs = {"company": user.company}
             if course:
                 save_kwargs["primary_course"] = course
             elif auto_course:
@@ -923,7 +936,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                 allowed = course.admins.filter(id=user.id).exists()
                 if user.role == User.Role.MANAGER:
                     allowed = course.admins.filter(
-                        company_name=user.company_name
+                        company=user.company
                     ).exists()
                 if not allowed:
                     raise PermissionDenied("Not allowed for this course.")
@@ -933,11 +946,11 @@ class StudentViewSet(viewsets.ModelViewSet):
                     allowed = group.course.admins.filter(id=user.id).exists()
                     if user.role == User.Role.MANAGER:
                         allowed = group.course.admins.filter(
-                            company_name=user.company_name
+                            company=user.company
                         ).exists()
                     if not allowed:
                         raise PermissionDenied("Not allowed for this group.")
-                elif group.company_name and group.company_name != user.company_name:
+                elif group.company and group.company != user.company:
                     raise PermissionDenied("Not allowed for this group.")
             auto_course = None
             if not course and group_ids:
@@ -967,7 +980,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         if request.user.role != User.Role.COURSE_ADMIN:
             raise PermissionDenied("Only course admins can reset student passwords.")
         student = self.get_object()
-        if student.company_name != request.user.company_name:
+        if student.company != request.user.company:
             raise PermissionDenied("Not allowed for this student.")
         if not student.user:
             sync_student_user(student, created_by=request.user)
@@ -997,17 +1010,17 @@ class StudentViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Only course admins and managers can transfer students.")
 
         # Ensure student and group belong to the same company
-        if student.company_name != new_group.company_name:
+        if student.company != new_group.company:
             raise PermissionDenied("Student and new group must belong to the same company.")
 
         # Check company access
-        if user.role == User.Role.COURSE_ADMIN and student.company_name != user.company_name:
+        if user.role == User.Role.COURSE_ADMIN and student.company != user.company:
             raise PermissionDenied("Not allowed for this student.")
-        if user.role == User.Role.COURSE_ADMIN and new_group.company_name != user.company_name:
+        if user.role == User.Role.COURSE_ADMIN and new_group.company != user.company:
             raise PermissionDenied("Not allowed for this group.")
-        if user.role == User.Role.MANAGER and student.company_name != user.company_name:
+        if user.role == User.Role.MANAGER and student.company != user.company:
             raise PermissionDenied("Not allowed for this student.")
-        if user.role == User.Role.MANAGER and new_group.company_name != user.company_name:
+        if user.role == User.Role.MANAGER and new_group.company != user.company:
             raise PermissionDenied("Not allowed for this group.")
 
         # Unenroll from old group — history stays (FK relationships preserved)
@@ -1083,11 +1096,11 @@ class TeacherViewSet(viewsets.ModelViewSet):
                 and serializer.validated_data["role"] != User.Role.TEACHER
             ):
                 raise PermissionDenied("Course admins cannot change roles.")
-            if (
-                "company_name" in serializer.validated_data
-                and serializer.validated_data["company_name"] != user.company_name
-            ):
-                raise PermissionDenied("Not allowed for this company.")
+        if (
+            "company" in serializer.validated_data
+            and serializer.validated_data.get("company") != user.company
+        ):
+            raise PermissionDenied("Not allowed for this company.")
         serializer.save()
 
     def destroy(self, request, *args, **kwargs):
@@ -1132,7 +1145,7 @@ class ManagerViewSet(viewsets.ModelViewSet):
             data=request.data, context={"force_role": User.Role.MANAGER}
         )
         serializer.is_valid(raise_exception=True)
-        manager = serializer.save(created_by=user, company_name=user.company_name)
+        manager = serializer.save(created_by=user, company=user.company)
         return Response(UserSerializer(manager).data, status=status.HTTP_201_CREATED)
 
     def get_serializer_class(self):
@@ -1175,23 +1188,30 @@ class GroupViewSet(viewsets.ModelViewSet):
                 raise PermissionDenied("Not allowed for this course.")
             allowed = course.admins.filter(id=user.id).exists()
             if user.role == User.Role.MANAGER:
-                allowed = course.admins.filter(company_name=user.company_name).exists()
+                allowed = course.admins.filter(company=user.company).exists()
             if not allowed:
                 raise PermissionDenied("Not allowed for this course.")
             teacher = serializer.validated_data.get("teacher")
-            if teacher and teacher.company_name != user.company_name:
+            if teacher and teacher.company != user.company:
                 raise PermissionDenied("Teacher must belong to the same company.")
             if teacher and not teacher.teaching_courses.filter(id=course.id).exists():
                 raise PermissionDenied("Teacher is not assigned to this course.")
             auditorium = serializer.validated_data.get("auditorium")
-            if auditorium and auditorium.company_name != user.company_name:
+            if auditorium and auditorium.company != user.company:
                 raise PermissionDenied("Auditorium must belong to the same company.")
             student_ids = serializer.validated_data.get("student_ids", [])
             for student in student_ids:
-                if student.company_name != user.company_name:
+                if student.company != user.company:
                     raise PermissionDenied("Student must belong to the same company.")
         
-        # Вычисляем end_date до проверки аудитории
+        # Вычисляем lessons_count из lessons_per_month * total_months
+        lessons_per_month = serializer.validated_data.get("lessons_per_month")
+        total_months = serializer.validated_data.get("total_months")
+        if lessons_per_month and total_months:
+            total_lessons = lessons_per_month * total_months
+            serializer.validated_data["lessons_count"] = total_lessons
+        
+        # Вычисляем end_date с учётом нового lessons_count
         end_date = compute_group_end_date(
             serializer.validated_data.get("start_date"),
             serializer.validated_data.get("schedule_days", ""),
@@ -1207,12 +1227,45 @@ class GroupViewSet(viewsets.ModelViewSet):
         serializer.validated_data["end_date"] = end_date
         self._ensure_auditorium_available(serializer)
         
-        save_kwargs = {"company_name": user.company_name, "end_date": end_date}
+        save_kwargs = {"company": user.company, "end_date": end_date}
         # If teacher is assigned, set status to pending for teacher confirmation
         teacher = serializer.validated_data.get("teacher")
         if teacher:
             save_kwargs["status"] = Group.Status.PENDING
+        
+        # Получаем teacher_percent из данных формы (по умолчанию 0)
+        teacher_percent = serializer.validated_data.get("teacher_percent", 0) or 0
+        save_kwargs["teacher_percent"] = teacher_percent
+        
         serializer.save(**save_kwargs)
+        
+        # Автоматическое начисление % учителю при создании группы
+        # Формула: кол-во студентов × цена курса × teacher_percent / 100
+        if teacher and course and teacher_percent and teacher_percent > 0:
+            try:
+                teacher_user = User.objects.get(id=teacher.id)
+                course_price = course.price or 0
+                student_count = serializer.instance.students.count() or 0
+                total_amount = course_price * student_count
+                percent_amount = (total_amount * teacher_percent) / 100
+
+                if percent_amount > 0:
+                    teacher_balance, created = UserBalance.objects.get_or_create(user=teacher_user)
+                    reason = (
+                        f"Начисление %{teacher_percent}% от группы «{serializer.instance.name}» "
+                        f"({student_count} студ. × {course_price} eC)"
+                    )
+                    teacher_balance.add_coins(int(percent_amount), reason)
+                    logger.info(
+                        f"Teacher {teacher_user.username} credited {int(percent_amount)} eC "
+                        f"({teacher_percent}% of {student_count} students × {course_price} eC = {total_amount} eC)"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to credit teacher percent on create: {e}")
+        
+        # Авто-создание GroupMonth (месяцев обучения) при создании группы
+        months_count = total_months or 0
+        self._create_group_months(serializer.instance, months_count)
         
         # Отправить уведомление учителю, если группа назначена
         if teacher:
@@ -1229,10 +1282,39 @@ class GroupViewSet(viewsets.ModelViewSet):
             except Exception as e:
                 logger.warning(f"Failed to send group notification to teacher: {e}")
 
+    def _create_group_months(self, group: Group, months_count: int):
+        """
+        Синхронизирует месяцы обучения группы: создаёт недостающие,
+        удаляет лишние (если total_months уменьшился).
+        """
+        if months_count < 1:
+            # Если total_months = 0, удаляем все месяцы группы
+            GroupMonth.objects.filter(group=group).delete()
+            return
+
+        # Удаляем лишние месяцы (если total_months уменьшился)
+        GroupMonth.objects.filter(
+            group=group,
+            month_number__gt=months_count,
+        ).delete()
+
+        # Создаём недостающие месяцы
+        for month_number in range(1, months_count + 1):
+            GroupMonth.objects.get_or_create(
+                group=group,
+                month_number=month_number,
+                defaults={"status": GroupMonth.Status.PENDING},
+            )
+
     def perform_update(self, serializer):
         user = self.request.user
         instance = self.get_object()
         teacher_changed = False
+
+        # Сохраняем старые значения до обновления
+        old_teacher_percent = instance.teacher_percent
+        old_course = instance.course
+
         if user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
             if user.role == User.Role.MANAGER and "is_login_allowed" in serializer.validated_data:
                 raise PermissionDenied("Managers cannot change group login access.")
@@ -1241,12 +1323,12 @@ class GroupViewSet(viewsets.ModelViewSet):
                 allowed = course.admins.filter(id=user.id).exists()
                 if user.role == User.Role.MANAGER:
                     allowed = course.admins.filter(
-                        company_name=user.company_name
+                        company=user.company
                     ).exists()
                 if not allowed:
                     raise PermissionDenied("Not allowed for this course.")
             selected_teacher = serializer.validated_data.get("teacher", instance.teacher)
-            if selected_teacher and selected_teacher.company_name != user.company_name:
+            if selected_teacher and selected_teacher.company != user.company:
                 raise PermissionDenied("Teacher must belong to the same company.")
             course_for_teacher = course or instance.course
             if (
@@ -1258,11 +1340,11 @@ class GroupViewSet(viewsets.ModelViewSet):
             ):
                 raise PermissionDenied("Teacher is not assigned to this course.")
             auditorium = serializer.validated_data.get("auditorium")
-            if auditorium and auditorium.company_name != user.company_name:
+            if auditorium and auditorium.company != user.company:
                 raise PermissionDenied("Auditorium must belong to the same company.")
             student_ids = serializer.validated_data.get("student_ids", [])
             for student in student_ids:
-                if student.company_name != user.company_name:
+                if student.company != user.company:
                     raise PermissionDenied("Student must belong to the same company.")
             # Check if teacher changed
             if "teacher" in serializer.validated_data and serializer.validated_data["teacher"] != instance.teacher:
@@ -1272,15 +1354,100 @@ class GroupViewSet(viewsets.ModelViewSet):
         schedule_days = serializer.validated_data.get(
             "schedule_days", instance.schedule_days
         )
-        lessons_count = serializer.validated_data.get(
-            "lessons_count", instance.lessons_count
-        )
+        
+        # Вычисляем lessons_count из lessons_per_month * total_months (при создании или обновлении)
+        lessons_per_month = serializer.validated_data.get("lessons_per_month")
+        total_months = serializer.validated_data.get("total_months")
+        if lessons_per_month and total_months:
+            total_lessons = lessons_per_month * total_months
+            serializer.validated_data["lessons_count"] = total_lessons
+            lessons_count = total_lessons
+        else:
+            lessons_count = serializer.validated_data.get(
+                "lessons_count", instance.lessons_count
+            )
+        
         end_date = compute_group_end_date(start_date, schedule_days, lessons_count)
         save_kwargs = {"end_date": end_date}
         # If teacher changed, reset to pending for new teacher confirmation
         if teacher_changed and instance.status != Group.Status.PENDING:
             save_kwargs["status"] = Group.Status.PENDING
         serializer.save(**save_kwargs)
+        
+        # Создаём месяцы обучения, если total_months или lessons_per_month были изменены
+        month_fields_changed = "total_months" in serializer.validated_data or "lessons_per_month" in serializer.validated_data
+        if month_fields_changed:
+            final_total_months = total_months or instance.total_months
+            self._create_group_months(instance, final_total_months or 0)
+
+        # Начисляем % учителю, если изменился teacher, course или teacher_percent
+        percent_fields_changed = (
+            "teacher" in serializer.validated_data
+            or "course" in serializer.validated_data
+            or "teacher_percent" in serializer.validated_data
+        )
+        if percent_fields_changed:
+            self._credit_teacher_percent(
+                instance,
+                teacher_changed=teacher_changed,
+                old_percent=old_teacher_percent,
+                old_course=old_course,
+            )
+
+    def _credit_teacher_percent(
+        self,
+        group: Group,
+        teacher_changed: bool = False,
+        old_percent: float = 0,
+        old_course=None,
+    ):
+        """
+        Зачисляет учителю % от общей стоимости группы.
+        Формула: students_count × course_price × teacher_percent / 100.
+        При teacher_changed — сначала списываем старую сумму, потом начисляем новую.
+        """
+        teacher = group.teacher
+        course = group.course
+        teacher_percent = group.teacher_percent or 0
+
+        if not teacher or not course or not teacher_percent or teacher_percent <= 0:
+            return
+
+        student_count = group.students.count() or 0
+        if student_count == 0:
+            return
+
+        try:
+            teacher_user = User.objects.get(id=teacher.id)
+            course_price = course.price or 0
+            total_amount = course_price * student_count
+            percent_amount = int((total_amount * teacher_percent) / 100)
+
+            if percent_amount <= 0:
+                return
+
+            teacher_balance, created = UserBalance.objects.get_or_create(user=teacher_user)
+
+            if (teacher_changed or old_percent != teacher_percent or old_course != course) and old_percent and old_percent > 0:
+                # Списываем старую сумму
+                old_total = (old_course.price or 0) * student_count
+                old_amount = int((old_total * old_percent) / 100)
+                if old_amount > 0:
+                    teacher_balance.spend_coins(old_amount, f"Корректировка: списание %{old_percent}% группы «{group.name}»")
+                    logger.info(f"Teacher {teacher_user.username} debited {old_amount} eC (correction for group {group.name})")
+
+            # Начисляем новую сумму
+            reason = (
+                f"Начисление %{teacher_percent}% от группы «{group.name}» "
+                f"({student_count} студ. × {course_price} eC)"
+            )
+            teacher_balance.add_coins(percent_amount, reason)
+            logger.info(
+                f"Teacher {teacher_user.username} credited {percent_amount} eC "
+                f"({teacher_percent}% of {student_count} students × {course_price} eC = {total_amount} eC)"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to credit teacher percent for group {group.id}: {e}")
 
     def destroy(self, request, *args, **kwargs):
         if request.user.role == User.Role.MANAGER:
@@ -1417,14 +1584,8 @@ class AuditoriumViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.role == User.Role.MANAGER:
             raise PermissionDenied("Managers cannot create auditoriums.")
-        # Получаем company_name из компании или из поля user.company_name
         company = user.company
-        company_name = ""
-        if company and company.name:
-            company_name = company.name
-        elif user.company_name:
-            company_name = user.company_name
-        serializer.save(company=company, company_name=company_name)
+        serializer.save(company=company)
 
 
 class AttendanceViewSet(viewsets.ModelViewSet):
@@ -1438,7 +1599,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
             return queryset.filter(
                 models.Q(group__course__admins=user)
-                | models.Q(group__company_name=user.company_name)
+                | models.Q(group__company=user.company)
             ).distinct()
         if user.is_authenticated and user.role == User.Role.TEACHER:
             return queryset.filter(group__teacher=user)
@@ -1486,10 +1647,10 @@ class PaymentViewSet(viewsets.ModelViewSet):
                         allowed = True
                 else:
                     if student.primary_course.admins.filter(
-                        company_name=user.company_name
+                        company=user.company
                     ).exists():
                         allowed = True
-            if student and student.company_name == user.company_name:
+            if student and student.company == user.company:
                 allowed = True
             if group:
                 if group.course:
@@ -1498,10 +1659,10 @@ class PaymentViewSet(viewsets.ModelViewSet):
                             allowed = True
                     else:
                         if group.course.admins.filter(
-                            company_name=user.company_name
+                            company=user.company
                         ).exists():
                             allowed = True
-                if group.company_name and group.company_name == user.company_name:
+                if group.company and group.company == user.company:
                     allowed = True
             if not allowed:
                 raise PermissionDenied("Not allowed for this course.")
@@ -1805,14 +1966,14 @@ class LandingPageViewSet(viewsets.ModelViewSet):
         if user.role == User.Role.COURSE_ADMIN:
             if user.company:
                 return queryset.filter(company=user.company)
-            return queryset.filter(company_name=user.company_name)
+            return queryset.filter(company=user.company)
         if user.role == User.Role.ADMIN or user.is_superuser:
             status_filter = self.request.query_params.get("status", "").strip()
             if status_filter:
                 queryset = queryset.filter(status=status_filter)
             company_name = self.request.query_params.get("company_name", "").strip()
             if company_name:
-                queryset = queryset.filter(company_name=company_name)
+                queryset = queryset.filter(company=company_name)
             return queryset
         return queryset.none()
 
@@ -1825,13 +1986,13 @@ class LandingPageViewSet(viewsets.ModelViewSet):
                 f"Landing pages limit reached. Maximum: {user.max_pages}, "
                 f"Current: {user.get_pages_count()}"
             )
-        serializer.save(owner=user, company=user.company, company_name=user.company_name)
+        serializer.save(owner=user, company=user.company)
 
     def perform_update(self, serializer):
         page = self.get_object()
         user = self.request.user
         if user.role == User.Role.COURSE_ADMIN:
-            if page.company_name != user.company_name:
+            if page.company != user.company:
                 raise PermissionDenied("Not allowed for this landing page.")
             serializer.save()
             return
@@ -1843,7 +2004,7 @@ class LandingPageViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         page = self.get_object()
         user = request.user
-        if user.role == User.Role.COURSE_ADMIN and page.company_name != user.company_name:
+        if user.role == User.Role.COURSE_ADMIN and page.company != user.company:
             raise PermissionDenied("Not allowed for this landing page.")
         if user.role not in (User.Role.COURSE_ADMIN, User.Role.ADMIN) and not user.is_superuser:
             raise PermissionDenied("Not allowed to delete this landing page.")
@@ -1853,7 +2014,7 @@ class LandingPageViewSet(viewsets.ModelViewSet):
     def submit(self, request, pk=None):
         page = self.get_object()
         user = request.user
-        if user.role != User.Role.COURSE_ADMIN or page.company_name != user.company_name:
+        if user.role != User.Role.COURSE_ADMIN or page.company != user.company:
             raise PermissionDenied("Only the owning course admin can submit this landing page.")
         if page.status == LandingPage.Status.PENDING:
             raise PermissionDenied("This landing page is already pending moderation.")
@@ -1929,11 +2090,11 @@ class LandingHeaderLinkViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         user = self.request.user
         if user.role == User.Role.COURSE_ADMIN:
-            return queryset.filter(company_name=user.company_name)
+            return queryset.filter(company=user.company)
         if user.role == User.Role.ADMIN or user.is_superuser:
             company_name = self.request.query_params.get("company_name", "").strip()
             if company_name:
-                queryset = queryset.filter(company_name=company_name)
+                queryset = queryset.filter(company=company_name)
             return queryset
         return queryset.none()
 
@@ -1941,18 +2102,18 @@ class LandingHeaderLinkViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.role != User.Role.COURSE_ADMIN:
             raise PermissionDenied("Only course admins can manage landing header links.")
-        serializer.save(company_name=user.company_name)
+        serializer.save(company=user.company)
 
     def perform_update(self, serializer):
         link = self.get_object()
         user = self.request.user
-        if user.role != User.Role.COURSE_ADMIN or link.company_name != user.company_name:
+        if user.role != User.Role.COURSE_ADMIN or link.company != user.company:
             raise PermissionDenied("Only the owning course admin can update this header link.")
         serializer.save()
 
     def destroy(self, request, *args, **kwargs):
         link = self.get_object()
-        if request.user.role != User.Role.COURSE_ADMIN or link.company_name != request.user.company_name:
+        if request.user.role != User.Role.COURSE_ADMIN or link.company != request.user.company:
             raise PermissionDenied("Only the owning course admin can delete this header link.")
         return super().destroy(request, *args, **kwargs)
 
@@ -1992,7 +2153,6 @@ class PublicLandingLeadCreateView(APIView):
             course_interest=(request.data.get("course_interest") or "").strip(),
             source=f"landing:{page.slug}",
             comment=(request.data.get("comment") or "").strip(),
-            company_name=page.company.name if page.company else page.company_name,
             company=page.company,
         )
         return Response(TrialLeadSerializer(lead).data, status=status.HTTP_201_CREATED)
@@ -2029,7 +2189,6 @@ class CrmContactView(APIView):
             phone=phone,
             source="crm-landing",
             comment="\n".join(comment_parts),
-            company_name="",
             company=None,
         )
 
@@ -2065,11 +2224,11 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
         if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
             if user.company:
                 return queryset.filter(company=user.company)
-            return queryset.filter(company_name=user.company_name)
+            return queryset.filter(company=user.company)
         if user.is_authenticated and user.role == User.Role.MANAGER:
             if user.company:
                 return queryset.filter(company=user.company)
-            return queryset.filter(company_name=user.company_name)
+            return queryset.filter(company=user.company)
         return queryset.none()
 
     def perform_create(self, serializer):
@@ -2077,16 +2236,16 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
         if user.role != User.Role.MANAGER:
             raise PermissionDenied("Only managers can create trial leads.")
         group = serializer.validated_data.get("group_assigned")
-        if group and group.company_name != user.company_name:
+        if group and group.company != user.company:
             raise PermissionDenied("Not allowed for this group.")
-        serializer.save(company_name=user.company_name)
+        serializer.save(company=user.company)
 
     def perform_update(self, serializer):
         user = self.request.user
         if user.role != User.Role.MANAGER:
             raise PermissionDenied("Only managers can update trial leads.")
         group = serializer.validated_data.get("group_assigned")
-        if group and group.company_name != user.company_name:
+        if group and group.company != user.company:
             raise PermissionDenied("Not allowed for this group.")
         serializer.save()
 
@@ -2314,14 +2473,14 @@ def validate_landing_page_for_publication(page: LandingPage, owner: User | None)
         raise PermissionDenied(
             f"Page exceeds the allowed number of blocks ({owner.max_blocks})."
         )
-    total_pages = LandingPage.objects.filter(company_name=page.company_name).count()
+    total_pages = LandingPage.objects.filter(company=page.company).count()
     if total_pages > 1:
-        links = LandingHeaderLink.objects.filter(company_name=page.company_name)
+        links = LandingHeaderLink.objects.filter(company=page.company)
         if not links.exists():
             raise PermissionDenied(
                 "Header navigation must be configured when more than one landing page exists."
             )
-        invalid_target_exists = links.exclude(target_page__company_name=page.company_name).exists()
+        invalid_target_exists = links.exclude(target_page__company=page.company).exists()
         if invalid_target_exists:
             raise PermissionDenied("All header links must target pages from the same company.")
 
@@ -2354,7 +2513,7 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
         if user.is_authenticated and user.role == User.Role.TEACHER:
             return queryset.filter(teacher=user)
         if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
-            return queryset.filter(company_name=user.company_name)
+            return queryset.filter(company=user.company)
         return queryset.none()
 
     def create(self, request, *args, **kwargs):
@@ -2366,7 +2525,7 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
         group = serializer.validated_data.get("group")
         if not group or group.teacher_id != user.id:
             raise PermissionDenied("Homework can only be created for your own groups.")
-        instance = serializer.save(teacher=user, company_name=user.company_name)
+        instance = serializer.save(teacher=user, company=user.company)
         self._save_attachments(instance)
         data = self.get_serializer(instance).data
         headers = self.get_success_headers(data)
@@ -2385,7 +2544,7 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
             self._save_attachments(instance, replace=True)
             return
         if user.role == User.Role.COURSE_ADMIN:
-            if instance.company_name != user.company_name:
+            if instance.company != user.company:
                 raise PermissionDenied("Not allowed for this homework task.")
             updated = serializer.save()
             self._save_attachments(updated, replace=True)
@@ -2397,7 +2556,7 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         if user.role == User.Role.TEACHER and instance.teacher_id == user.id:
             return super().destroy(request, *args, **kwargs)
-        if user.role == User.Role.COURSE_ADMIN and instance.company_name == user.company_name:
+        if user.role == User.Role.COURSE_ADMIN and instance.company == user.company:
             return super().destroy(request, *args, **kwargs)
         raise PermissionDenied("Not allowed to delete this homework task.")
 
@@ -2521,7 +2680,7 @@ def build_task_instances(validated_data, user):
                 title=validated_data.get("title", ""),
                 description=validated_data.get("description", ""),
                 assigned_to=validated_data.get("assigned_to"),
-                company_name=user.company_name,
+                company=user.company,
                 created_by=user,
                 due_date=due_date,
                 due_time=validated_data.get("due_time"),
@@ -2705,9 +2864,9 @@ class AttendanceMarkView(APIView):
                     allowed = group.course.admins.filter(id=user.id).exists()
                 else:
                     allowed = group.course.admins.filter(
-                        company_name=user.company_name
+                        company=user.company
                     ).exists()
-            if group.company_name and group.company_name == user.company_name:
+            if group.company and group.company == user.company:
                 allowed = True
             if not allowed:
                 raise permissions.PermissionDenied("Not allowed for this course.")
@@ -2802,8 +2961,8 @@ class MarketplaceCompanyViewSet(viewsets.ModelViewSet):
         if user.role == User.Role.COURSE_ADMIN:
             queryset = queryset.filter(owner=user)
         elif user.role == User.Role.MANAGER:
-            if user.company_name:
-                queryset = queryset.filter(owner__company_name=user.company_name)
+            if user.company:
+                queryset = queryset.filter(owner__company=user.company)
             else:
                 queryset = queryset.none()
         elif user.role in (User.Role.TEACHER, User.Role.STUDENT):
@@ -2868,7 +3027,7 @@ class MarketplaceCourseViewSet(viewsets.ModelViewSet):
         if user.role == User.Role.COURSE_ADMIN and course.company.owner != user:
             raise PermissionDenied("Not allowed for this course.")
         if user.role == User.Role.MANAGER:
-            if not course.company.owner__company_name == user.company_name:
+            if not course.company.owner__company == user.company:
                 raise PermissionDenied("Not allowed for this course.")
         
         serializer.save()
@@ -2890,8 +3049,8 @@ class MarketplaceJobViewSet(viewsets.ModelViewSet):
         if user.role == User.Role.COURSE_ADMIN:
             return queryset.filter(company__owner=user)
         elif user.role == User.Role.MANAGER:
-            if user.company_name:
-                return queryset.filter(company__owner__company_name=user.company_name)
+            if user.company:
+                return queryset.filter(company__owner__company=user.company)
             return queryset.none()
         
         return queryset
@@ -2993,13 +3152,13 @@ class BoostCourseView(APIView):
         # Check ownership
         if user.role == User.Role.COURSE_ADMIN and course.company.owner != user:
             return Response({"detail": "Недостаточно прав."}, status=status.HTTP_403_FORBIDDEN)
-        if user.role == User.Role.MANAGER and course.company.owner__company_name != user.company_name:
+        if user.role == User.Role.MANAGER and course.company.owner__company != user.company:
             return Response({"detail": "Недостаточно прав."}, status=status.HTTP_403_FORBIDDEN)
         
         # Check balance
         BOOST_COST = 500
         try:
-            company_balance = CompanyBalance.objects.get(company_name=user.company_name)
+            company_balance = CompanyBalance.objects.get(company=user.company)
             if company_balance.balance < BOOST_COST:
                 return Response(
                     {"detail": f"Недостаточно средств. Требуется {BOOST_COST} eC."},
@@ -3021,7 +3180,7 @@ class BoostCourseView(APIView):
         company_balance.save()
         
         Transaction.objects.create(
-            company_name=user.company_name,
+            company=user.company,
             amount=-BOOST_COST,
             reason=f"Продвижение курса: {course.title}",
             transaction_type=Transaction.TransactionType.BOOST,
@@ -3047,13 +3206,13 @@ class BoostJobView(APIView):
         # Check ownership
         if user.role == User.Role.COURSE_ADMIN and job.company.owner != user:
             return Response({"detail": "Недостаточно прав."}, status=status.HTTP_403_FORBIDDEN)
-        if user.role == User.Role.MANAGER and job.company.owner__company_name != user.company_name:
+        if user.role == User.Role.MANAGER and job.company.owner__company != user.company:
             return Response({"detail": "Недостаточно прав."}, status=status.HTTP_403_FORBIDDEN)
         
         # Check balance
         BOOST_COST = 500
         try:
-            company_balance = CompanyBalance.objects.get(company_name=user.company_name)
+            company_balance = CompanyBalance.objects.get(company=user.company)
             if company_balance.balance < BOOST_COST:
                 return Response(
                     {"detail": f"Недостаточно средств. Требуется {BOOST_COST} eC."},
@@ -3075,7 +3234,7 @@ class BoostJobView(APIView):
         company_balance.save()
         
         Transaction.objects.create(
-            company_name=user.company_name,
+            company=user.company,
             amount=-BOOST_COST,
             reason=f"Продвижение вакансии: {job.title}",
             transaction_type=Transaction.TransactionType.BOOST,
@@ -3101,13 +3260,13 @@ class UrgentCourseView(APIView):
         # Check ownership
         if user.role == User.Role.COURSE_ADMIN and course.company.owner != user:
             return Response({"detail": "Недостаточно прав."}, status=status.HTTP_403_FORBIDDEN)
-        if user.role == User.Role.MANAGER and course.company.owner__company_name != user.company_name:
+        if user.role == User.Role.MANAGER and course.company.owner__company != user.company:
             return Response({"detail": "Недостаточно прав."}, status=status.HTTP_403_FORBIDDEN)
         
         # Check balance
         URGENT_COST = 200
         try:
-            company_balance = CompanyBalance.objects.get(company_name=user.company_name)
+            company_balance = CompanyBalance.objects.get(company=user.company)
             if company_balance.balance < URGENT_COST:
                 return Response(
                     {"detail": f"Недостаточно средств. Требуется {URGENT_COST} eC."},
@@ -3129,7 +3288,7 @@ class UrgentCourseView(APIView):
         company_balance.save()
         
         Transaction.objects.create(
-            company_name=user.company_name,
+            company=user.company,
             amount=-URGENT_COST,
             reason=f"Срочный бейдж для курса: {course.title}",
             transaction_type=Transaction.TransactionType.URGENT,
@@ -3155,13 +3314,13 @@ class UrgentJobView(APIView):
         # Check ownership
         if user.role == User.Role.COURSE_ADMIN and job.company.owner != user:
             return Response({"detail": "Недостаточно прав."}, status=status.HTTP_403_FORBIDDEN)
-        if user.role == User.Role.MANAGER and job.company.owner__company_name != user.company_name:
+        if user.role == User.Role.MANAGER and job.company.owner__company != user.company:
             return Response({"detail": "Недостаточно прав."}, status=status.HTTP_403_FORBIDDEN)
         
         # Check balance
         URGENT_COST = 200
         try:
-            company_balance = CompanyBalance.objects.get(company_name=user.company_name)
+            company_balance = CompanyBalance.objects.get(company=user.company)
             if company_balance.balance < URGENT_COST:
                 return Response(
                     {"detail": f"Недостаточно средств. Требуется {URGENT_COST} eC."},
@@ -3183,7 +3342,7 @@ class UrgentJobView(APIView):
         company_balance.save()
         
         Transaction.objects.create(
-            company_name=user.company_name,
+            company=user.company,
             amount=-URGENT_COST,
             reason=f"Срочный бейдж для вакансии: {job.title}",
             transaction_type=Transaction.TransactionType.URGENT,
@@ -3381,3 +3540,346 @@ class GetTelegramBindCodeView(APIView):
             "code": pending_code.code,
             "expires_at": pending_code.expires_at.isoformat(),
         })
+
+
+class ExpenseViewSet(viewsets.ModelViewSet):
+    queryset = Expense.objects.none()
+    """
+    CRUD для расходов компании.
+    """
+    permission_classes = [IsCourseAdminOrManager]
+    serializer_class = ExpenseSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == User.Role.COURSE_ADMIN:
+            if user.company:
+                return Expense.objects.filter(company=user.company)
+            return Expense.objects.none()
+        if user.role == User.Role.MANAGER:
+            if user.company:
+                return Expense.objects.filter(company=user.company)
+            return Expense.objects.none()
+        return Expense.objects.none()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        company = user.company
+        if not company:
+            raise PermissionDenied("У вас нет компании для создания расходов.")
+        serializer.save(company=company)
+
+
+
+class GroupMonthViewSet(viewsets.ModelViewSet):
+    queryset = GroupMonth.objects.none()
+    """
+    CRUD для месяцев обучения группы.
+    """
+    permission_classes = [IsCourseAdminOrManagerReadOnly]
+    serializer_class = GroupMonthSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            if user.company:
+                qs = GroupMonth.objects.filter(group__company=user.company)
+            else:
+                return GroupMonth.objects.none()
+        elif user.role == User.Role.TEACHER:
+            qs = GroupMonth.objects.filter(group__teacher=user)
+        else:
+            return GroupMonth.objects.none()
+        # Фильтр по группе, если передан параметр ?group=ID
+        group_id = self.request.query_params.get("group")
+        if group_id and group_id.isdigit():
+            qs = qs.filter(group_id=int(group_id))
+        # Фильтр по учителю, если передан параметр ?teacher_id=ID
+        teacher_id = self.request.query_params.get("teacher_id")
+        if teacher_id and teacher_id.isdigit():
+            qs = qs.filter(group__teacher_id=int(teacher_id))
+        # Фильтр по месяцу, если передан параметр ?month_number=N
+        month_number = self.request.query_params.get("month_number")
+        if month_number and month_number.isdigit():
+            qs = qs.filter(month_number=int(month_number))
+        # Фильтр по статусу, если передан параметр ?status=pending|completed
+        status = self.request.query_params.get("status")
+        if status:
+            qs = qs.filter(status=status)
+        return qs.select_related("group", "group__course").prefetch_related("group__students")
+
+    def list(self, request, *args, **kwargs):
+        # Auto-create все месяцы для группы, если их нет
+        group_id = request.query_params.get("group")
+        if group_id:
+            try:
+                group = Group.objects.get(id=group_id)
+                if group.total_months and group.total_months > 0:
+                    existing = set(GroupMonth.objects.filter(
+                        group=group
+                    ).values_list("month_number", flat=True))
+                    for month_number in range(1, group.total_months + 1):
+                        if month_number not in existing:
+                            GroupMonth.objects.create(
+                                group=group,
+                                month_number=month_number,
+                                status=GroupMonth.Status.PENDING,
+                            )
+            except Group.DoesNotExist:
+                pass
+        return super().list(request, *args, **kwargs)
+
+    def _sync_expense_for_month(self, instance: GroupMonth):
+        """
+        При завершении месяца с зарплатой — создаёт/обновляет расход (Expense).
+        При возврате в ожидание — удаляет расход.
+        """
+        group = instance.group
+        if not group.company:
+            return
+        desc = f"Зарплата: {group.name} — месяц {instance.month_number}"
+        if instance.status == GroupMonth.Status.COMPLETED and instance.teacher_salary:
+            Expense.objects.update_or_create(
+                company=group.company,
+                description=desc,
+                defaults={
+                    "amount": instance.teacher_salary,
+                    "category": "salary",
+                    "date": instance.completed_at.date() if instance.completed_at else timezone.localdate(),
+                },
+            )
+        elif instance.status == GroupMonth.Status.PENDING:
+            Expense.objects.filter(
+                company=group.company,
+                description=desc,
+            ).delete()
+
+    def perform_update(self, serializer):
+        """
+        При закрытии месяца (completed_at установлен) —
+        авто-создаём следующий месяц, если не превышен лимит total_months.
+        """
+        instance = serializer.save()
+
+        # Проверяем, был ли месяц только что закрыт
+        if instance.status == GroupMonth.Status.COMPLETED and instance.completed_at:
+            group = instance.group
+            next_month_number = instance.month_number + 1
+
+            # Не создаём, если превышает total_months группы
+            if not group.total_months or next_month_number > group.total_months:
+                return
+
+            # Создаём следующий месяц, если его ещё нет
+            GroupMonth.objects.get_or_create(
+                group=group,
+                month_number=next_month_number,
+                defaults={"status": GroupMonth.Status.PENDING},
+            )
+
+            # Автоматическое начисление % учителю при завершении месяца
+            self._credit_teacher_percent_on_month_completion(instance)
+
+    def _credit_teacher_percent_on_month_completion(self, instance: GroupMonth):
+        """
+        При завершении месяца начисляет учителю % от стоимости группы.
+        Формула: students_count × course_price × teacher_percent / 100.
+        Начисляется один раз за каждый завершённый месяц.
+        """
+        group = instance.group
+        teacher = group.teacher
+        teacher_percent = group.teacher_percent or 0
+        course = group.course
+
+        if not teacher or not course or not teacher_percent or teacher_percent <= 0:
+            return
+
+        student_count = group.students.count() or 0
+        if student_count == 0:
+            return
+
+        try:
+            teacher_user = User.objects.get(id=teacher.id)
+            course_price = course.price or 0
+            total_amount = course_price * student_count
+            percent_amount = int((total_amount * teacher_percent) / 100)
+
+            if percent_amount <= 0:
+                return
+
+            # Проверяем, не начислялось ли уже за этот месяц
+            # Используем Q-объекты для OR-логики поиска по нескольким условиям
+            from django.db.models import Q
+            already_credited = UserTransaction.objects.filter(
+                user=teacher_user,
+                amount__gt=0,
+                reason__contains=f"месяц {instance.month_number}",
+            ).filter(
+                Q(reason__contains=group.name) | Q(reason__contains=str(instance.month_number))
+            ).exists()
+
+            if already_credited:
+                logger.info(
+                    f"Teacher {teacher_user.username} already credited for month {instance.month_number} of group {group.name}"
+                )
+                return
+
+            teacher_balance, created = UserBalance.objects.get_or_create(user=teacher_user)
+            reason = (
+                f"Начисление %{teacher_percent}% за месяц {instance.month_number} группы «{group.name}» "
+                f"({student_count} студ. × {course_price} eC)"
+            )
+            teacher_balance.add_coins(percent_amount, reason)
+            logger.info(
+                f"Teacher {teacher_user.username} credited {percent_amount} eC "
+                f"for month {instance.month_number} of group {group.name} "
+                f"({teacher_percent}% of {student_count} students × {course_price} eC)"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to credit teacher percent on month completion for group {group.id}: {e}")
+
+
+class FinanceDashboardView(APIView):
+    """
+    Дашборд финансовой сводки.
+    GET /api/finance/dashboard/
+    """
+    permission_classes = [IsCourseAdminOrManager]
+
+    def get(self, request):
+        from django.db.models import Sum
+        
+        from calendar import monthrange
+
+        user = request.user
+        if user.role == User.Role.COURSE_ADMIN:
+            company = user.company
+        elif user.role == User.Role.MANAGER:
+            company = user.company
+        else:
+            return Response({'detail': 'Нет доступа'}, status=403)
+
+        if not company:
+            return Response({'detail': 'Компания не найдена'}, status=404)
+
+        now = timezone.now().date()
+        first_of_month = date(now.year, now.month, 1)
+        end_of_month = date(now.year, now.month, monthrange(now.year, now.month)[1])
+        start_of_year = date(now.year, 1, 1)
+
+        monthly_income = Payment.objects.filter(
+            company=company, status='paid',
+            paid_at__gte=first_of_month, paid_at__lte=end_of_month
+        ).aggregate(total=Sum('amount'))['total'] or 0
+
+        monthly_expenses = Expense.objects.filter(
+            company=company,
+            date__gte=first_of_month, date__lte=end_of_month
+        ).aggregate(total=Sum('amount'))['total'] or 0
+
+        monthly_salaries = GroupMonth.objects.filter(
+            group__company=company, teacher_salary__isnull=False,
+            completed_at__gte=first_of_month, completed_at__lte=end_of_month
+        ).aggregate(total=Sum('teacher_salary'))['total'] or 0
+
+        monthly_total_expenses = float(monthly_expenses) + float(monthly_salaries)
+
+        yearly_income = Payment.objects.filter(
+            company=company, status='paid',
+            paid_at__gte=start_of_year, paid_at__lte=end_of_month
+        ).aggregate(total=Sum('amount'))['total'] or 0
+
+        yearly_expenses = Expense.objects.filter(
+            company=company,
+            date__gte=start_of_year, date__lte=end_of_month
+        ).aggregate(total=Sum('amount'))['total'] or 0
+
+        yearly_salaries = GroupMonth.objects.filter(
+            group__company=company, teacher_salary__isnull=False,
+            completed_at__gte=start_of_year, completed_at__lte=end_of_month
+        ).aggregate(total=Sum('teacher_salary'))['total'] or 0
+
+        yearly_total_expenses = float(yearly_expenses) + float(yearly_salaries)
+
+        total_debt = Payment.objects.filter(
+            company=company, status='debt'
+        ).aggregate(total=Sum('amount'))['total'] or 0
+
+        students_count = Student.objects.filter(company=company).count()
+
+        from finance.models import Budget
+        active_budgets_count = Budget.objects.filter(company=company, is_active=True).count()
+
+        return Response({
+            'monthly': {
+                'income': float(monthly_income),
+                'expenses': monthly_total_expenses,
+                'net': float(monthly_income) - monthly_total_expenses,
+            },
+            'yearly': {
+                'income': float(yearly_income),
+                'expenses': yearly_total_expenses,
+                'net': float(yearly_income) - yearly_total_expenses,
+            },
+            'total_debt': float(total_debt),
+            'students_count': students_count,
+            'active_budgets': active_budgets_count,
+        })
+
+
+class FinanceExportView(APIView):
+    """
+    Экспорт финансовых данных.
+    GET /api/finance/export/<format>/
+    """
+    permission_classes = [IsCourseAdminOrManager]
+
+    def get(self, request, export_format: str):
+        from django.db.models import Sum
+        from calendar import monthrange
+
+        user = request.user
+        if user.role == User.Role.COURSE_ADMIN:
+            company = user.company
+        elif user.role == User.Role.MANAGER:
+            company = user.company
+        else:
+            return Response({'detail': 'Нет доступа'}, status=403)
+
+        if not company:
+            return Response({'detail': 'Компания не найдена'}, status=404)
+
+        now = timezone.now().date()
+        first_of_month = date(now.year, now.month, 1)
+        end_of_month = date(now.year, now.month, monthrange(now.year, now.month)[1])
+
+        payments = Payment.objects.filter(
+            company=company,
+            paid_at__gte=first_of_month, paid_at__lte=end_of_month
+        ).select_related('student', 'group')
+
+        expenses = Expense.objects.filter(
+            company=company,
+            date__gte=first_of_month, date__lte=end_of_month
+        )
+
+        if export_format == 'json':
+            return Response({
+                'payments': list(payments.values('id', 'student__first_name', 'student__last_name', 'amount', 'status', 'paid_at')),
+                'expenses': list(expenses.values('id', 'description', 'amount', 'category', 'date')),
+            })
+        else:
+            return Response({'detail': f'Формат "{export_format}" не поддерживается.'}, status=400)
+
+
+class UserBalanceMeView(APIView):
+    """
+    Get current user's eduCoin balance.
+    GET /api/user/balance/me/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        user_balance, created = UserBalance.objects.get_or_create(user=user)
+        return Response({'balance': user_balance.balance})
