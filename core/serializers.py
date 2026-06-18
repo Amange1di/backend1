@@ -10,7 +10,9 @@ from .models import (
     Attendance,
     Auditorium,
     Course,
+    Expense,
     Group,
+    GroupMonth,
     LandingHeaderLink,
     LandingPage,
     LandingSection,
@@ -30,22 +32,15 @@ from .models import (
     TeacherApplication,
 )
 
-
 def normalize_phone(value: str) -> str:
     return re.sub(r"\D+", "", value or "")
 
-
 def build_student_username(student: Student) -> str:
     base = normalize_phone(student.phone) or f"student{student.id}"
-    company_name = ""
-    if student.company and student.company.name:
-        company_name = student.company.name
-    elif student.company_name:
-        company_name = student.company_name
-    company = re.sub(r"[^a-z0-9]+", "", company_name.lower())[:24]
+    company_name = student.company.name if student.company and student.company.name else ""
+    company = re.sub(r"[^a-z0-9]+", "", company_name)[:24]
     prefix = company or "eduosh"
     return f"{prefix}_student_{base}_{student.id}"
-
 
 def sync_student_user(student: Student, *, created_by=None):
     user = student.user
@@ -54,7 +49,7 @@ def sync_student_user(student: Student, *, created_by=None):
             username=build_student_username(student),
             role=User.Role.STUDENT,
             company=student.company,
-            company_name=student.company_name,
+            # company already set
             created_by=created_by,
             first_name=student.first_name,
             last_name=student.last_name,
@@ -84,9 +79,7 @@ def sync_student_user(student: Student, *, created_by=None):
     if user.company != student.company:
         user.company = student.company
         changed_fields.append("company")
-    if user.company_name != student.company_name:
-        user.company_name = student.company_name
-        changed_fields.append("company_name")
+
     if user.role != User.Role.STUDENT:
         user.role = User.Role.STUDENT
         changed_fields.append("role")
@@ -94,13 +87,12 @@ def sync_student_user(student: Student, *, created_by=None):
         user.save(update_fields=changed_fields)
     return student
 
-
 class UserSerializer(serializers.ModelSerializer):
     created_by = serializers.IntegerField(source="created_by_id", read_only=True)
     managers_count = serializers.SerializerMethodField(read_only=True)
     course_ids = serializers.SerializerMethodField(read_only=True)
     course_titles = serializers.SerializerMethodField(read_only=True)
-    company_name = serializers.SerializerMethodField(read_only=True)
+    company_name = serializers.CharField(source="company.name", read_only=True)
     company_id = serializers.PrimaryKeyRelatedField(
         source="company",
         queryset=Company.objects.all(),
@@ -137,7 +129,7 @@ class UserSerializer(serializers.ModelSerializer):
             "course_ids",
             "course_titles",
         )
-        read_only_fields = ("company_name",)
+        read_only_fields = ()
 
     def get_managers_count(self, obj):
         if obj.role != User.Role.COURSE_ADMIN:
@@ -162,9 +154,6 @@ class UserSerializer(serializers.ModelSerializer):
             return list(obj.teaching_courses.values_list("title", flat=True))
         return []
 
-    def get_company_name(self, obj):
-        return obj.company.name if hasattr(obj, "company") and obj.company else None
-
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
@@ -188,7 +177,6 @@ class RegisterSerializer(serializers.ModelSerializer):
             "telegram",
             "company",
             "company_id",
-            "company_name",
             "max_managers",
             "max_pages",
             "max_blocks",
@@ -227,7 +215,6 @@ class RegisterSerializer(serializers.ModelSerializer):
             address=validated_data.get("address", ""),
             telegram=validated_data.get("telegram", ""),
             company=company,
-            company_name=company.name if company else validated_data.get("company_name", ""),
             max_managers=validated_data.get("max_managers", 0) or 0,
             max_pages=validated_data.get("max_pages", 1) or 1,
             max_blocks=validated_data.get("max_blocks", 7) or 7,
@@ -237,7 +224,6 @@ class RegisterSerializer(serializers.ModelSerializer):
         user.set_password(validated_data["password"])
         user.save()
         return user
-
 
 class UserUpdateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False, allow_blank=True)
@@ -253,7 +239,6 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             user.set_password(password)
             user.save(update_fields=["password"])
         return user
-
 
 class TeacherCreateSerializer(serializers.Serializer):
     username = serializers.CharField()
@@ -310,12 +295,6 @@ class TeacherCreateSerializer(serializers.Serializer):
         request = self.context.get("request")
         creator = request.user if request else None
         company = creator.company if creator else None
-        # Получаем company_name из компании или из поля creator.company_name
-        company_name = ""
-        if company and company.name:
-            company_name = company.name
-        elif creator:
-            company_name = creator.company_name or ""
         teacher = User(
             username=validated_data["username"],
             email=validated_data.get("email", ""),
@@ -328,7 +307,6 @@ class TeacherCreateSerializer(serializers.Serializer):
             working_hours=validated_data.get("working_hours", ""),
             color=validated_data.get("color", "#45B2EF"),
             company=company,
-            company_name=company_name,
             created_by=creator,
             role=User.Role.TEACHER,
         )
@@ -337,7 +315,6 @@ class TeacherCreateSerializer(serializers.Serializer):
         if courses:
             teacher.teaching_courses.set(courses)
         return teacher
-
 
 class TeacherUpdateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False, allow_blank=True)
@@ -400,7 +377,6 @@ class TeacherUpdateSerializer(serializers.ModelSerializer):
             teacher.save(update_fields=["password"])
         return teacher
 
-
 class CourseAdminUpdateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False, allow_blank=True)
     company_id = serializers.PrimaryKeyRelatedField(
@@ -420,7 +396,6 @@ class CourseAdminUpdateSerializer(serializers.ModelSerializer):
             "telegram",
             "company",
             "company_id",
-            "company_name",
             "is_student_cabinet_enabled",
             "is_active",
             "max_managers",
@@ -447,7 +422,6 @@ class CourseAdminUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(_("Blocks limit must be at least 1."))
         return value
 
-
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField(write_only=True)
@@ -461,13 +435,11 @@ class LoginSerializer(serializers.Serializer):
         attrs["user"] = user
         return attrs
 
-
 class StudentIdentityLoginSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
     password = serializers.CharField(
         write_only=True, required=False, allow_blank=True, trim_whitespace=False
     )
-
 
 class StudentSetPasswordSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, min_length=6)
@@ -478,14 +450,12 @@ class StudentSetPasswordSerializer(serializers.Serializer):
             raise serializers.ValidationError({"password_confirm": _("Passwords do not match.")})
         return attrs
 
-
 class StudentProfileSerializer(serializers.Serializer):
     phone = serializers.CharField(required=False, allow_blank=False)
     telegram = serializers.CharField(required=False, allow_blank=True)
     password = serializers.CharField(
         required=False, allow_blank=True, write_only=True, trim_whitespace=False, min_length=6
     )
-
 
 class CourseSerializer(serializers.ModelSerializer):
     admins = serializers.PrimaryKeyRelatedField(
@@ -502,14 +472,12 @@ class CourseSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "price",
-            "duration_weeks",
             "lesson_duration_minutes",
             "description",
             "schedule",
             "admins",
             "created_at",
         )
-
 
 class AuditoriumSerializer(serializers.ModelSerializer):
     company_id = serializers.PrimaryKeyRelatedField(
@@ -521,9 +489,8 @@ class AuditoriumSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Auditorium
-        fields = ("id", "name", "number", "company", "company_id", "company_name", "created_at")
-        read_only_fields = ("company_name",)
-
+        fields = ("id", "name", "number", "company", "company_id", "created_at")
+        read_only_fields = ()
 
 class StudentSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(
@@ -553,7 +520,6 @@ class StudentSerializer(serializers.ModelSerializer):
             "telegram",
             "company",
             "company_id",
-            "company_name",
             "can_login",
             "primary_course",
             "group_ids",
@@ -561,7 +527,7 @@ class StudentSerializer(serializers.ModelSerializer):
             "notes",
             "created_at",
         )
-        read_only_fields = ("company_name",)
+        read_only_fields = ()
 
     def create(self, validated_data):
         group_ids = validated_data.pop("group_ids", [])
@@ -581,13 +547,13 @@ class StudentSerializer(serializers.ModelSerializer):
         sync_student_user(student, created_by=request.user if request else None)
         return student
 
-
 class GroupSerializer(serializers.ModelSerializer):
     students = StudentSerializer(many=True, read_only=True)
     student_ids = serializers.PrimaryKeyRelatedField(
         many=True, write_only=True, queryset=Student.objects.all(), required=False
     )
     course_title = serializers.CharField(source="course.title", read_only=True)
+    course_price = serializers.SerializerMethodField()
     teacher_name = serializers.SerializerMethodField()
     teacher_color = serializers.SerializerMethodField()
     lesson_duration_minutes = serializers.IntegerField(
@@ -608,6 +574,7 @@ class GroupSerializer(serializers.ModelSerializer):
             "name",
             "course",
             "course_title",
+            "course_price",
             "teacher",
             "teacher_name",
             "teacher_color",
@@ -621,12 +588,14 @@ class GroupSerializer(serializers.ModelSerializer):
             "auditorium",
             "auditorium_label",
             "lessons_count",
+            "lessons_per_month",
+            "total_months",
             "start_date",
             "end_date",
             "created_at",
             "company",
             "company_id",
-            "company_name",
+            "teacher_percent",
         )
         read_only_fields = ("status",)
 
@@ -653,10 +622,10 @@ class GroupSerializer(serializers.ModelSerializer):
         return group
 
     def get_teacher_name(self, obj):
-        if not obj.teacher:
-            return ""
-        full_name = f"{obj.teacher.first_name} {obj.teacher.last_name}".strip()
-        return full_name or obj.teacher.username
+        teacher = getattr(obj, 'teacher', None)
+        if teacher:
+            return f"{teacher.first_name} {teacher.last_name}".strip() or str(teacher)
+        return ""
 
     def get_teacher_color(self, obj):
         if not obj.teacher:
@@ -664,19 +633,88 @@ class GroupSerializer(serializers.ModelSerializer):
         return obj.teacher.color or "#45B2EF"
 
     def get_auditorium_label(self, obj):
-        if not obj.auditorium:
-            return ""
-        name = obj.auditorium.name or ""
-        number = obj.auditorium.number or ""
-        label = f"{name} {number}".strip()
-        return label or name or number
+        if obj.auditorium:
+            return str(obj.auditorium)
+        return None
 
+    def get_course_price(self, obj):
+        if obj.course and hasattr(obj.course, 'price'):
+            return float(obj.course.price)
+        return 0.0
 
 class AttendanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attendance
         fields = ("id", "group", "student", "date", "status", "created_at")
 
+class ExpenseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Expense
+        fields = (
+            "id", "company", "description", "amount", "category", "date",
+            "created_at", "updated_at",
+        )
+        read_only_fields = ("company",)
+
+class GroupMonthSerializer(serializers.ModelSerializer):
+    teacher_percent_earning = serializers.SerializerMethodField()
+    teacher_total_earning = serializers.SerializerMethodField()
+    group_name = serializers.CharField(source="group.name", read_only=True)
+    teacher_name = serializers.SerializerMethodField()
+    month_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GroupMonth
+        fields = (
+            "id", "group", "group_name", "month_number", "month_label", "teacher_salary", "status",
+            "completed_at", "created_at",
+            "teacher_percent_earning", "teacher_total_earning",
+            "teacher_name",
+        )
+        read_only_fields = ("created_at",)
+
+    def get_month_label(self, obj):
+        """Вычисляем реальный месяц/год на основе start_date группы и month_number."""
+        group = obj.group
+        start_date = getattr(group, "start_date", None)
+        if not start_date:
+            return f"Месяц {obj.month_number}"
+        # month_number=1 → start_date, month_number=2 → start_date + 1 месяц и т.д.
+        from dateutil.relativedelta import relativedelta
+        month_date = start_date + relativedelta(months=obj.month_number - 1)
+        months_russian = [
+            "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+            "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
+        ]
+        return f"{months_russian[month_date.month - 1]} {month_date.year}"
+
+    def get_teacher_name(self, obj):
+        group = obj.group
+        if not group:
+            return None
+        teacher = getattr(group, "teacher", None)
+        if teacher:
+            return f"{teacher.first_name} {teacher.last_name}".strip() or str(teacher)
+        return None
+
+    def get_teacher_percent_earning(self, obj):
+        """Вычисляем автоматический % учителя за месяц: students × course_price × teacher_percent / 100"""
+        group = obj.group
+        teacher_percent = group.teacher_percent or 0
+        course = group.course
+        if not teacher_percent or teacher_percent <= 0 or not course:
+            return 0
+        student_count = group.students.count() or 0
+        if student_count == 0:
+            return 0
+        course_price = course.price or 0
+        return int((course_price * student_count * teacher_percent) / 100)
+
+    def get_teacher_total_earning(self, obj):
+        """Общий заработок учителя за месяц: teacher_salary + teacher_percent_earning"""
+        salary = int(obj.teacher_salary) if obj.teacher_salary else 0
+        percent = self.get_teacher_percent_earning(obj)
+        return salary + percent
 
 class PaymentSerializer(serializers.ModelSerializer):
     company_id = serializers.PrimaryKeyRelatedField(
@@ -689,7 +727,6 @@ class PaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
         fields = ("id", "student", "group", "company", "company_id", "amount", "status", "paid_at", "created_at")
-
 
 class HomeworkSubmissionSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
@@ -742,7 +779,6 @@ class HomeworkSubmissionSerializer(serializers.ModelSerializer):
         grace_delta = timezone.timedelta(minutes=obj.task.grace_period_minutes or 0)
         return obj.submitted_at > (deadline + grace_delta)
 
-
 class HomeworkTaskAttachmentSerializer(serializers.ModelSerializer):
     url = serializers.SerializerMethodField()
 
@@ -754,7 +790,6 @@ class HomeworkTaskAttachmentSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         url = obj.file.url
         return request.build_absolute_uri(url) if request else url
-
 
 class HomeworkTaskSerializer(serializers.ModelSerializer):
     attachment_url = serializers.SerializerMethodField()
@@ -808,9 +843,8 @@ class HomeworkTaskSerializer(serializers.ModelSerializer):
             "submissions",
             "company",
             "company_id",
-            "company_name",
         )
-        read_only_fields = ("teacher", "created_at", "company_name")
+        read_only_fields = ("teacher", "created_at")
         extra_kwargs = {
             "attachment": {"write_only": True, "required": False, "allow_null": True},
         }
@@ -891,7 +925,6 @@ class HomeworkTaskSerializer(serializers.ModelSerializer):
                     )
         return attrs
 
-
 class TrialLeadSerializer(serializers.ModelSerializer):
     group_assigned_label = serializers.CharField(
         source="group_assigned.name", read_only=True
@@ -923,11 +956,10 @@ class TrialLeadSerializer(serializers.ModelSerializer):
             "payment_status",
             "company",
             "company_id",
-            "company_name",
             "assigned_manager",
             "created_at",
         )
-        read_only_fields = ("company_name",)
+        read_only_fields = ()
 
     def get_assigned_manager(self, obj):
         """Get the manager who claimed this lead via Telegram bot"""
@@ -941,7 +973,6 @@ class TrialLeadSerializer(serializers.ModelSerializer):
                 "username": manager.username,
             }
         return None
-
 
 class TaskSerializer(serializers.ModelSerializer):
     assigned_to_name = serializers.SerializerMethodField()
@@ -970,17 +1001,15 @@ class TaskSerializer(serializers.ModelSerializer):
             "created_by",
             "company",
             "company_id",
-            "company_name",
             "created_at",
         )
-        read_only_fields = ("company_name",)
+        read_only_fields = ()
 
     def get_assigned_to_name(self, obj):
         if not obj.assigned_to:
             return ""
         full_name = f"{obj.assigned_to.first_name} {obj.assigned_to.last_name}".strip()
         return full_name or obj.assigned_to.username
-
 
 class TransferGroupSerializer(serializers.Serializer):
     """
@@ -989,7 +1018,6 @@ class TransferGroupSerializer(serializers.Serializer):
     """
     new_group = serializers.PrimaryKeyRelatedField(queryset=Group.objects.all())
     note = serializers.CharField(required=False, allow_blank=True)
-
 
 class LandingSectionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -1003,7 +1031,6 @@ class LandingSectionSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = ("created_at", "updated_at")
-
 
 class LandingHeaderLinkSerializer(serializers.ModelSerializer):
     target_page_slug = serializers.CharField(source="target_page.slug", read_only=True)
@@ -1026,7 +1053,6 @@ class LandingHeaderLinkSerializer(serializers.ModelSerializer):
             "order",
             "company",
             "company_id",
-            "company_name",
             "created_at",
             "updated_at",
         )
@@ -1038,7 +1064,6 @@ class LandingHeaderLinkSerializer(serializers.ModelSerializer):
         if user and user.role == User.Role.COURSE_ADMIN and value.company and value.company != user.company:
             raise serializers.ValidationError(_("You can only link to your own landing pages."))
         return value
-
 
 class LandingPageSerializer(serializers.ModelSerializer):
     sections = LandingSectionSerializer(many=True, required=False)
@@ -1060,7 +1085,6 @@ class LandingPageSerializer(serializers.ModelSerializer):
             "slug",
             "company",
             "company_id",
-            "company_name",
             "owner",
             "status",
             "moderation_comment",
@@ -1074,7 +1098,6 @@ class LandingPageSerializer(serializers.ModelSerializer):
             "header_links",
         )
         read_only_fields = (
-            "company_name",
             "owner",
             "status",
             "moderation_comment",
@@ -1140,7 +1163,6 @@ class LandingPageSerializer(serializers.ModelSerializer):
         self._sync_sections(page, sections_data)
         return page
 
-
 class LandingPublicSectionSerializer(serializers.ModelSerializer):
     resolved_content = serializers.SerializerMethodField()
 
@@ -1188,7 +1210,6 @@ class LandingPublicSectionSerializer(serializers.ModelSerializer):
                 )
         return content
 
-
 class LandingPublicPageSerializer(serializers.ModelSerializer):
     sections = LandingPublicSectionSerializer(many=True, read_only=True)
     header_links = serializers.SerializerMethodField()
@@ -1201,7 +1222,6 @@ class LandingPublicPageSerializer(serializers.ModelSerializer):
             "title",
             "slug",
             "company",
-            "company_name",
             "company_data",
             "status",
             "published_at",
@@ -1232,7 +1252,6 @@ class LandingPublicPageSerializer(serializers.ModelSerializer):
             "facebook": getattr(obj.company, 'facebook', None),
         }
 
-
 class PromoCodeSerializer(serializers.ModelSerializer):
     balance = serializers.SerializerMethodField()
 
@@ -1260,7 +1279,6 @@ class PromoCodeSerializer(serializers.ModelSerializer):
         except Exception:
             return 0
 
-
 # Marketplace Serializers
 
 class CompanySerializer(serializers.ModelSerializer):
@@ -1274,7 +1292,6 @@ class CompanySerializer(serializers.ModelSerializer):
             "website", "rating", "reviews_count", "is_active", "owner",
         )
         read_only_fields = ("slug", "rating", "reviews_count")
-
 
 class PublicCourseSerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(source="company.name", read_only=True)
@@ -1302,7 +1319,6 @@ class PublicCourseSerializer(serializers.ModelSerializer):
                 return None
         return None
 
-
 class JobVacancySerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(source="company.name", read_only=True)
     company_slug = serializers.CharField(source="company.slug", read_only=True)
@@ -1325,7 +1341,6 @@ class JobVacancySerializer(serializers.ModelSerializer):
             return landing.slug if landing else None
         return None
 
-
 class JobVacancyDetailSerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(source="company.name", read_only=True)
     company_slug = serializers.CharField(source="company.slug", read_only=True)
@@ -1344,7 +1359,6 @@ class JobVacancyDetailSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ("views", "applications_count")
 
-
 class CompanyCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Company
@@ -1353,7 +1367,6 @@ class CompanyCreateUpdateSerializer(serializers.ModelSerializer):
             "phone", "telegram", "whatsapp", "website",
         )
 
-
 class TeacherApplicationSerializer(serializers.ModelSerializer):
     company_id = serializers.PrimaryKeyRelatedField(
         source="company",
@@ -1361,18 +1374,16 @@ class TeacherApplicationSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
-    company_name = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = TeacherApplication
         fields = (
             "id", "full_name", "phone", "email", "experience",
             "specialization", "expected_salary", "education", "about",
-            "availability", "format", "company", "company_id", "company_name",
+            "availability", "format", "company", "company_id",
             "status", "created_at", "updated_at",
         )
         read_only_fields = ("status", "created_at", "updated_at")
-
 
 class StudentApplicationSerializer(serializers.ModelSerializer):
     company_id = serializers.PrimaryKeyRelatedField(
@@ -1381,7 +1392,6 @@ class StudentApplicationSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
-    company_name = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = StudentApplication
@@ -1389,7 +1399,7 @@ class StudentApplicationSerializer(serializers.ModelSerializer):
             "id", "full_name", "phone", "email", "age",
             "course_interest", "experience_level", "learning_goal",
             "budget", "schedule_preference", "source",
-            "company", "company_id", "company_name",
+            "company", "company_id",
             "status", "created_at", "updated_at",
         )
         read_only_fields = ("status", "created_at", "updated_at")

@@ -28,8 +28,6 @@ class User(AbstractUser):
         blank=True,
         related_name="users",
     )
-    # Устаревшее поле для миграции
-    company_name = models.CharField(max_length=200, blank=True)
     is_student_cabinet_enabled = models.BooleanField(default=True)
     must_set_password = models.BooleanField(default=False)
     max_managers = models.PositiveIntegerField(
@@ -147,8 +145,6 @@ class Auditorium(models.Model):
         blank=True,
         related_name="auditoriums",
     )
-    # Устаревшее поле для миграции
-    company_name = models.CharField(max_length=200, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self) -> str:
@@ -176,8 +172,6 @@ class Student(models.Model):
         blank=True,
         related_name="students",
     )
-    # Устаревшее поле для миграции
-    company_name = models.CharField(max_length=200, blank=True)
     can_login = models.BooleanField(default=True)
     primary_course = models.ForeignKey(
         Course,
@@ -223,8 +217,6 @@ class Group(models.Model):
         blank=True,
         related_name="groups",
     )
-    # Устаревшее поле для миграции
-    company_name = models.CharField(max_length=200, blank=True)
     is_login_allowed = models.BooleanField(default=True)
     status = models.CharField(
         max_length=20,
@@ -242,10 +234,18 @@ class Group(models.Model):
         related_name="groups",
     )
     lessons_count = models.PositiveIntegerField(null=True, blank=True)
+    lessons_per_month = models.PositiveIntegerField(null=True, blank=True, help_text="Количество уроков в месяц")
+    total_months = models.PositiveIntegerField(null=True, blank=True, help_text="Сколько месяцев длится группа")
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
     rejection_comment = models.TextField(blank=True, help_text="Комментарий учителя при отказе")
     rejection_count = models.PositiveIntegerField(default=0, help_text="Количество отказов учителя")
+    teacher_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        help_text="Процент от оплаты, который получает учитель (0-100)",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self) -> str:
@@ -307,6 +307,97 @@ class Payment(models.Model):
         return f"{self.student} - {self.amount} ({self.status})"
 
 
+class Expense(models.Model):
+    """Расходы компании."""
+    company = models.ForeignKey(
+        "Company",
+        on_delete=models.CASCADE,
+        related_name="expenses",
+        help_text="Компания",
+    )
+    description = models.CharField(
+        max_length=500,
+        help_text="Описание расхода",
+    )
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text="Сумма расхода",
+    )
+    category = models.CharField(
+        max_length=20,
+        choices=[
+            ("salary", "Зарплата"),
+            ("rent", "Аренда"),
+            ("utilities", "Коммунальные услуги"),
+            ("materials", "Учебные материалы"),
+            ("marketing", "Маркетинг"),
+            ("equipment", "Оборудование"),
+            ("tax", "Налоги"),
+            ("other", "Прочее"),
+        ],
+        default="other",
+        help_text="Категория расхода",
+    )
+    date = models.DateField(
+        default=timezone.localdate,
+        help_text="Дата расхода",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Expense"
+        verbose_name_plural = "Expenses"
+        ordering = ("-date", "-created_at")
+
+    def __str__(self) -> str:
+        return f"{self.description} — {self.amount} ({self.date})"
+
+
+class GroupMonth(models.Model):
+    """Месяцы обучения группы с зарплатой преподавателя."""
+    class Status(models.TextChoices):
+        PENDING = "pending", _("Ожидает")
+        COMPLETED = "completed", _("Завершён")
+
+    group = models.ForeignKey(
+        "Group",
+        on_delete=models.CASCADE,
+        related_name="months",
+    )
+    month_number = models.PositiveIntegerField(
+        help_text="Номер месяца (1, 2, 3...)",
+    )
+    teacher_salary = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Зарплата преподавателя за этот месяц (заполняется курс-админом)",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Когда месяц был отмечен как завершённый",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Month of group"
+        verbose_name_plural = "Months of group"
+        ordering = ("group", "month_number")
+        unique_together = [["group", "month_number"]]
+
+    def __str__(self) -> str:
+        return f"{self.group} — месяц {self.month_number}"
+
+
 class TrialLead(models.Model):
     class Status(models.TextChoices):
         NEW = "new", _("New")
@@ -348,8 +439,6 @@ class TrialLead(models.Model):
         blank=True,
         related_name="trial_leads",
     )
-    # Устаревшее поле для миграции
-    company_name = models.CharField(max_length=200, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self) -> str:
@@ -525,8 +614,6 @@ class Task(models.Model):
         blank=True,
         related_name="tasks",
     )
-    # Устаревшее поле для миграции
-    company_name = models.CharField(max_length=200, blank=True)
     due_date = models.DateField()
     due_time = models.TimeField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
@@ -560,8 +647,6 @@ class LandingPage(models.Model):
         blank=True,
         related_name="landing_pages",
     )
-    # Устаревшее поле для миграции
-    company_name = models.CharField(max_length=200, blank=True)
     owner = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -641,8 +726,6 @@ class LandingHeaderLink(models.Model):
         blank=True,
         related_name="header_links",
     )
-    # Устаревшее поле для миграции
-    company_name = models.CharField(max_length=200, blank=True)
     label = models.CharField(max_length=120)
     target_page = models.ForeignKey(
         LandingPage,
@@ -657,7 +740,8 @@ class LandingHeaderLink(models.Model):
         ordering = ("order", "id")
 
     def __str__(self) -> str:
-        return f"{self.company_name or self.company_id}: {self.label} -> {self.target_page.slug}"
+        company_str = self.company.name if self.company else "—"
+        return f"{company_str}: {self.label} -> {self.target_page.slug}"
 
 
 def build_homework_upload_path(instance, filename: str) -> str:
@@ -667,13 +751,7 @@ def build_homework_upload_path(instance, filename: str) -> str:
     elif hasattr(instance, "task") and instance.task and instance.task.company:
         company = instance.task.company
     if not company:
-        company_name = ""
-        if hasattr(instance, "company_name") and instance.company_name:
-            company_name = instance.company_name
-        elif hasattr(instance, "task") and instance.task and instance.task.company_name:
-            company_name = instance.task.company_name
-        prefix = slugify(company_name) or "shared"
-        return f"homework/{prefix}/{filename}"
+        return f"homework/shared/{filename}"
     prefix = slugify(company.name) or "shared"
     return f"homework/{prefix}/{filename}"
 
@@ -707,8 +785,6 @@ class HomeworkTask(models.Model):
         blank=True,
         related_name="homework_tasks",
     )
-    # Устаревшее поле для миграции
-    company_name = models.CharField(max_length=200, blank=True)
     lesson_number = models.PositiveIntegerField(null=True, blank=True)
     is_extra_task = models.BooleanField(default=False)
     target_type = models.CharField(
@@ -850,10 +926,6 @@ class TeacherApplication(models.Model):
         related_name="teacher_applications",
         verbose_name="Company",
     )
-    # Устаревшее поле для миграции
-    company_name = models.CharField(
-        max_length=200, blank=True, verbose_name="Company Name"
-    )
     status = models.CharField(
         max_length=20,
         choices=ApplicationStatus.choices,
@@ -911,10 +983,6 @@ class StudentApplication(models.Model):
         blank=True,
         related_name="student_applications",
         verbose_name="Company",
-    )
-    # Устаревшее поле для миграции
-    company_name = models.CharField(
-        max_length=200, blank=True, verbose_name="Company Name"
     )
     status = models.CharField(
         max_length=20,
@@ -1212,12 +1280,6 @@ class CompanyBalance(models.Model):
         related_name="balance",
         help_text="Компания"
     )
-    # Устаревшее поле для миграции
-    company_name = models.CharField(
-        max_length=200,
-        unique=True,
-        help_text="Название компании (устаревшее)"
-    )
     balance = models.PositiveIntegerField(default=0, help_text="Баланс eduCoins")
     last_update = models.DateTimeField(auto_now=True)
     
@@ -1226,7 +1288,7 @@ class CompanyBalance(models.Model):
         verbose_name_plural = "Company Balances"
     
     def __str__(self) -> str:
-        company_str = self.company.name if self.company else self.company_name
+        company_str = self.company.name if self.company else str(self.id)
         return f"{company_str} - {self.balance} eC"
     
     def add_coins(self, amount: int, reason: str):
@@ -1235,7 +1297,6 @@ class CompanyBalance(models.Model):
         self.save()
         Transaction.objects.create(
             company=self.company,
-            company_name=self.company_name,
             amount=amount,
             reason=reason,
             transaction_type=Transaction.Type.DEPOSIT,
@@ -1248,7 +1309,6 @@ class CompanyBalance(models.Model):
             self.save()
             Transaction.objects.create(
                 company=self.company,
-                company_name=self.company_name,
                 amount=-amount,
                 reason=reason,
                 transaction_type=Transaction.Type.WITHDRAWAL,
@@ -1273,11 +1333,6 @@ class Transaction(models.Model):
         related_name="transactions",
         help_text="Компания"
     )
-    # Устаревшее поле для миграции
-    company_name = models.CharField(
-        max_length=200,
-        help_text="Название компании (устаревшее)"
-    )
     user = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -1301,11 +1356,10 @@ class Transaction(models.Model):
         ordering = ("-timestamp",)
         indexes = [
             models.Index(fields=['company', '-timestamp']),
-            models.Index(fields=['company_name', '-timestamp']),
         ]
     
     def __str__(self) -> str:
-        company_str = self.company.name if self.company else self.company_name
+        company_str = self.company.name if self.company else str(self.id)
         user_str = self.user.username if self.user else "—"
         return f"{company_str} ({user_str}) - {self.amount} eC ({self.reason})"
 

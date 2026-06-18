@@ -3,10 +3,9 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.core.exceptions import PermissionDenied
 
 from .models import (
-    Attendance, Course, Group, Payment, Student, User, Company,
-    CompanyBalance, Transaction, TaskLead, Task, PublicCourse,
+    Attendance, Course, Expense, Group, GroupMonth, Payment, Student, User, Company,
+    TaskLead, Task, PublicCourse,
     JobVacancy, TrialLead, Auditorium, HomeworkTask, HomeworkSubmission,
-    UserBalance, UserTransaction, PromoBalance, PromoTransaction, PromoCode
 )
 
 
@@ -18,7 +17,7 @@ class UserAdmin(BaseUserAdmin):
             "Personal info",
             {"fields": ("first_name", "last_name", "phone", "address", "telegram")},
         ),
-        ("Company", {"fields": ("company_name", "max_managers", "created_by")}),
+        ("Company", {"fields": ("company", "max_managers", "created_by")}),
         (
             "Permissions",
             {
@@ -48,7 +47,7 @@ class UserAdmin(BaseUserAdmin):
                     "phone",
                     "address",
                     "telegram",
-                    "company_name",
+                    "company",
                     "max_managers",
                     "role",
                 ),
@@ -59,7 +58,7 @@ class UserAdmin(BaseUserAdmin):
         "username",
         "phone",
         "telegram",
-        "company_name",
+        "company",
         "max_managers",
         "role",
         "is_staff",
@@ -73,8 +72,8 @@ class UserAdmin(BaseUserAdmin):
             is_super_admin = request.user.is_superuser or request.user.role == User.Role.ADMIN
             if is_super_admin and obj.role != User.Role.COURSE_ADMIN:
                 raise PermissionDenied("Super admins can only create course admins.")
-            if is_super_admin and not obj.company_name:
-                raise PermissionDenied("Company name is required for course admins.")
+            if is_super_admin and not obj.company:
+                raise PermissionDenied("Company is required for course admins.")
             if not obj.created_by:
                 obj.created_by = request.user
         super().save_model(request, obj, form, change)
@@ -82,7 +81,7 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(Course)
 class CourseAdmin(admin.ModelAdmin):
-    list_display = ("title", "price", "duration_weeks", "created_at")
+    list_display = ("title", "price", "created_at")
     search_fields = ("title",)
     filter_horizontal = ()
 
@@ -95,11 +94,11 @@ class StudentAdmin(admin.ModelAdmin):
         "last_name",
         "phone",
         "telegram",
-        "company_name",
+        "company",
         "primary_course",
         "created_at",
     )
-    search_fields = ("first_name", "last_name", "phone", "telegram", "company_name")
+    search_fields = ("first_name", "last_name", "phone", "telegram")
     list_filter = ("primary_course",)
 
 
@@ -124,92 +123,14 @@ class PaymentAdmin(admin.ModelAdmin):
 
 @admin.register(Company)
 class CompanyAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "city", "category", "students_count", "balance_display", "created_at")
+    list_display = ("name", "slug", "city", "category", "students_count", "created_at")
     list_filter = ("city", "category", "is_active")
     search_fields = ("name", "slug")
-    readonly_fields = ("slug", "created_at", "updated_at", "stats_summary")
+    readonly_fields = ("slug", "created_at", "updated_at")
     
     def students_count(self, obj):
         return obj.students.count()
     students_count.short_description = "Студентов"
-    
-    def balance_display(self, obj):
-        balance = CompanyBalance.objects.filter(company=obj).first()
-        if balance:
-            return f"{balance.balance} eC"
-        return "0 eC"
-    balance_display.short_description = "Баланс"
-    
-    def stats_summary(self, obj):
-        students = obj.students.count()
-        managers = obj.users.filter(role=User.Role.MANAGER).count()
-        teachers = obj.users.filter(role=User.Role.TEACHER).count()
-        groups = obj.groups.count()
-        balance = CompanyBalance.objects.filter(company=obj).first()
-        bal = balance.balance if balance else 0
-        return f"Студентов: {students}, Менеджеров: {managers}, Преподавателей: {teachers}, Групп: {groups}, Баланс: {bal} eC"
-    stats_summary.short_description = "Статистика компании"
-    stats_summary.help_text = "Общая информация о компании"
-
-
-@admin.register(CompanyBalance)
-class CompanyBalanceAdmin(admin.ModelAdmin):
-    list_display = ("company", "company_name", "balance", "last_update")
-    list_filter = ("company",)
-    search_fields = ("company_name", "company__name")
-
-
-@admin.register(Transaction)
-class TransactionAdmin(admin.ModelAdmin):
-    list_display = ("company", "company_name", "user", "amount", "transaction_type", "timestamp")
-    list_filter = ("transaction_type", "timestamp")
-    search_fields = ("company_name", "company__name", "user__username")
-    readonly_fields = ("timestamp",)
-
-
-@admin.register(UserBalance)
-class UserBalanceAdmin(admin.ModelAdmin):
-    list_display = ("user", "balance", "last_update")
-    list_filter = ("user__role",)
-    search_fields = ("user__username", "user__first_name", "user__last_name")
-
-
-@admin.register(UserTransaction)
-class UserTransactionAdmin(admin.ModelAdmin):
-    list_display = ("user", "amount", "transaction_type", "timestamp")
-    list_filter = ("transaction_type", "timestamp")
-    search_fields = ("user__username",)
-    readonly_fields = ("timestamp",)
-
-
-@admin.register(PromoBalance)
-class PromoBalanceAdmin(admin.ModelAdmin):
-    list_display = ("promo_code", "balance", "last_update")
-    list_filter = ("promo_code__is_active",)
-    search_fields = ("promo_code__code",)
-
-
-@admin.register(PromoTransaction)
-class PromoTransactionAdmin(admin.ModelAdmin):
-    list_display = ("promo_code", "user", "amount", "transaction_type", "timestamp")
-    list_filter = ("transaction_type", "timestamp")
-    search_fields = ("promo_code__code", "user__username")
-    readonly_fields = ("timestamp",)
-
-
-@admin.register(PromoCode)
-class PromoCodeAdmin(admin.ModelAdmin):
-    list_display = ("code", "reward_type", "reward_value", "balance_display", "max_usages", "current_usages", "is_active", "expiry_date")
-    list_filter = ("is_active", "reward_type", "expiry_date")
-    search_fields = ("code",)
-    readonly_fields = ("current_usages", "created_at")
-    
-    def balance_display(self, obj):
-        balance = PromoBalance.objects.filter(promo_code=obj).first()
-        if balance:
-            return f"{balance.balance} eC"
-        return "0 eC"
-    balance_display.short_description = "Баланс промокода"
 
 
 @admin.register(TaskLead)
@@ -249,9 +170,16 @@ class TrialLeadAdmin(admin.ModelAdmin):
 
 @admin.register(Auditorium)
 class AuditoriumAdmin(admin.ModelAdmin):
-    list_display = ("name", "number", "company", "company_name")
+    list_display = ("name", "number", "company")
     list_filter = ("company",)
-    search_fields = ("name", "number", "company_name")
+    search_fields = ("name", "number", "company__name")
+
+
+@admin.register(Expense)
+class ExpenseAdmin(admin.ModelAdmin):
+    list_display = ("description", "amount", "category", "date", "company")
+    list_filter = ("category", "date", "company")
+    search_fields = ("description",)
 
 
 @admin.register(HomeworkTask)
@@ -259,6 +187,14 @@ class HomeworkTaskAdmin(admin.ModelAdmin):
     list_display = ("title", "group", "teacher", "company", "deadline", "task_type")
     list_filter = ("task_type", "target_type", "company")
     search_fields = ("title", "description", "group__name", "teacher__username")
+
+
+@admin.register(GroupMonth)
+class GroupMonthAdmin(admin.ModelAdmin):
+    list_display = ("group", "month_number", "teacher_salary", "status", "completed_at")
+    list_filter = ("status", "group__course")
+    search_fields = ("group__name",)
+    readonly_fields = ("created_at",)
 
 
 @admin.register(HomeworkSubmission)

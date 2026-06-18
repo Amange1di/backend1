@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "rest_framework.authtoken",
     "drf_spectacular",
     "core",
+    "finance",
     "telegram_bot",
 ]
 
@@ -212,7 +213,7 @@ else:
         "http://localhost:3001",
         "https://eduosh1.vercel.app",
         "https://backend1-ritn.onrender.com",
-        "http://10.9.0.13:8001",
+        "http://127.0.0.1:8000",
         "http://192.168.31.129:3000",
         "http://192.168.31.129:3001",
         "http://127.0.0.1:3000",

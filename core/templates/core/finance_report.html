@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page { size: A4 landscape; margin: 1.5cm; }
+  body { font-family: 'DejaVu Sans', sans-serif; font-size: 11px; color: #333; }
+  h1 { font-size: 22px; color: #1a56db; margin-bottom: 4px; }
+  .subtitle { color: #666; font-size: 13px; margin-bottom: 20px; }
+  .summary { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+  .summary-card {
+    flex: 1; min-width: 120px; padding: 10px 14px; border-radius: 8px;
+    background: #f8fafc; border: 1px solid #e2e8f0;
+  }
+  .summary-card .label { font-size: 10px; color: #64748b; text-transform: uppercase; }
+  .summary-card .value { font-size: 18px; font-weight: bold; margin-top: 4px; }
+  .summary-card .value.positive { color: #059669; }
+  .summary-card .value.negative { color: #dc2626; }
+  .summary-card .value.neutral { color: #2563eb; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  th { background: #1e293b; color: white; padding: 8px 10px; text-align: left; font-size: 10px; text-transform: uppercase; }
+  td { padding: 6px 10px; border-bottom: 1px solid #e2e8f0; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  h2 { font-size: 15px; color: #1e293b; margin: 20px 0 10px; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px; }
+  .footer { margin-top: 30px; font-size: 10px; color: #94a3b8; text-align: center; }
+  .text-right { text-align: right; }
+  .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; }
+  .badge-paid { background: #d1fae5; color: #065f46; }
+  .badge-debt { background: #fee2e2; color: #991b1b; }
+</style>
+</head>
+<body>
+  <h1>Финансовый отчёт</h1>
+  <p class="subtitle">{{ company_name }} — за период с {{ date_from|default:"начала" }} по {{ date_to|default:"настоящее время" }}</p>
+
+  <!-- Сводка -->
+  <div class="summary">
+    <div class="summary-card">
+      <div class="label">Доходы</div>
+      <div class="value positive">{{ total_income|floatformat:0 }} ₸</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Расходы</div>
+      <div class="value negative">{{ total_expenses|floatformat:0 }} ₸</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Зарплаты</div>
+      <div class="value negative">{{ total_salaries|floatformat:0 }} ₸</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Чистая прибыль</div>
+      <div class="value {% if net_profit >= 0 %}positive{% else %}negative{% endif %}">{{ net_profit|floatformat:0 }} ₸</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Задолженности</div>
+      <div class="value negative">{{ total_debt|floatformat:0 }} ₸</div>
+    </div>
+  </div>
+
+  <!-- Отчёт по месяцам -->
+  <h2>Доходы и расходы по месяцам</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Месяц</th>
+        <th class="text-right">Доход</th>
+        <th class="text-right">Расход</th>
+        <th class="text-right">Прибыль</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for report in monthly_reports %}
+      <tr>
+        <td>{{ report.month }}</td>
+        <td class="text-right">{{ report.income|floatformat:0 }} ₸</td>
+        <td class="text-right">{{ report.expenses|floatformat:0 }} ₸</td>
+        <td class="text-right {% if report.profit >= 0 %}positive{% else %}negative{% endif %}" style="font-weight:bold;">
+          {{ report.profit|floatformat:0 }} ₸
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4">Нет данных за выбранный период</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Задолженности -->
+  <h2>Задолженности студентов</h2>
+  <table>
+    <thead>
+      <tr><th>Студент</th><th>Группа</th><th class="text-right">Сумма долга</th></tr>
+    </thead>
+    <tbody>
+      {% for debt in debts %}
+      <tr>
+        <td>{{ debt.student_name }}</td>
+        <td>{{ debt.group_name }}</td>
+        <td class="text-right" style="color:#dc2626;">{{ debt.amount|floatformat:0 }} ₸</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="3">Нет задолженностей</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Последние платежи -->
+  <h2>Последние платежи студентов</h2>
+  <table>
+    <thead>
+      <tr><th>Студент</th><th>Группа</th><th class="text-right">Сумма</th><th>Статус</th><th>Дата</th></tr>
+    </thead>
+    <tbody>
+      {% for p in payments %}
+      <tr>
+        <td>{{ p.student_name }}</td>
+        <td>{{ p.group_name }}</td>
+        <td class="text-right">{{ p.amount|floatformat:0 }} ₸</td>
+        <td><span class="badge {% if p.status == 'paid' %}badge-paid{% else %}badge-debt{% endif %}">{{ p.status_label }}</span></td>
+        <td>{{ p.paid_at }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5">Нет платежей</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Расходы по категориям -->
+  <h2>Расходы по категориям</h2>
+  <table>
+    <thead>
+      <tr><th>Категория</th><th class="text-right">Сумма</th></tr>
+    </thead>
+    <tbody>
+      {% for cat in expenses_by_category %}
+      <tr>
+        <td>{{ cat.category_label }}</td>
+        <td class="text-right">{{ cat.total|floatformat:0 }} ₸</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="2">Нет расходов</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Начисления зарплат -->
+  <h2>Начисления зарплат преподавателям</h2>
+  <table>
+    <thead>
+      <tr><th>Преподаватель</th><th>Группа</th><th>Месяц</th><th class="text-right">Сумма</th></tr>
+    </thead>
+    <tbody>
+      {% for s in salaries %}
+      <tr>
+        <td>{{ s.teacher_name }}</td>
+        <td>{{ s.group_name }}</td>
+        <td>{{ s.month_number }}</td>
+        <td class="text-right">{{ s.salary|floatformat:0 }} ₸</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4">Нет начислений</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    Отчёт сгенерирован {{ generated_at }} • EduCRM
+  </div>
+</body>
+</html>
