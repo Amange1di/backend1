@@ -5,6 +5,7 @@ from pathlib import Path
 # Load .env file first
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
@@ -15,7 +16,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get(
     "SECRET_KEY",
-    "django-insecure-change-me-in-production-" + "".join([chr(97 + i) for i in range(26)])
+    "django-insecure-change-me-in-production-"
+    + "".join([chr(97 + i) for i in range(26)]),
 )
 
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -179,9 +181,7 @@ try:
 except ImportError:
     pass
 else:
-    PASSWORD_HASHERS.insert(
-        0, "django.contrib.auth.hashers.BCryptSHA256PasswordHasher"
-    )
+    PASSWORD_HASHERS.insert(0, "django.contrib.auth.hashers.BCryptSHA256PasswordHasher")
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
@@ -206,7 +206,11 @@ REST_FRAMEWORK = {
 # CORS settings from environment variable or defaults
 CORS_ALLOWED_ORIGINS_ENV = os.environ.get("CORS_ALLOWED_ORIGINS", "")
 if CORS_ALLOWED_ORIGINS_ENV:
-    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in CORS_ALLOWED_ORIGINS_ENV.split(",") if origin.strip()]
+    CORS_ALLOWED_ORIGINS = [
+        origin.strip()
+        for origin in CORS_ALLOWED_ORIGINS_ENV.split(",")
+        if origin.strip()
+    ]
 else:
     CORS_ALLOWED_ORIGINS = [
         "http://localhost:3000",
