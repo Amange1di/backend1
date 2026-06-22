@@ -10,6 +10,7 @@ Callbacks:
   resubmit_group:   — resubmit group after rejection
 """
 
+import bleach
 from core.models import User, Task, Group
 
 from .config import (

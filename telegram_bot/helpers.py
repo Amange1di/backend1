@@ -233,6 +233,54 @@ def _get_students_for_group(group_id: int):
 
 
 @sync_to_async
+def _get_students_with_debt(company_name: str):
+    """
+    Get students who have debt payments, have Telegram, and have not been reminded recently.
+    Returns list of (student, payment, days_overdue) tuples.
+    """
+    from core.models import Payment
+    from django.utils import timezone
+
+    now = timezone.now()
+    three_days_ago = now - timedelta(days=3)
+
+    debt_payments = Payment.objects.filter(
+        status=Payment.Status.DEBT,
+        company__name=company_name,
+        student__user__telegram_chat_id__isnull=False,
+    ).exclude(
+        student__user__telegram_chat_id=0
+    ).select_related(
+        "student", "student__user", "group"
+    ).order_by("-paid_at")
+
+    # Filter: only send reminder if:
+    # 1. Never sent a reminder before, OR
+    # 2. Last reminder was more than 3 days ago
+    result = []
+    now_date = timezone.localdate()
+    for payment in debt_payments:
+        if payment.reminder_sent_at and payment.reminder_sent_at > three_days_ago:
+            continue
+        
+        # Calculate overdue days
+        due = payment.due_date or payment.paid_at
+        if due < now_date:
+            days_overdue = (now_date - due).days
+            result.append((payment.student, payment, days_overdue))
+    
+    return result
+
+
+@sync_to_async
+def _mark_payment_reminder_sent(payment_id: int):
+    """Mark that a reminder was sent for this payment."""
+    from core.models import Payment
+    from django.utils import timezone
+    Payment.objects.filter(id=payment_id).update(reminder_sent_at=timezone.now())
+
+
+@sync_to_async
 def _get_all_students_for_group(group_id: int):
     """Get all students (not just those with telegram) in a group."""
     return list(

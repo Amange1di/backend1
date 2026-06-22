@@ -322,6 +322,76 @@ python manage.py shell
 >>> User.objects.all()
 ```
 
+## Синхронизация между серверами (Render ↔ VPS)
+
+Система поддерживает двустороннюю синхронизацию базы данных между двумя серверами.
+Каждый сервер может отправить свои данные на другой и получить данные с него.
+
+### Настройка
+
+Добавьте в `.env` или Render env vars **на обоих серверах**:
+
+```env
+# Общий секрет (одинаковый на обоих серверах)
+SYNC_SECRET=your-secret-string
+
+# Токен супер-админа на удалённом сервере
+SYNC_TOKEN=your-admin-token
+```
+
+### Запуск вручную
+
+```bash
+# Push + Pull (по умолчанию)
+python manage.py sync_servers --remote=https://backend1-1-vmlx.onrender.com/api
+
+# Только отправить свои данные на другой сервер
+python manage.py sync_servers --remote=https://backend1-1-vmlx.onrender.com/api --push-only
+
+# Только получить данные с другого сервера
+python manage.py sync_servers --remote=http://162.62.231.244/api --pull-only
+```
+
+### Render Cron Job (каждые 2 дня)
+
+**Вариант 1 — через render.yaml (Blueprints):**
+
+Файл `render.yaml` уже создан в проекте. Чтобы активировать:
+1. В Render Dashboard перейдите в **Dashboard → Blueprint**
+2. Подключите репозиторий
+3. Render сам создаст Cron Job сервис
+
+**Вариант 2 — через Render Dashboard (вручную):**
+
+1. Render Dashboard → **New+** → **Cron Job**
+2. Подключите репозиторий
+3. **Schedule**: `0 3 */2 * *` (каждые 2 дня в 03:00 UTC)
+4. **Command**: `python manage.py sync_servers --remote=http://162.62.231.244/api`
+5. Добавьте переменные окружения:
+   - `DJANGO_SETTINGS_MODULE`: `config.settings`
+   - `SYNC_SECRET`: ваш секрет
+   - `SYNC_TOKEN`: токен админа
+   - `DATABASE_URL`: строка подключения к БД
+
+**На VPS (если есть cron):**
+
+```bash
+# Каждые 2 дня в 05:00 UTC (на 2 часа позже Render)
+0 5 */2 * * cd /path/to/backend1 && python3 manage.py sync_servers --remote=https://backend1-1-vmlx.onrender.com/api
+```
+
+### API Endpoints
+
+- `GET /api/sync/export/` — экспорт всех данных (требует SYNC_SECRET + Token)
+- `POST /api/sync/import/` — импорт данных с обновлением существующих записей
+
+### Важно
+
+Для production рекомендуется использовать **единую PostgreSQL базу данных** вместо синхронизации:
+- Подключите оба сервера к одной БД
+- Данные всегда актуальны на обоих серверах
+- Нет конфликтов при синхронизации
+
 ## Проблемы и решения
 
 ### Ошибка подключения к БД

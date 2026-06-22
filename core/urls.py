@@ -5,11 +5,13 @@ from .views import (
     AttendanceMarkView,
     AttendanceViewSet,
     AuditoriumViewSet,
+    BroadcastView,
     CourseViewSet,
     DashboardView,
     CourseAdminCreateView,
     CourseAdminDetailView,
     CrmContactView,
+    CspReportView,
     ExpenseViewSet,
     FinanceDashboardView,
     FinanceExportView,
@@ -45,7 +47,11 @@ from .views import (
     GenerateTelegramBindCodeView,
     GetTelegramBindCodeView,
     UserBalanceMeView,
+    ContractViewSet,
+    ContractTemplateViewSet,
+    StudentContractsView,
 )
+from .sync_views import SyncExportView, SyncImportView
 
 router = DefaultRouter()
 router.register("courses", CourseViewSet)
@@ -64,6 +70,8 @@ router.register("homework-tasks", HomeworkTaskViewSet, basename="homework-tasks"
 router.register("homework-submissions", HomeworkSubmissionViewSet, basename="homework-submissions")
 router.register("trial-leads", TrialLeadViewSet, basename="trial-leads")
 router.register("tasks", TaskViewSet, basename="tasks")
+router.register("contracts", ContractViewSet, basename="contracts")
+router.register("contract-templates", ContractTemplateViewSet, basename="contract-templates")
 
 # Marketplace routers
 router.register("marketplace/companies", MarketplaceCompanyViewSet, basename="marketplace-companies")
@@ -82,10 +90,14 @@ urlpatterns = [
     path("auth/student/login/", StudentLoginView.as_view(), name="auth-student-login"),
     path("auth/student/set-password/", StudentSetPasswordView.as_view(), name="auth-student-set-password"),
     path("auth/student/profile/", StudentProfileView.as_view(), name="auth-student-profile"),
+    path("auth/student/contracts/", StudentContractsView.as_view(), name="auth-student-contracts"),
     path("auth/me/", MeView.as_view(), name="auth-me"),
     path("auth/logout/", LogoutView.as_view(), name="auth-logout"),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
     path("super-admin/stats/", SuperAdminStatsView.as_view(), name="super-admin-stats"),
+    
+    # Broadcast (mass mailing)
+    path("broadcast/send/", BroadcastView.as_view(), name="broadcast-send"),
     
     # Finance endpoints
     path("finance/dashboard/", FinanceDashboardView.as_view(), name="finance-dashboard"),
@@ -103,8 +115,15 @@ urlpatterns = [
     # CRM website contact form (public, no slug required)
     path("public/crm-contact/", CrmContactView.as_view(), name="crm-contact"),
 
+    # CSP violation report endpoint (POST only, no auth)
+    path("csp-report/", CspReportView.as_view(), name="csp-report"),
+
     # User balance
     path("user/balance/me/", UserBalanceMeView.as_view(), name="user-balance-me"),
+
+    # Server sync endpoints (для синхронизации БД между серверами)
+    path("sync/export/", SyncExportView.as_view(), name="sync-export"),
+    path("sync/import/", SyncImportView.as_view(), name="sync-import"),
 
     # Public landing pages (must be after router.urls to avoid conflicting with public/courses and public/jobs)
     path("public/landing-pages/<slug:slug>/", PublicLandingDetailView.as_view(), name="public-landing-detail"),

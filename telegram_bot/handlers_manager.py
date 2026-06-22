@@ -13,6 +13,7 @@ Callbacks:
 
 import re
 
+import bleach
 from core.models import Task, User, TrialLead
 
 from .config import (
@@ -99,11 +100,11 @@ async def tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if t.due_time:
                 deadline += f" {t.due_time.strftime('%H:%M')}"
             lines.append(
-                f"\n{priority} <b>{t.title}</b>\n"
+                f"\n{priority} <b>{bleach.clean(t.title, tags=[], strip=True)[:100]}</b>\n"
                 f"   ⏰ {deadline}"
             )
             if t.description:
-                lines.append(f"   📄 {t.description[:150]}")
+                lines.append(f"   📄 {bleach.clean(t.description, tags=[], strip=True)[:150]}")
         if len(section_tasks) > 10:
             lines.append(f"\n   ... и ещё {len(section_tasks) - 10} задач")
 
@@ -180,11 +181,11 @@ async def menu_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if t.due_time:
                     deadline += f" {t.due_time.strftime('%H:%M')}"
                 lines.append(
-                    f"\n{priority} <b>{t.title}</b>\n"
+                    f"\n{priority} <b>{bleach.clean(t.title, tags=[], strip=True)[:100]}</b>\n"
                     f"   ⏰ {deadline}"
                 )
                 if t.description:
-                    lines.append(f"   📄 {t.description[:150]}")
+                    lines.append(f"   📄 {bleach.clean(t.description, tags=[], strip=True)[:150]}")
             if len(section_tasks) > 10:
                 lines.append(f"\n   ... и ещё {len(section_tasks) - 10} задач")
 
@@ -312,11 +313,11 @@ async def task_set_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if t.due_time:
                     deadline += f" {t.due_time.strftime('%H:%M')}"
                 lines.append(
-                    f"\n{priority} <b>{t.title}</b>\n"
+                    f"\n{priority} <b>{bleach.clean(t.title, tags=[], strip=True)[:100]}</b>\n"
                     f"   ⏰ {deadline}"
                 )
                 if t.description:
-                    lines.append(f"   📄 {t.description[:150]}")
+                    lines.append(f"   📄 {bleach.clean(t.description, tags=[], strip=True)[:150]}")
             if len(section_tasks) > 10:
                 lines.append(f"\n   ... и ещё {len(section_tasks) - 10} задач")
 
@@ -411,11 +412,11 @@ async def task_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if t.due_time:
                     deadline += f" {t.due_time.strftime('%H:%M')}"
                 lines.append(
-                    f"\n{priority} <b>{t.title}</b>\n"
+                    f"\n{priority} <b>{bleach.clean(t.title, tags=[], strip=True)[:100]}</b>\n"
                     f"   ⏰ {deadline}"
                 )
                 if t.description:
-                    lines.append(f"   📄 {t.description[:150]}")
+                    lines.append(f"   📄 {bleach.clean(t.description, tags=[], strip=True)[:150]}")
             if len(section_tasks) > 10:
                 lines.append(f"\n   ... и ещё {len(section_tasks) - 10} задач")
 

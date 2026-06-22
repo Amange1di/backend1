@@ -1,0 +1,52 @@
+# Render Blueprint Configuration
+#
+# ⚠️ ВАЖНО: Перед активацией cron job убедитесь, что код sync-системы
+#    закоммичен и задеплоен на Render (sync_views.py, management command, urls.py).
+#    Без этого cron job упадёт с ImportError.
+#
+# Настройте переменные окружения через Render Dashboard:
+# - SYNC_SECRET (общий секрет, одинаковый на обоих серверах)
+# - SYNC_TOKEN (токен супер-админа на удалённом сервере)
+# - SYNC_REMOTE_URL (URL второго сервера, например http://162.62.231.244/api)
+# - DATABASE_URL (строка подключения к PostgreSQL)
+
+services:
+  # === Web Service (основной бэкенд) ===
+  - type: web
+    name: backend1
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python start_with_bot.py
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings
+      - key: PYTHON_VERSION
+        value: 3.14.0
+      - key: SYNC_SECRET
+        sync: false
+      - key: SYNC_TOKEN
+        sync: false
+      - key: SYNC_REMOTE_URL
+        sync: false
+    healthCheckPath: /api/public/info/
+
+  # === Cron Job: Синхронизация БД каждые 2 дня в 3:00 UTC ===
+  - type: cron
+    name: sync-servers
+    env: python
+    buildCommand: pip install -r requirements.txt
+    schedule: "0 3 */2 * *"  # Каждые 2 дня в 03:00 UTC
+    startCommand: python manage.py sync_servers --remote=$SYNC_REMOTE_URL
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings
+      - key: PYTHON_VERSION
+        value: 3.14.0
+      - key: DATABASE_URL
+        sync: false
+      - key: SYNC_SECRET
+        sync: false
+      - key: SYNC_TOKEN
+        sync: false
+      - key: SYNC_REMOTE_URL
+        sync: false

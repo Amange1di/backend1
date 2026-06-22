@@ -471,6 +471,41 @@ async def send_new_student_notification(student: Student):
             logger.error(f"Failed to send new student notification to {manager.username}: {e}")
 
 
+async def send_payment_reminder(student, payment, days_overdue: int):
+    """Send a payment reminder to a student about an overdue debt."""
+    if not BOT_TOKEN:
+        return
+
+    if not student.user or not student.user.telegram_chat_id:
+        return
+
+    student_name = f"{student.first_name} {student.last_name}".strip() or "Уважаемый студент"
+    amount = payment.amount
+    group_name = payment.group.name if payment.group else "—"
+    due = payment.due_date or payment.paid_at
+
+    text = (
+        f"⚠️ <b>Напоминание об оплате</b>\n\n"
+        f"👤 <b>{student_name}</b>\n"
+        f"📚 <b>Группа:</b> {group_name}\n"
+        f"💰 <b>Сумма долга:</b> {amount} сом\n"
+        f"📅 <b>Дата оплаты до:</b> {due.strftime('%d.%m.%Y')}\n"
+        f"⏰ <b>Просрочено:</b> {days_overdue} дн.\n\n"
+        f"Пожалуйста, оплатите задолженность в ближайшее время."
+    )
+
+    application = _get_application()
+    try:
+        await application.bot.send_message(
+            chat_id=student.user.telegram_chat_id,
+            text=text,
+            parse_mode="HTML",
+        )
+        logger.info(f"Payment reminder sent to student {student.id} ({student_name}) for payment {payment.id}")
+    except Exception as e:
+        logger.error(f"Failed to send payment reminder to student {student.id}: {e}")
+
+
 async def send_crm_contact_notification(
     full_name: str,
     phone: str,

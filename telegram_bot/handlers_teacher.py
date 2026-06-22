@@ -14,6 +14,7 @@ Callbacks:
   st_back                — back to group list
 """
 
+import bleach
 from core.models import User, Group, Student
 
 from .config import (
@@ -377,9 +378,10 @@ async def handle_rejection_comment(update: Update, context: ContextTypes.DEFAULT
         context.user_data['waiting_for_rejection_comment'] = False
         return
     
-    # Сохраняем комментарий
+    # Санитизируем комментарий перед сохранением
     comment = text if text.lower() not in ['без причины', 'без причины.', 'нет', ''] else '—'
-    group.rejection_comment = comment
+    safe_comment = bleach.clean(comment, tags=[], strip=True)[:500]
+    group.rejection_comment = safe_comment
     group.rejection_count = group.rejection_count + 1
     group.status = Group.Status.REJECTED
     await sync_to_async(group.save)()
@@ -427,7 +429,7 @@ async def handle_rejection_comment(update: Update, context: ContextTypes.DEFAULT
                             f"👨‍🏫 Учитель: {teacher_name}\n"
                             f"📚 Группа: {group.name}\n"
                             f"📖 Курс: {course_name}\n"
-                            f"💬 <b>Комментарий:</b> {comment}\n\n"
+                            f"💬 <b>Комментарий:</b> {safe_comment}\n\n"
                             f"Нажмите кнопку ниже, чтобы повторить отправку запроса."
                         ),
                         parse_mode="HTML",

@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
+from django.middleware.csrf import get_token
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -17,9 +18,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.throttling import AnonRateThrottle
 from django.conf import settings
-import asyncio
+from django.template.loader import render_to_string
+from django.http import HttpResponse
+import io
+import os
 
 import logging
+import bleach
 
 from .models import (
     Attendance,
@@ -51,6 +56,8 @@ from .models import (
     JobVacancy,
     StudentApplication,
     UserBalance,
+    Contract,
+    ContractTemplate,
 )
 from .permissions import (
     IsAdmin,
@@ -73,6 +80,17 @@ class LoginThrottle(AnonRateThrottle):
 class RegisterThrottle(AnonRateThrottle):
     """Rate limiting для registration endpoints"""
     rate = '1000/hour'
+
+
+class PublicSubmitThrottle(AnonRateThrottle):
+    """Rate limiting для публичных форм отправки (landing leads, crm contact)"""
+    rate = '10/minute'
+
+
+class PublicReadThrottle(AnonRateThrottle):
+    """Rate limiting для публичных GET endpoints (landing pages)"""
+    rate = '60/minute'
+
 
 from .permissions import (
     IsAdmin,
@@ -117,6 +135,8 @@ from .serializers import (
     CompanyCreateUpdateSerializer,
     normalize_phone,
     sync_student_user,
+    ContractSerializer,
+    ContractTemplateSerializer,
 )
 
 
@@ -203,11 +223,23 @@ class LoginView(APIView):
         response = Response({"token": token.key, "user": UserSerializer(user).data})
         response.set_cookie(
             key="csrftoken",
-            value=request.META.get("CSRF_COOKIE", ""),
+            value=get_token(request),
             max_age=60 * 60 * 24 * 30,  # 30 дней
             httponly=False,  # JS может читать для формы
             samesite="Lax",
-            secure=settings.DEBUG is False,  # Только HTTPS в продакшене
+            secure=settings.DEBUG is False,
+        )
+        
+        # httpOnly cookie с токеном — защита от XSS кражи токена
+        # JS не может прочитать этот cookie, только браузер отправляет его автоматически
+        response.set_cookie(
+            key="token",
+            value=token.key,
+            max_age=60 * 60 * 24 * 30,  # 30 дней
+            httponly=True,  # КЛЮЧЕВОЕ: JS не может прочитать
+            samesite="Lax",
+            secure=not settings.DEBUG,
+            path="/",
         )
         return response
 
@@ -223,8 +255,9 @@ class LogoutView(APIView):
             pass
         
         response = Response({"detail": "Successfully logged out."})
-        # Очищаем CSRF cookie
+        # Очищаем CSRF cookie и httpOnly token cookie
         response.delete_cookie("csrftoken")
+        response.delete_cookie("token", path="/")
         return response
 
 
@@ -1226,6 +1259,8 @@ class GroupViewSet(viewsets.ModelViewSet):
         # Проверяем доступность аудитории
         serializer.validated_data["end_date"] = end_date
         self._ensure_auditorium_available(serializer)
+        # Проверяем доступность преподавателя
+        self._ensure_teacher_available(serializer)
         
         save_kwargs = {"company": user.company, "end_date": end_date}
         # If teacher is assigned, set status to pending for teacher confirmation
@@ -1267,18 +1302,38 @@ class GroupViewSet(viewsets.ModelViewSet):
         months_count = total_months or 0
         self._create_group_months(serializer.instance, months_count)
         
+        # Авто-создание договоров для студентов группы
+        if course:
+            student_ids_list = serializer.validated_data.get("student_ids", [])
+            if student_ids_list:
+                for student in student_ids_list:
+                    # Проверяем, что договор ещё не существует
+                    if not Contract.objects.filter(student=student, group=serializer.instance).exists():
+                        try:
+                            Contract.objects.create(
+                                company=user.company,
+                                student=student,
+                                group=serializer.instance,
+                                amount=course.price or 0,
+                                start_date=serializer.instance.start_date or timezone.now().date(),
+                                end_date=serializer.instance.end_date,
+                                created_by=user,
+                                status=Contract.Status.DRAFT,
+                            )
+                            logger.info(f"Auto-contract created for student {student.id} in group {serializer.instance.name}")
+                        except Exception as e:
+                            logger.warning(f"Failed to auto-create contract for student {student.id}: {e}")
+        
         # Отправить уведомление учителю, если группа назначена
         if teacher:
             try:
                 from telegram_bot.notifications import send_group_request_notification
-                import asyncio
+                from asgiref.sync import async_to_sync
                 
                 # Получаем свежий объект группы
                 group = Group.objects.select_related('teacher').get(id=serializer.instance.id)
                 if group.teacher and group.teacher.telegram_chat_id:
-                    asyncio.get_event_loop().run_until_complete(
-                        send_group_request_notification(group)
-                    )
+                    async_to_sync(send_group_request_notification)(group)
             except Exception as e:
                 logger.warning(f"Failed to send group notification to teacher: {e}")
 
@@ -1350,6 +1405,7 @@ class GroupViewSet(viewsets.ModelViewSet):
             if "teacher" in serializer.validated_data and serializer.validated_data["teacher"] != instance.teacher:
                 teacher_changed = True
         self._ensure_auditorium_available(serializer, instance=instance)
+        self._ensure_teacher_available(serializer, instance=instance)
         start_date = serializer.validated_data.get("start_date", instance.start_date)
         schedule_days = serializer.validated_data.get(
             "schedule_days", instance.schedule_days
@@ -1560,6 +1616,81 @@ class GroupViewSet(viewsets.ModelViewSet):
             ):
                 continue
             raise PermissionDenied("Auditorium is busy at this time.")
+
+    def _ensure_teacher_available(self, serializer, instance=None):
+        """
+        Проверяет, что преподаватель не занят в другой группе
+        в то же время, дни недели и даты.
+        """
+        teacher = serializer.validated_data.get(
+            "teacher",
+            instance.teacher if instance else None,
+        )
+        if not teacher:
+            return
+        schedule_time = serializer.validated_data.get(
+            "schedule_time",
+            instance.schedule_time if instance else "",
+        )
+        schedule_days = serializer.validated_data.get(
+            "schedule_days",
+            instance.schedule_days if instance else "",
+        )
+        start_date = serializer.validated_data.get(
+            "start_date",
+            instance.start_date if instance else None,
+        )
+        end_date = serializer.validated_data.get(
+            "end_date",
+            instance.end_date if instance else None,
+        )
+        course = serializer.validated_data.get(
+            "course",
+            instance.course if instance else None,
+        )
+        if not schedule_time or not schedule_days or not course:
+            return
+        duration = course.lesson_duration_minutes or None
+        if not duration:
+            return
+        start_minutes = parse_time_to_minutes(schedule_time)
+        if start_minutes is None:
+            return
+        end_minutes = start_minutes + duration
+        days_set = parse_schedule_days(schedule_days)
+        if not days_set:
+            return
+
+        qs = Group.objects.filter(teacher=teacher)
+        if instance:
+            qs = qs.exclude(id=instance.id)
+
+        for group in qs:
+            if not group.schedule_time or not group.schedule_days:
+                continue
+            other_duration = (
+                group.course.lesson_duration_minutes if group.course else None
+            )
+            if not other_duration:
+                continue
+            other_start = parse_time_to_minutes(group.schedule_time)
+            if other_start is None:
+                continue
+            other_end = other_start + other_duration
+            if not time_ranges_overlap(
+                start_minutes, end_minutes, other_start, other_end
+            ):
+                continue
+            other_days = parse_schedule_days(group.schedule_days)
+            if not other_days or not days_set.intersection(other_days):
+                continue
+            if not ranges_overlap(
+                start_date, end_date, group.start_date, group.end_date
+            ):
+                continue
+            raise PermissionDenied(
+                f"Преподаватель «{teacher}» уже занят в это время в группе «{group.name}»."
+            )
 
 
 class AuditoriumViewSet(viewsets.ModelViewSet):
@@ -2120,6 +2251,7 @@ class LandingHeaderLinkViewSet(viewsets.ModelViewSet):
 
 class PublicLandingDetailView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [AnonRateThrottle, PublicReadThrottle]
 
     def get(self, request, slug: str):
         page = get_object_or_404(
@@ -2132,6 +2264,7 @@ class PublicLandingDetailView(APIView):
 
 class PublicLandingLeadCreateView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [AnonRateThrottle, PublicSubmitThrottle]
     parser_classes = [JSONParser]
 
     def post(self, request, slug: str):
@@ -2147,12 +2280,17 @@ class PublicLandingLeadCreateView(APIView):
                 {"detail": "Full name and phone are required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # Санитизация полей от HTML перед сохранением
+        safe_full_name = bleach.clean(full_name, tags=[], strip=True)[:200]
+        safe_course_interest = bleach.clean((request.data.get("course_interest") or "").strip(), tags=[], strip=True)[:200]
+        safe_comment = bleach.clean((request.data.get("comment") or "").strip(), tags=[], strip=True)[:1000]
+
         lead = TrialLead.objects.create(
-            full_name=full_name,
+            full_name=safe_full_name,
             phone=phone,
-            course_interest=(request.data.get("course_interest") or "").strip(),
+            course_interest=safe_course_interest,
             source=f"landing:{page.slug}",
-            comment=(request.data.get("comment") or "").strip(),
+            comment=safe_comment,
             company=page.company,
         )
         return Response(TrialLeadSerializer(lead).data, status=status.HTTP_201_CREATED)
@@ -2164,6 +2302,7 @@ class CrmContactView(APIView):
     Creates a TrialLead without company association and notifies superadmins.
     """
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [AnonRateThrottle, PublicSubmitThrottle]
     parser_classes = [JSONParser]
 
     def post(self, request):
@@ -2178,32 +2317,36 @@ class CrmContactView(APIView):
         comment = (request.data.get("comment") or "").strip()
         telegram = (request.data.get("telegram") or "").strip()
 
+        # Санитизация полей от HTML перед сохранением
+        safe_full_name = bleach.clean(full_name, tags=[], strip=True)[:200]
+        safe_comment = bleach.clean(comment, tags=[], strip=True)[:1000]
+        safe_telegram = bleach.clean(telegram, tags=[], strip=True)[:200]
+
         # Save as TrialLead with source "crm-landing" (no company)
         comment_parts = []
-        if comment:
-            comment_parts.append(comment)
-        if telegram:
-            comment_parts.append(f"Telegram: {telegram}")
+        if safe_comment:
+            comment_parts.append(safe_comment)
+        if safe_telegram:
+            comment_parts.append(f"Telegram: {safe_telegram}")
         lead = TrialLead.objects.create(
-            full_name=full_name,
+            full_name=safe_full_name,
             phone=phone,
             source="crm-landing",
             comment="\n".join(comment_parts),
             company=None,
         )
 
-        # Notify superadmins
+        # Notify superadmins (используем санитизированные данные)
         try:
             from telegram_bot.notifications import send_crm_contact_notification
+            from asgiref.sync import async_to_sync
 
-            loop = asyncio.new_event_loop()
-            loop.run_until_complete(send_crm_contact_notification(
-                full_name=full_name,
+            async_to_sync(send_crm_contact_notification)(
+                full_name=safe_full_name,
                 phone=phone,
-                comment=comment,
-                telegram=telegram,
-            ))
-            loop.close()
+                comment=safe_comment,
+                telegram=safe_telegram,
+            )
         except Exception as e:
             logger.warning(f"Failed to send CRM contact notification: {e}")
 
@@ -3831,12 +3974,14 @@ class FinanceExportView(APIView):
     """
     Экспорт финансовых данных.
     GET /api/finance/export/<format>/
+    Поддерживаемые форматы: json, xlsx, csv
     """
     permission_classes = [IsCourseAdminOrManager]
 
     def get(self, request, export_format: str):
         from django.db.models import Sum
         from calendar import monthrange
+        from django.http import HttpResponse
 
         user = request.user
         if user.role == User.Role.COURSE_ADMIN:
@@ -3868,8 +4013,120 @@ class FinanceExportView(APIView):
                 'payments': list(payments.values('id', 'student__first_name', 'student__last_name', 'amount', 'status', 'paid_at')),
                 'expenses': list(expenses.values('id', 'description', 'amount', 'category', 'date')),
             })
+
+        elif export_format == 'xlsx':
+            import openpyxl
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+            wb = openpyxl.Workbook()
+
+            # ─── Sheet 1: Payments ───
+            ws1 = wb.active
+            ws1.title = "Платежи"
+
+            header_font = Font(bold=True, color="FFFFFF", size=11)
+            header_fill = PatternFill(start_color="2D3748", end_color="2D3748", fill_type="solid")
+            header_alignment = Alignment(horizontal="center", vertical="center")
+            thin_border = Border(
+                left=Side(style="thin", color="E2E8F0"),
+                right=Side(style="thin", color="E2E8F0"),
+                top=Side(style="thin", color="E2E8F0"),
+                bottom=Side(style="thin", color="E2E8F0"),
+            )
+
+            payment_headers = ["ID", "Студент", "Сумма", "Статус", "Дата оплаты"]
+            for col_idx, header in enumerate(payment_headers, 1):
+                cell = ws1.cell(row=1, column=col_idx, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = header_alignment
+                cell.border = thin_border
+
+            for row_idx, payment in enumerate(payments, 2):
+                student_name = f"{payment.student.first_name or ''} {payment.student.last_name or ''}".strip()
+                ws1.cell(row=row_idx, column=1, value=payment.id).border = thin_border
+                ws1.cell(row=row_idx, column=2, value=student_name or "—").border = thin_border
+                ws1.cell(row=row_idx, column=3, value=float(payment.amount)).border = thin_border
+                ws1.cell(row=row_idx, column=4, value=payment.get_status_display()).border = thin_border
+                ws1.cell(row=row_idx, column=5, value=payment.paid_at.strftime("%d.%m.%Y") if payment.paid_at else "—").border = thin_border
+
+            ws1.column_dimensions["A"].width = 8
+            ws1.column_dimensions["B"].width = 35
+            ws1.column_dimensions["C"].width = 15
+            ws1.column_dimensions["D"].width = 15
+            ws1.column_dimensions["E"].width = 15
+
+            # ─── Sheet 2: Expenses ───
+            ws2 = wb.create_sheet("Расходы")
+
+            expense_headers = ["ID", "Описание", "Сумма", "Категория", "Дата"]
+            for col_idx, header in enumerate(expense_headers, 1):
+                cell = ws2.cell(row=1, column=col_idx, value=header)
+                cell.font = header_font
+                cell.fill = PatternFill(start_color="4A5568", end_color="4A5568", fill_type="solid")
+                cell.alignment = header_alignment
+                cell.border = thin_border
+
+            expense_category_labels = dict(Expense.Category.choices)
+
+            for row_idx, expense in enumerate(expenses, 2):
+                ws2.cell(row=row_idx, column=1, value=expense.id).border = thin_border
+                ws2.cell(row=row_idx, column=2, value=expense.description).border = thin_border
+                ws2.cell(row=row_idx, column=3, value=float(expense.amount)).border = thin_border
+                ws2.cell(row=row_idx, column=4, value=expense_category_labels.get(expense.category, expense.category)).border = thin_border
+                ws2.cell(row=row_idx, column=5, value=expense.date.strftime("%d.%m.%Y") if expense.date else "—").border = thin_border
+
+            ws2.column_dimensions["A"].width = 8
+            ws2.column_dimensions["B"].width = 40
+            ws2.column_dimensions["C"].width = 15
+            ws2.column_dimensions["D"].width = 25
+            ws2.column_dimensions["E"].width = 15
+
+            response = HttpResponse(
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            response["Content-Disposition"] = f'attachment; filename="finance_{now.strftime("%Y-%m")}.xlsx"'
+            wb.save(response)
+            return response
+
+        elif export_format == 'csv':
+            import csv
+
+            response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
+            response["Content-Disposition"] = f'attachment; filename="finance_{now.strftime("%Y-%m")}.csv"'
+
+            writer = csv.writer(response)
+
+            writer.writerow(["=== ПЛАТЕЖИ ==="])
+            writer.writerow(["ID", "Студент", "Сумма", "Статус", "Дата оплаты"])
+            for payment in payments:
+                student_name = f"{payment.student.first_name or ''} {payment.student.last_name or ''}".strip()
+                writer.writerow([
+                    payment.id,
+                    student_name or "—",
+                    float(payment.amount),
+                    payment.get_status_display(),
+                    payment.paid_at.strftime("%d.%m.%Y") if payment.paid_at else "—",
+                ])
+
+            writer.writerow([])
+            writer.writerow(["=== РАСХОДЫ ==="])
+            writer.writerow(["ID", "Описание", "Сумма", "Категория", "Дата"])
+
+            expense_category_labels = dict(Expense.Category.choices)
+            for expense in expenses:
+                writer.writerow([
+                    expense.id,
+                    expense.description,
+                    float(expense.amount),
+                    expense_category_labels.get(expense.category, expense.category),
+                    expense.date.strftime("%d.%m.%Y") if expense.date else "—",
+                ])
+
+            return response
+
         else:
-            return Response({'detail': f'Формат "{export_format}" не поддерживается.'}, status=400)
+            return Response({'detail': f'Формат "{export_format}" не поддерживается. Используйте: json, xlsx, csv'}, status=400)
 
 
 class UserBalanceMeView(APIView):
@@ -3883,3 +4140,493 @@ class UserBalanceMeView(APIView):
         user = request.user
         user_balance, created = UserBalance.objects.get_or_create(user=user)
         return Response({'balance': user_balance.balance})
+
+
+class BroadcastView(APIView):
+    """
+    Массовая рассылка сообщений через Telegram.
+    POST /api/broadcast/send/
+    """
+    permission_classes = [IsCourseAdminOrManager]
+
+    def post(self, request):
+        user = request.user
+        company = user.company
+        if not company:
+            return Response({"detail": "Компания не найдена."}, status=400)
+
+        text = (request.data.get("text") or "").strip()
+        target = (request.data.get("target") or "").strip()
+        group_id = request.data.get("group_id")
+
+        if not text:
+            return Response({"detail": "Текст сообщения обязателен."}, status=400)
+
+        # Санитизация текста через bleach — разрешены только теги Telegram
+        text = bleach.clean(
+            text,
+            tags=['b', 'i', 'u', 's', 'a', 'code', 'pre'],
+            attributes={'a': ['href']},
+            protocols=['http', 'https', 'mailto'],
+            strip=True,
+        )
+
+        if len(text) > 4000:
+            return Response({"detail": "Текст сообщения не может превышать 4000 символов."}, status=400)
+
+        # Determine recipients
+        recipients = []
+
+        if target == "students":
+            students = Student.objects.filter(company=company, user__isnull=False)
+            for student in students:
+                if student.user and student.user.telegram_chat_id:
+                    recipients.append({
+                        "name": str(student),
+                        "chat_id": student.user.telegram_chat_id,
+                    })
+
+        elif target == "teachers":
+            teachers = User.objects.filter(company=company, role=User.Role.TEACHER)
+            for teacher in teachers:
+                if teacher.telegram_chat_id:
+                    recipients.append({
+                        "name": teacher.get_full_name() or teacher.username,
+                        "chat_id": teacher.telegram_chat_id,
+                    })
+
+        elif target == "managers":
+            managers = User.objects.filter(company=company, role=User.Role.MANAGER)
+            for mgr in managers:
+                if mgr.telegram_chat_id:
+                    recipients.append({
+                        "name": mgr.get_full_name() or mgr.username,
+                        "chat_id": mgr.telegram_chat_id,
+                    })
+
+        elif target == "group" and group_id:
+            try:
+                group = Group.objects.get(id=group_id, company=company)
+            except Group.DoesNotExist:
+                return Response({"detail": "Группа не найдена."}, status=404)
+            for student in group.students.filter(user__isnull=False):
+                if student.user and student.user.telegram_chat_id:
+                    recipients.append({
+                        "name": str(student),
+                        "chat_id": student.user.telegram_chat_id,
+                    })
+        else:
+            return Response({"detail": f"Неверный target: {target}"}, status=400)
+
+        if not recipients:
+            return Response({"detail": "Нет получателей с привязанным Telegram."}, status=400)
+
+        # Send messages via Telegram
+        from telegram_bot.config import _get_application, BOT_TOKEN
+
+        sent_count = 0
+        failed_count = 0
+        errors = []
+
+        async def send_messages():
+            nonlocal sent_count, failed_count
+            if not BOT_TOKEN:
+                raise Exception("TELEGRAM_BOT_TOKEN не настроен")
+
+            application = _get_application()
+            preview_emoji = "📢"
+            full_text = f"{preview_emoji} <b>Массовая рассылка</b>\n\n{text}"
+
+            for recipient in recipients:
+                try:
+                    await application.bot.send_message(
+                        chat_id=recipient["chat_id"],
+                        text=full_text,
+                        parse_mode="HTML",
+                    )
+                    sent_count += 1
+                except Exception as e:
+                    failed_count += 1
+                    errors.append(f"{recipient['name']}: {str(e)[:100]}")
+                    logger.warning(f"Broadcast failed for {recipient['name']}: {e}")
+
+        try:
+            from asgiref.sync import async_to_sync
+            async_to_sync(send_messages)()
+        except Exception as e:
+            return Response({"detail": f"Ошибка отправки: {str(e)}"}, status=500)
+
+        return Response({
+            "sent": sent_count,
+            "failed": failed_count,
+            "total": len(recipients),
+            "errors": errors[:10],
+        })
+
+
+class ContractViewSet(viewsets.ModelViewSet):
+    """
+    Договоры / соглашения с PDF-генерацией.
+    GET /api/contracts/ — список договоров
+    POST /api/contracts/ — создать договор
+    GET /api/contracts/{id}/pdf/ — скачать PDF
+    """
+    queryset = Contract.objects.all().order_by("-created_at")
+    serializer_class = ContractSerializer
+    permission_classes = [IsCourseAdminOrManager]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.role == User.Role.COURSE_ADMIN:
+            return qs.filter(company=user.company)
+        if user.role == User.Role.MANAGER:
+            if user.company:
+                return qs.filter(company=user.company)
+            return qs.none()
+        return qs.none()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            raise PermissionDenied("Only course admins and managers can create contracts.")
+        student = serializer.validated_data.get("student")
+        if student.company != user.company:
+            raise PermissionDenied("Student must belong to the same company.")
+        group = serializer.validated_data.get("group")
+        if group and group.company != user.company:
+            raise PermissionDenied("Group must belong to the same company.")
+        contract = serializer.save(company=user.company, created_by=user)
+        # Auto-generate PDF after creation
+        self._generate_contract_pdf(contract)
+
+    def _generate_contract_pdf(self, contract):
+        """
+        Автоматически генерирует PDF для договора.
+        Использует кастомный шаблон компании (ContractTemplate), если он есть,
+        иначе — стандартный шаблон core/contract_template.html.
+        """
+        try:
+            from weasyprint import HTML
+        except ImportError:
+            logger.warning("weasyprint not available, skipping PDF generation")
+            return
+
+        if contract.pdf_file:
+            return
+
+        company = contract.company
+        student = contract.student
+        group = contract.group
+
+        admin = User.objects.filter(
+            role=User.Role.COURSE_ADMIN, company=company
+        ).first()
+        admin_name = f"{admin.first_name} {admin.last_name}".strip() or (admin.username if admin else "Администратор")
+        course_name = group.course.title if group and group.course else "—"
+
+        context = {
+            "contract_number": contract.contract_number,
+            "company_name": company.name,
+            "company_city": company.city or "Бишкек",
+            "company_address": company.district or company.city or "",
+            "company_phone": company.phone or "",
+            "admin_name": admin_name,
+            "student_name": str(student),
+            "student_phone": student.phone,
+            "student_passport_info": "паспорт: данные паспорта",
+            "course_name": course_name,
+            "group_name": group.name if group else "—",
+            "amount": int(contract.amount),
+            "start_date": contract.start_date.strftime("%d.%m.%Y"),
+            "end_date": contract.end_date.strftime("%d.%m.%Y") if contract.end_date else "—",
+            "payment_terms": "100% предоплата",
+            "terms": contract.terms,
+        }
+
+        custom_template = ContractTemplate.objects.filter(
+            company=company, is_default=True
+        ).first()
+
+        if custom_template and custom_template.html_content:
+            from django.template import Template, Context
+            template = Template(custom_template.html_content)
+            html_string = template.render(Context(context))
+        else:
+            html_string = render_to_string("core/contract_template.html", context)
+
+        try:
+            pdf_bytes = HTML(string=html_string).write_pdf()
+            contract.pdf_file.save(
+                f"contract_{contract.contract_number}.pdf",
+                io.BytesIO(pdf_bytes),
+                save=True,
+            )
+            logger.info(f"PDF auto-generated for contract {contract.contract_number}")
+        except Exception as e:
+            logger.error(f"PDF auto-generation failed for contract {contract.contract_number}: {e}")
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        instance = self.get_object()
+        if instance.company != user.company:
+            raise PermissionDenied("Not allowed for this contract.")
+        if instance.status != Contract.Status.DRAFT:
+            raise PermissionDenied("Only draft contracts can be edited.")
+        serializer.save()
+
+    @action(detail=True, methods=["post"])
+    def send(self, request, pk=None):
+        """Отправить договор студенту (сменить статус на SENT)"""
+        contract = self.get_object()
+        if contract.company != request.user.company:
+            raise PermissionDenied("Not allowed for this contract.")
+        if contract.status != Contract.Status.DRAFT:
+            return Response({"detail": "Договор уже отправлен."}, status=400)
+        contract.status = Contract.Status.SENT
+        contract.save(update_fields=["status"])
+        return Response(ContractSerializer(contract).data)
+
+    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated])
+    def sign(self, request, pk=None):
+        """Подписать договор студентом (сменить статус на SIGNED)"""
+        # Используем get_object_or_404 вместо self.get_object(),
+        # т.к. get_queryset() фильтрует по company и возвращает qs.none() для студентов
+        contract = get_object_or_404(Contract, pk=pk)
+        # Only the student who the contract belongs to can sign
+        student = getattr(request.user, "student_profile", None)
+        if not student or contract.student.id != student.id:
+            raise PermissionDenied("Вы не можете подписать этот договор.")
+        if contract.status != Contract.Status.SENT:
+            return Response({"detail": "Можно подписать только отправленный договор."}, status=400)
+        contract.status = Contract.Status.SIGNED
+        contract.signed_at = timezone.now()
+        contract.save(update_fields=["status", "signed_at"])
+        return Response(ContractSerializer(contract).data)
+    @action(detail=False, methods=["get", "post"], url_path="auto-fill")
+    def auto_fill(self, request):
+        """
+        Авто-заполнение данных договора на основе студента и группы.
+        GET: принимает ?student_id=X&group_id=Y, возвращает предзаполненные данные.
+        POST: принимает student_id + group_id, создаёт договор с авто-заполнением.
+        """
+        from datetime import date
+
+        student_id = request.data.get("student_id") or request.query_params.get("student_id")
+        group_id = request.data.get("group_id") or request.query_params.get("group_id")
+
+        if not student_id or not group_id:
+            return Response(
+                {"detail": "student_id и group_id обязательны."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            student = Student.objects.get(id=student_id, company=request.user.company)
+            group = Group.objects.get(id=group_id, company=request.user.company)
+        except (Student.DoesNotExist, Group.DoesNotExist):
+            raise PermissionDenied("Студент или группа не найдены.")
+
+        course = group.course
+        course_name = course.title if course else "—"
+        amount = course.price if course else 0
+
+        data = {
+            "student": student.id,
+            "student_name": str(student),
+            "student_phone": student.phone,
+            "group": group.id,
+            "group_name": group.name,
+            "course_name": course_name,
+            "amount": float(amount),
+            "start_date": group.start_date.isoformat() if group.start_date else date.today().isoformat(),
+            "end_date": group.end_date.isoformat() if group.end_date else "",
+        }
+
+        if request.method == "POST":
+            # Create contract with auto-filled data
+            serializer = self.get_serializer(data={
+                "student": student.id,
+                "group": group.id,
+                "amount": amount,
+                "start_date": group.start_date or date.today(),
+                "end_date": group.end_date,
+            })
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+        return Response(data)
+
+
+
+    @action(detail=True, methods=["get"], url_path="pdf")
+    def download_pdf(self, request, pk=None):
+        """Сгенерировать и скачать PDF договора"""
+        contract = self.get_object()
+        if contract.company != request.user.company:
+            raise PermissionDenied("Not allowed for this contract.")
+
+        try:
+            from weasyprint import HTML
+        except ImportError:
+            return Response(
+                {"detail": "PDF generation is not available."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Prepare template context
+        company = contract.company
+        admin = User.objects.filter(
+            role=User.Role.COURSE_ADMIN, company=company
+        ).first()
+        admin_name = f"{admin.first_name} {admin.last_name}".strip() or (admin.username if admin else "Администратор")
+        student = contract.student
+        group = contract.group
+        course_name = group.course.title if group and group.course else "—"
+
+        context = {
+            "contract_number": contract.contract_number,
+            "company_name": company.name,
+            "company_city": company.city or "Бишкек",
+            "company_address": company.district or company.city or "",
+            "company_phone": company.phone or "",
+            "admin_name": admin_name,
+            "student_name": str(student),
+            "student_phone": student.phone,
+            "student_passport_info": "паспорт: данные паспорта",
+            "course_name": course_name,
+            "group_name": group.name if group else "—",
+            "amount": int(contract.amount),
+            "start_date": contract.start_date.strftime("%d.%m.%Y"),
+            "end_date": contract.end_date.strftime("%d.%m.%Y") if contract.end_date else "—",
+            "payment_terms": "100% предоплата",
+            "terms": contract.terms,
+        }
+
+        html_string = render_to_string("core/contract_template.html", context)
+
+        try:
+            pdf_file = HTML(string=html_string).write_pdf()
+            response = HttpResponse(pdf_file, content_type="application/pdf")
+            filename = f"contract_{contract.contract_number}.pdf"
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            return response
+        except Exception as e:
+            logger.error(f"PDF generation failed: {e}")
+            return Response(
+                {"detail": f"Ошибка генерации PDF: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+class ContractTemplateViewSet(viewsets.ModelViewSet):
+    """
+    Шаблоны договоров для компании.
+    GET /api/contract-templates/ — список шаблонов
+    POST /api/contract-templates/ — создать шаблон
+    GET /api/contract-templates/{id}/ — детали шаблона
+    PUT /api/contract-templates/{id}/ — обновить шаблон
+    DELETE /api/contract-templates/{id}/ — удалить шаблон
+    """
+    queryset = ContractTemplate.objects.all().order_by("-is_default", "-created_at")
+    serializer_class = ContractTemplateSerializer
+    permission_classes = [IsCourseAdminOrManager]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.role == User.Role.COURSE_ADMIN:
+            return qs.filter(company=user.company)
+        if user.role == User.Role.MANAGER and user.company:
+            return qs.filter(company=user.company)
+        return qs.none()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            raise PermissionDenied("Only course admins and managers can create contract templates.")
+        # If this template is set as default, unset others
+        if serializer.validated_data.get("is_default"):
+            ContractTemplate.objects.filter(company=user.company).update(is_default=False)
+        serializer.save(company=user.company)
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        instance = self.get_object()
+        if instance.company != user.company:
+            raise PermissionDenied("Not allowed for this template.")
+        if serializer.validated_data.get("is_default"):
+            ContractTemplate.objects.filter(company=user.company).exclude(id=instance.id).update(is_default=False)
+        serializer.save()
+
+
+class StudentContractsView(APIView):
+    """
+    Список договоров для студента (личный кабинет).
+    GET /api/auth/student/contracts/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != User.Role.STUDENT:
+            raise PermissionDenied("Only students can access their contracts.")
+        student = getattr(request.user, "student_profile", None)
+        if not student:
+            return Response({"detail": "Student profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        contracts = Contract.objects.filter(student=student).order_by("-created_at")
+        serializer = ContractSerializer(contracts, many=True, context={"request": request})
+        return Response(serializer.data)
+
+
+
+class CspReportView(APIView):
+    """
+    Public endpoint для сбора CSP violation report-ов.
+    Браузеры отправляют POST с Content-Type application/csp-report (не application/json!), 
+    поэтому читаем тело вручную через json.loads(request.body).
+    Все нарушения логируются для мониторинга.
+    """
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []  # No auth needed for CSP reports
+
+    def post(self, request):
+        import json
+        try:
+            report = json.loads(request.body)
+        except (ValueError, AttributeError, TypeError):
+            # Невалидный JSON или пустое тело — игнорируем
+            return Response(status=204)
+        
+        # CSP report может быть в формате {"csp-report": {...}} или плоским
+        csp_report = report.get("csp-report", report)
+        
+        if not isinstance(csp_report, dict):
+            return Response(status=204)
+        
+        blocked_uri = csp_report.get("blocked-uri", "unknown")
+        violated_directive = csp_report.get("violated-directive", "unknown")
+        document_uri = csp_report.get("document-uri", "unknown")
+        original_policy = csp_report.get("original-policy", "")
+        disposition = csp_report.get("disposition", "unknown")
+        source_file = csp_report.get("source-file", "")
+        line_number = csp_report.get("line-number", "")
+        
+        logger.warning(
+            "CSP Violation | directive=%s | blocked=%s | document=%s | disposition=%s | source=%s:%s | policy=%s",
+            violated_directive,
+            blocked_uri,
+            document_uri,
+            disposition,
+            source_file,
+            line_number,
+            original_policy[:500],
+        )
+        
+        # В production можно также сохранять в БД, отправлять в Sentry и т.д.
+        if settings.DEBUG:
+            logger.debug("Full CSP report: %s", csp_report)
+        
+        return Response(status=204)  # No content — браузеру не нужен ответ
+

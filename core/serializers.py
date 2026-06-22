@@ -1,4 +1,5 @@
 import re
+import bleach
 
 from django.contrib.auth import authenticate
 from django.db import models
@@ -30,6 +31,8 @@ from .models import (
     JobVacancy,
     StudentApplication,
     TeacherApplication,
+    Contract,
+    ContractTemplate,
 )
 
 def normalize_phone(value: str) -> str:
@@ -726,7 +729,7 @@ class PaymentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Payment
-        fields = ("id", "student", "group", "company", "company_id", "amount", "status", "paid_at", "created_at")
+        fields = ("id", "student", "group", "company", "company_id", "amount", "status", "paid_at", "due_date", "reminder_sent_at", "created_at")
 
 class HomeworkSubmissionSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
@@ -1251,6 +1254,59 @@ class LandingPublicPageSerializer(serializers.ModelSerializer):
             "instagram": getattr(obj.company, 'instagram', None),
             "facebook": getattr(obj.company, 'facebook', None),
         }
+
+class ContractSerializer(serializers.ModelSerializer):
+    student_name = serializers.SerializerMethodField()
+    group_name = serializers.SerializerMethodField()
+    company_name = serializers.CharField(source="company.name", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = Contract
+        fields = (
+            "id",
+            "company",
+            "company_name",
+            "student",
+            "student_name",
+            "group",
+            "group_name",
+            "status",
+            "status_display",
+            "contract_number",
+            "amount",
+            "start_date",
+            "end_date",
+            "terms",
+            "created_by",
+            "signed_at",
+            "pdf_file",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("company", "contract_number", "created_by", "signed_at", "pdf_file", "created_at", "updated_at")
+
+    def get_student_name(self, obj):
+        return str(obj.student) if obj.student else "—"
+
+    def get_group_name(self, obj):
+        return obj.group.name if obj.group else "—"
+
+
+class ContractTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContractTemplate
+        fields = (
+            "id",
+            "company",
+            "name",
+            "html_content",
+            "is_default",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("company", "created_at", "updated_at")
+
 
 class PromoCodeSerializer(serializers.ModelSerializer):
     balance = serializers.SerializerMethodField()

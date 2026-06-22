@@ -23,7 +23,19 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS_ENV = os.environ.get("ALLOWED_HOSTS", "")
+if ALLOWED_HOSTS_ENV:
+    ALLOWED_HOSTS = [
+        host.strip()
+        for host in ALLOWED_HOSTS_ENV.split(",")
+        if host.strip()
+    ]
+else:
+    ALLOWED_HOSTS = [
+        "backend1-ritn.onrender.com",
+        "localhost",
+        "127.0.0.1",
+    ]
 
 # Application definition
 INSTALLED_APPS = [
@@ -186,6 +198,7 @@ else:
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.TokenAuthentication",
+        "core.auth.CookieTokenAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
