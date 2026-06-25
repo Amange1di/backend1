@@ -33,6 +33,7 @@ if ALLOWED_HOSTS_ENV:
 else:
     ALLOWED_HOSTS = [
         "backend1-ritn.onrender.com",
+        "162.62.231.244",
         "localhost",
         "127.0.0.1",
     ]
@@ -229,6 +230,8 @@ else:
         "http://localhost:3000",
         "http://localhost:3001",
         "https://eduosh1.vercel.app",
+        "https://eduosh.kg",
+        "http://eduosh.kg",
         "https://backend1-ritn.onrender.com",
         "http://127.0.0.1:8000",
         "http://192.168.31.129:3000",
@@ -242,6 +245,13 @@ else:
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = False
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://eduosh1.vercel.app",
+    "https://backend1-ritn.onrender.com",
+    "http://162.62.231.244",
+    "https://162.62.231.244",
+]
 
 LANGUAGES = [
     ("ru", "Russian"),
