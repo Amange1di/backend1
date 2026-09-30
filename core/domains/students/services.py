@@ -1,6 +1,10 @@
 import re
+import secrets
+from datetime import timedelta
 
-from core.models import Student, User
+from django.utils import timezone
+
+from core.models import Student, TelegramBindCode, User
 
 
 def normalize_phone(value: str) -> str:
@@ -61,6 +65,23 @@ def sync_student_user(
         student.save(
             update_fields=["user"]
         )
+
+        setup_code = (
+            f"{secrets.randbelow(1_000_000):06d}"
+        )
+        expires_at = (
+            timezone.now()
+            + timedelta(minutes=10)
+        )
+        TelegramBindCode.objects.create(
+            user=user,
+            code=setup_code,
+            expires_at=expires_at,
+            is_used=False,
+        )
+        student._setup_code = setup_code
+        student._setup_code_expires_at = expires_at
+
         return student
 
     changed_fields = []
