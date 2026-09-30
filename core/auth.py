@@ -12,7 +12,6 @@ FIRST_LOGIN_ALLOWED_PATHS = {
     "/api/auth/me/",
     "/api/auth/logout/",
     "/api/auth/first-login/set-password/",
-    "/api/auth/student/set-password/",
 }
 
 
