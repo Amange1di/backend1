@@ -101,7 +101,6 @@ from .permissions import (
 )
 from .serializers import (
     TrialLeadSerializer,
-    PromoCodeSerializer,
 )
 
 
@@ -659,119 +658,8 @@ from .domains.homework.views import (
 )
 
 
-class PromoCodeViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for managing promo codes (admin and course admin).
-    """
-    queryset = PromoCode.objects.all().order_by("-created_at")
-    serializer_class = PromoCodeSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        user = self.request.user
-        if user.is_superuser or user.role in (User.Role.ADMIN, User.Role.SUPER_ADMIN):
-            return PromoCode.objects.all().order_by("-created_at")
-        if user.role == User.Role.COURSE_ADMIN:
-            return PromoCode.objects.filter(created_by=user).order_by("-created_at")
-        if user.role == User.Role.MANAGER:
-            return PromoCode.objects.filter(created_by__role=User.Role.ADMIN).order_by("-created_at")
-        return PromoCode.objects.none()
-
-    def create(self, request, *args, **kwargs):
-        print(f"🔹 PromoCodeViewSet.create - data: {request.data}")
-        print(f"🔹 Content-Type: {request.content_type}")
-        return super().create(request, *args, **kwargs)
-
-    def perform_create(self, serializer):
-        user = self.request.user
-        if not (user.is_superuser or user.role in (User.Role.ADMIN, User.Role.SUPER_ADMIN)):
-            raise PermissionDenied("Только админ может создавать промокоды.")
-        serializer.save(created_by=self.request.user)
-
-    @action(detail=False, methods=["post"], url_path="activate")
-    def activate(self, request):
-        user = request.user
-        if user.role not in (User.Role.ADMIN, User.Role.COURSE_ADMIN, User.Role.MANAGER):
-            raise PermissionDenied("Only admins, course admins and managers can activate promo codes.")
-        
-        code = request.data.get("code", "").strip()
-        if not code:
-            return Response(
-                {"detail": "Promo code is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        
-        try:
-            promo_code = PromoCode.objects.get(code=code)
-        except PromoCode.DoesNotExist:
-            return Response(
-                {"detail": "Promo code not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        
-        # Курс-админ и менеджер могут активировать только промокоды созданные супер-админом
-        if user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
-            creator = promo_code.created_by
-            creator_is_admin = (
-                creator
-                and (creator.is_superuser or creator.role in (User.Role.ADMIN, User.Role.SUPER_ADMIN))
-            )
-            if not creator_is_admin:
-                return Response(
-                    {"detail": "Вы можете активировать только промокоды созданные супер-админом."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-        
-        # Проверяем срок действия
-        if promo_code.expiry_date and promo_code.expiry_date < timezone.now():
-            return Response(
-                {"detail": "Cannot activate expired promo code."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        
-        # Проверяем, не исчерпан ли лимит активаций
-        if promo_code.current_usages >= promo_code.max_usages:
-            return Response(
-                {"detail": "Promo code usage limit reached."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        
-        # Используем метод модели для активации
-        if not promo_code.is_active:
-            promo_code.is_active = True
-            promo_code.save(update_fields=["is_active"])
-        
-        # Получаем или создаем баланс компании
-        company_name = resolve_user_company_name(user)
-        if not company_name:
-            return Response(
-                {"detail": "Компания не найдена."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        
-        company_balance, created = CompanyBalance.objects.get_or_create(
-            company_name=company_name,
-            defaults={"balance": 0}
-        )
-        
-        # Начисляем награду
-        if promo_code.reward_type == PromoCode.RewardType.COINS:
-            company_balance.add_coins(promo_code.reward_value, f"Промокод: {promo_code.code}")
-        else:
-            # Для бонусного лимита
-            Transaction.objects.create(
-                company_name=company_name,
-                user=user,
-                amount=0,
-                reason=f"Промокод (бонус лимит): {promo_code.code}",
-                transaction_type=Transaction.Type.BONUS,
-            )
-        
-        # Обновляем счётчик использований
-        promo_code.current_usages += 1
-        promo_code.save(update_fields=["current_usages"])
-        
-        return Response(PromoCodeSerializer(promo_code).data)
+# Compatibility re-export. Promo routes remain disabled as before.
+from .domains.promo_codes.views import PromoCodeViewSet
 
 
 from .domains.attendance.views import AttendanceMarkView
