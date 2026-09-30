@@ -26,7 +26,6 @@ from ..services import (
     charge_promotion,
     mark_urgent,
     promote_item,
-    resolve_user_company_name,
 )
 
 class MarketplaceCourseViewSet(viewsets.ModelViewSet):
@@ -67,12 +66,17 @@ class MarketplaceCourseViewSet(viewsets.ModelViewSet):
             )
 
         if user.role == User.Role.MANAGER:
-            company_name = resolve_user_company_name(
-                user
+            company_id = (
+                user.company_id
+                or getattr(
+                    getattr(user, "created_by", None),
+                    "company_id",
+                    None,
+                )
             )
-            if company_name:
+            if company_id:
                 return queryset.filter(
-                    company__name=company_name
+                    company_id=company_id
                 )
             return queryset.none()
 
