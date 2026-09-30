@@ -48,12 +48,16 @@ class RegisterThrottle(ScopedRateThrottle):
 
 class RegisterView(APIView):
     permission_classes = [
-        permissions.AllowAny
+        permissions.IsAuthenticated
     ]
     throttle_classes = [RegisterThrottle]
     throttle_scope = "register"
 
     def post(self, request):
+        if request.user.role != User.Role.COURSE_ADMIN:
+            raise PermissionDenied(
+                "Only course admins can create users."
+            )
         if (
             request.user.is_authenticated
             and request.user.role
