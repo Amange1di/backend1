@@ -27,11 +27,8 @@ class GroupSerializer(serializers.ModelSerializer):
         read_only=True,
     )
     auditorium_label = serializers.SerializerMethodField()
-    company_id = serializers.PrimaryKeyRelatedField(
-        source="company",
-        queryset=Company.objects.all(),
-        required=False,
-        allow_null=True,
+    company_id = serializers.IntegerField(
+        read_only=True,
     )
 
     class Meta:
@@ -64,7 +61,7 @@ class GroupSerializer(serializers.ModelSerializer):
             "company_id",
             "teacher_percent",
         )
-        read_only_fields = ("status",)
+        read_only_fields = ("status", "company", "company_id")
 
     def get_fields(self):
         fields = super().get_fields()
