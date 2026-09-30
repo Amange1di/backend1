@@ -4,19 +4,10 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     BroadcastView,
     DashboardView,
-    CourseAdminCreateView,
-    CourseAdminDetailView,
     CrmContactView,
     CspReportView,
     FinanceDashboardView,
     FinanceExportView,
-    LoginView,
-    LogoutView,
-    MeView,
-    RegisterView,
-    StudentLoginView,
-    StudentProfileView,
-    StudentSetPasswordView,
     SuperAdminStatsView,
     GenerateTelegramBindCodeView,
     GetTelegramBindCodeView,
@@ -31,6 +22,7 @@ router = DefaultRouter()
 # Public marketplace
 
 urlpatterns = [
+    path("", include("core.domains.auth.urls")),
     path("", include("core.domains.finance.urls")),
     path("", include("core.domains.payments.urls")),
     path("", include("core.domains.attendance.urls")),
@@ -46,15 +38,6 @@ urlpatterns = [
     path("", include("core.domains.tasks.urls")),
     path("", include("core.domains.homework.urls")),
     path("", include("core.domains.contracts.urls")),
-    path("auth/register/", RegisterView.as_view(), name="auth-register"),
-    path("auth/course-admins/", CourseAdminCreateView.as_view(), name="auth-course-admins"),
-    path("auth/course-admins/<int:pk>/", CourseAdminDetailView.as_view(), name="auth-course-admin-detail"),
-    path("auth/login/", LoginView.as_view(), name="auth-login"),
-    path("auth/student/login/", StudentLoginView.as_view(), name="auth-student-login"),
-    path("auth/student/set-password/", StudentSetPasswordView.as_view(), name="auth-student-set-password"),
-    path("auth/student/profile/", StudentProfileView.as_view(), name="auth-student-profile"),
-    path("auth/me/", MeView.as_view(), name="auth-me"),
-    path("auth/logout/", LogoutView.as_view(), name="auth-logout"),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
     path("super-admin/stats/", SuperAdminStatsView.as_view(), name="super-admin-stats"),
     
