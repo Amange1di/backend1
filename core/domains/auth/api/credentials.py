@@ -51,6 +51,7 @@ class RegisterView(APIView):
         permissions.AllowAny
     ]
     throttle_classes = [RegisterThrottle]
+    throttle_scope = "register"
 
     def post(self, request):
         if (
@@ -222,6 +223,7 @@ class LoginView(APIView):
         permissions.AllowAny
     ]
     throttle_classes = [LoginThrottle]
+    throttle_scope = "login"
 
     def post(self, request):
         serializer = LoginSerializer(
