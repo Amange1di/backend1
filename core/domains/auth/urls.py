@@ -1,0 +1,61 @@
+from django.urls import path
+
+from .views import (
+    CourseAdminCreateView,
+    CourseAdminDetailView,
+    LoginView,
+    LogoutView,
+    MeView,
+    RegisterView,
+    StudentLoginView,
+    StudentProfileView,
+    StudentSetPasswordView,
+)
+
+urlpatterns = [
+    path(
+        "auth/register/",
+        RegisterView.as_view(),
+        name="auth-register",
+    ),
+    path(
+        "auth/course-admins/",
+        CourseAdminCreateView.as_view(),
+        name="auth-course-admins",
+    ),
+    path(
+        "auth/course-admins/<int:pk>/",
+        CourseAdminDetailView.as_view(),
+        name="auth-course-admin-detail",
+    ),
+    path(
+        "auth/login/",
+        LoginView.as_view(),
+        name="auth-login",
+    ),
+    path(
+        "auth/student/login/",
+        StudentLoginView.as_view(),
+        name="auth-student-login",
+    ),
+    path(
+        "auth/student/set-password/",
+        StudentSetPasswordView.as_view(),
+        name="auth-student-set-password",
+    ),
+    path(
+        "auth/student/profile/",
+        StudentProfileView.as_view(),
+        name="auth-student-profile",
+    ),
+    path(
+        "auth/me/",
+        MeView.as_view(),
+        name="auth-me",
+    ),
+    path(
+        "auth/logout/",
+        LogoutView.as_view(),
+        name="auth-logout",
+    ),
+]
