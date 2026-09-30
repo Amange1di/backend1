@@ -5,6 +5,7 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from core.models import Company, Course, User
+from core.domains.users.passwords import validate_strong_password
 
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
@@ -59,5 +60,6 @@ class StudentSetPasswordSerializer(
                     )
                 }
             )
+        validate_strong_password(attrs["password"])
         return attrs
 
