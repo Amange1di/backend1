@@ -223,7 +223,7 @@ class BoostCourseView(APIView):
                 f"Продвижение курса: {course.title}"
             ),
             transaction_type=(
-                Transaction.TransactionType.BOOST
+                Transaction.Type.WITHDRAWAL
             ),
         ):
             return Response(
@@ -275,7 +275,7 @@ class UrgentCourseView(APIView):
                 f"Срочный бейдж для курса: {course.title}"
             ),
             transaction_type=(
-                Transaction.TransactionType.URGENT
+                Transaction.Type.WITHDRAWAL
             ),
         ):
             return Response(
