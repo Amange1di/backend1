@@ -31,11 +31,3 @@ class LoginViewTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("token", response.data)
         self.assertEqual(response.data["user"]["id"], user.id)
-
-
-@override_settings(
-    PASSWORD_HASHERS=[
-        "django.contrib.auth.hashers.PBKDF2PasswordHasher",
-        "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
-    ]
-)
