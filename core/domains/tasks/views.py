@@ -9,7 +9,7 @@ from core.permissions import IsCourseAdminOrManager
 from .serializers import TaskSerializer
 from .services import (
     build_task_instances,
-    resolve_user_company_name,
+    resolve_user_company_id,
 )
 
 
@@ -67,8 +67,8 @@ class TaskViewSet(viewsets.ModelViewSet):
             )
 
         if (
-            resolve_user_company_name(assigned_to)
-            != resolve_user_company_name(user)
+            resolve_user_company_id(assigned_to)
+            != resolve_user_company_id(user)
         ):
             raise PermissionDenied(
                 "Manager must belong to the same company."
@@ -121,8 +121,8 @@ class TaskViewSet(viewsets.ModelViewSet):
             )
             if (
                 assigned_to
-                and resolve_user_company_name(assigned_to)
-                != resolve_user_company_name(user)
+                and resolve_user_company_id(assigned_to)
+                != resolve_user_company_id(user)
             ):
                 raise PermissionDenied(
                     "Manager must belong to the same company."
