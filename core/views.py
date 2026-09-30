@@ -36,7 +36,6 @@ from .models import (
     LandingHeaderLink,
     LandingPage,
     LandingSection,
-    HomeworkTaskAttachment,
     HomeworkSubmission,
     HomeworkTask,
     Payment,
@@ -57,7 +56,6 @@ from .models import (
     StudentApplication,
     UserBalance,
     Contract,
-    ContractTemplate,
 )
 from .permissions import (
     IsAdmin,
@@ -112,8 +110,6 @@ from .serializers import (
     LandingHeaderLinkSerializer,
     LandingPageSerializer,
     LandingPublicPageSerializer,
-    HomeworkSubmissionSerializer,
-    HomeworkTaskSerializer,
     LoginSerializer,
     PaymentSerializer,
     RegisterSerializer,
@@ -135,8 +131,6 @@ from .serializers import (
     CompanyCreateUpdateSerializer,
     normalize_phone,
     sync_student_user,
-    ContractSerializer,
-    ContractTemplateSerializer,
 )
 
 
@@ -691,21 +685,6 @@ def ensure_student_access_allowed(student: Student):
         raise PermissionDenied("Student account is not configured.")
     if not student.user.is_active:
         raise PermissionDenied("Student account is inactive.")
-
-
-def _student_can_access_homework_task(task: HomeworkTask, student: Student) -> bool:
-    if task.target_type == HomeworkTask.TargetType.SPECIFIC_STUDENTS:
-        return task.students.filter(id=student.id).exists()
-    return task.group.students.filter(id=student.id).exists()
-
-
-def _is_submission_locked(task: HomeworkTask) -> bool:
-    if not task.hard_deadline:
-        return False
-    grace_delta = timedelta(minutes=task.grace_period_minutes or 0)
-    if task.allow_late:
-        return False
-    return timezone.now() > (task.deadline + grace_delta)
 
 
 def parse_schedule_days(value: str) -> set[int]:
@@ -2628,7 +2607,14 @@ def validate_landing_page_for_publication(page: LandingPage, owner: User | None)
             raise PermissionDenied("All header links must target pages from the same company.")
 
 
-# Compatibility re-export. New code should import from core.domains.homework.views.\nfrom .domains.homework.views import (\n    HomeworkTaskViewSet,\n    HomeworkSubmissionViewSet,\n)\n\n\ndef build_task_instances(validated_data, user):
+# Compatibility re-export. New code should import from core.domains.homework.views.
+from .domains.homework.views import (
+    HomeworkTaskViewSet,
+    HomeworkSubmissionViewSet,
+)
+
+
+def build_task_instances(validated_data, user):
     repeat_type = validated_data.get("repeat_type", Task.RepeatType.NONE)
     start_date = validated_data["due_date"]
     end_date = start_date + timedelta(days=180)
@@ -4100,7 +4086,15 @@ class BroadcastView(APIView):
         })
 
 
-# Compatibility re-export. New code should import from core.domains.contracts.views.\nfrom .domains.contracts.views import (\n    ContractViewSet,\n    ContractTemplateViewSet,\n    StudentContractsView,\n)\n\n\nclass CspReportView(APIView):
+# Compatibility re-export. New code should import from core.domains.contracts.views.
+from .domains.contracts.views import (
+    ContractViewSet,
+    ContractTemplateViewSet,
+    StudentContractsView,
+)
+
+
+class CspReportView(APIView):
     """
     Public endpoint для сбора CSP violation report-ов.
     Браузеры отправляют POST с Content-Type application/csp-report (не application/json!), 
