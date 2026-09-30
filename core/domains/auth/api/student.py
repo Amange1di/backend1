@@ -7,7 +7,7 @@ from rest_framework import permissions, status
 from rest_framework.authtoken.models import Token
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
-from rest_framework.throttling import AnonRateThrottle
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from core.models import (
@@ -43,13 +43,8 @@ class StudentLoginView(APIView):
     permission_classes = [
         permissions.AllowAny
     ]
-    throttle_classes = [AnonRateThrottle]
-
-    def get_throttles(self):
-        throttles = super().get_throttles()
-        for throttle in throttles:
-            throttle.rate = "10/hour"
-        return throttles
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
 
     def post(self, request):
         serializer = (
