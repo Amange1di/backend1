@@ -2,9 +2,6 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    AttendanceMarkView,
-    AttendanceViewSet,
-    AuditoriumViewSet,
     BroadcastView,
     DashboardView,
     CourseAdminCreateView,
@@ -18,7 +15,6 @@ from .views import (
     LoginView,
     LogoutView,
     MeView,
-    PaymentViewSet,
     RegisterView,
     StudentLoginView,
     StudentProfileView,
@@ -31,17 +27,17 @@ from .views import (
 from .sync_views import SyncExportView, SyncImportView
 
 router = DefaultRouter()
-router.register("auditoriums", AuditoriumViewSet)
-router.register("attendance", AttendanceViewSet)
 router.register("group-months", GroupMonthViewSet)
 router.register("expenses", ExpenseViewSet)
-router.register("payments", PaymentViewSet)
 
 # Marketplace routers
 
 # Public marketplace
 
 urlpatterns = [
+    path("", include("core.domains.payments.urls")),
+    path("", include("core.domains.attendance.urls")),
+    path("", include("core.domains.auditoriums.urls")),
     path("", include("core.domains.managers.urls")),
     path("", include("core.domains.teachers.urls")),
     path("", include("core.domains.groups.urls")),
@@ -71,7 +67,6 @@ urlpatterns = [
     # Finance endpoints
     path("finance/dashboard/", FinanceDashboardView.as_view(), name="finance-dashboard"),
     path("finance/export/<str:export_format>/", FinanceExportView.as_view(), name="finance-export"),
-    path("attendance/mark/", AttendanceMarkView.as_view(), name="attendance-mark"),
     
     # Marketplace endpoints
     
