@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import permissions, status
@@ -16,6 +17,7 @@ from core.models import (
     CompanyCategory,
     CompanyCity,
     Student,
+    TelegramBindCode,
     User,
 )
 from core.permissions import IsAdmin
@@ -67,6 +69,13 @@ class StudentLoginView(APIView):
                 "",
             )
         )
+        setup_code = (
+            serializer.validated_data.get(
+                "setup_code",
+                "",
+            )
+            or ""
+        ).strip()
         normalized_phone = normalize_phone(
             phone_number
         )
@@ -113,23 +122,11 @@ class StudentLoginView(APIView):
             except PermissionDenied:
                 continue
 
-        if not accessible_students:
+        if len(accessible_students) != 1:
             return Response(
                 {
                     "detail": (
-                        "Student access is disabled."
-                    )
-                },
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        if len(accessible_students) > 1:
-            return Response(
-                {
-                    "detail": (
-                        "Multiple student accounts "
-                        "matched. Contact your "
-                        "administrator."
+                        "Invalid student credentials."
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -137,14 +134,53 @@ class StudentLoginView(APIView):
 
         student = accessible_students[0]
         user = student.user
-        token, _ = Token.objects.get_or_create(
-            user=user
-        )
 
         if (
             user.must_set_password
             or not user.has_usable_password()
         ):
+            if not setup_code:
+                return Response(
+                    {
+                        "detail": (
+                            "Setup code is required."
+                        ),
+                        "code": "setup_code_required",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            code_obj = (
+                TelegramBindCode.objects.filter(
+                    user=user,
+                    code=setup_code,
+                    is_used=False,
+                    expires_at__gt=timezone.now(),
+                )
+                .order_by("-created_at")
+                .first()
+            )
+            if not code_obj:
+                return Response(
+                    {
+                        "detail": (
+                            "Invalid student credentials."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            code_obj.is_used = True
+            code_obj.save(
+                update_fields=["is_used"]
+            )
+            Token.objects.filter(
+                user=user
+            ).delete()
+            token = Token.objects.create(
+                user=user
+            )
+
             return Response(
                 {
                     "token": token.key,
@@ -183,6 +219,10 @@ class StudentLoginView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        token, _ = Token.objects.get_or_create(
+            user=user
+        )
 
         return Response(
             {
