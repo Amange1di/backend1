@@ -100,13 +100,10 @@ from .permissions import (
     IsTeacherOrCourseAdminReadOnly,
 )
 from .serializers import (
-    AttendanceSerializer,
-    AuditoriumSerializer,
     CourseAdminUpdateSerializer,
     ExpenseSerializer,
     GroupMonthSerializer,
     LoginSerializer,
-    PaymentSerializer,
     RegisterSerializer,
     StudentIdentityLoginSerializer,
     StudentProfileSerializer,
@@ -689,130 +686,10 @@ from .domains.managers.views import ManagerViewSet
 from .domains.groups.views import GroupViewSet
 
 
-class AuditoriumViewSet(viewsets.ModelViewSet):
-    queryset = Auditorium.objects.all().order_by("-created_at")
-    serializer_class = AuditoriumSerializer
-    permission_classes = [IsCourseAdminOrManagerReadOnly]
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        user = self.request.user
-        if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
-            if user.company:
-                return queryset.filter(company=user.company)
-            return queryset.none()
-        if user.is_authenticated and user.role == User.Role.MANAGER:
-            if user.company:
-                return queryset.filter(company=user.company)
-            return queryset.none()
-        return queryset.none()
-
-    def perform_create(self, serializer):
-        user = self.request.user
-        if user.role == User.Role.MANAGER:
-            raise PermissionDenied("Managers cannot create auditoriums.")
-        company = user.company
-        serializer.save(company=company)
-
-
-class AttendanceViewSet(viewsets.ModelViewSet):
-    queryset = Attendance.objects.all().order_by("-created_at")
-    serializer_class = AttendanceSerializer
-    permission_classes = [IsCourseAdminOrTeacherReadOnly]
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        user = self.request.user
-        if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
-            return queryset.filter(
-                models.Q(group__course__admins=user)
-                | models.Q(group__company=user.company)
-            ).distinct()
-        if user.is_authenticated and user.role == User.Role.TEACHER:
-            return queryset.filter(group__teacher=user)
-        if user.is_authenticated and user.role == User.Role.STUDENT:
-            return queryset.filter(student__user=user)
-        return queryset
-
-    def perform_create(self, serializer):
-        user = self.request.user
-        if user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
-            raise permissions.PermissionDenied("Course admins cannot mark attendance.")
-        group = serializer.validated_data.get("group")
-        if user.role == User.Role.TEACHER and group.teacher_id != user.id:
-            raise permissions.PermissionDenied("Not allowed for this group.")
-        serializer.save()
-
-
-class PaymentViewSet(viewsets.ModelViewSet):
-    queryset = Payment.objects.all().order_by("-created_at")
-    serializer_class = PaymentSerializer
-    permission_classes = [IsCourseAdminOrManagerOrStudentReadOnly]
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        user = self.request.user
-        if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
-            return queryset.filter(company__owner=user).distinct()
-        if user.is_authenticated and user.role == User.Role.MANAGER:
-            if not user.company:
-                return queryset.none()
-            return queryset.filter(company=user.company).distinct()
-        if user.is_authenticated and user.role == User.Role.STUDENT:
-            return queryset.filter(student__user=user)
-        return queryset
-
-    def perform_create(self, serializer):
-        user = self.request.user
-        if user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
-            student = serializer.validated_data.get("student")
-            group = serializer.validated_data.get("group")
-            allowed = False
-            if student and student.primary_course:
-                if user.role == User.Role.COURSE_ADMIN:
-                    if student.primary_course.admins.filter(id=user.id).exists():
-                        allowed = True
-                else:
-                    if student.primary_course.admins.filter(
-                        company=user.company
-                    ).exists():
-                        allowed = True
-            if student and student.company == user.company:
-                allowed = True
-            if group:
-                if group.course:
-                    if user.role == User.Role.COURSE_ADMIN:
-                        if group.course.admins.filter(id=user.id).exists():
-                            allowed = True
-                    else:
-                        if group.course.admins.filter(
-                            company=user.company
-                        ).exists():
-                            allowed = True
-                if group.company and group.company == user.company:
-                    allowed = True
-            if not allowed:
-                raise PermissionDenied("Not allowed for this course.")
-        elif user.role == User.Role.STUDENT:
-            raise PermissionDenied("Students cannot create payments.")
-        student = serializer.validated_data.get("student")
-        group = serializer.validated_data.get("group")
-        company = serializer.validated_data.get("company")
-        if not company:
-            company = (
-                (student.company if student and student.company else None)
-                or (group.company if group and group.company else None)
-            )
-        serializer.save(company=company)
-
-    def destroy(self, request, *args, **kwargs):
-        if request.user.role in (
-            User.Role.COURSE_ADMIN,
-            User.Role.MANAGER,
-            User.Role.STUDENT,
-        ):
-            raise PermissionDenied("Not allowed to delete payments.")
-        return super().destroy(request, *args, **kwargs)
+# Compatibility re-export. New code should import from domain views.
+from .domains.auditoriums.views import AuditoriumViewSet
+from .domains.attendance.views import AttendanceViewSet
+from .domains.payments.views import PaymentViewSet
 
 
 class DashboardView(APIView):
@@ -1281,119 +1158,7 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
         return Response(PromoCodeSerializer(promo_code).data)
 
 
-class AttendanceMarkView(APIView):
-    permission_classes = [IsTeacherOrCourseAdminReadOnly]
-
-    def get(self, request):
-        group_id = request.query_params.get("group")
-        date_str = request.query_params.get("date")
-        if not group_id or not date_str:
-            return Response(
-                {"detail": "group and date are required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        try:
-            target_date = date.fromisoformat(date_str)
-        except ValueError:
-            return Response(
-                {"detail": "Invalid date format. Use YYYY-MM-DD."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        group = get_object_or_404(Group, pk=group_id)
-        user = request.user
-        if user.role == User.Role.MANAGER:
-            raise permissions.PermissionDenied("Not allowed for managers.")
-        if user.role == User.Role.STUDENT:
-            raise permissions.PermissionDenied("Not allowed for students.")
-        if user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
-            allowed = False
-            if group.course:
-                if user.role == User.Role.COURSE_ADMIN:
-                    allowed = group.course.admins.filter(id=user.id).exists()
-                else:
-                    allowed = group.course.admins.filter(
-                        company=user.company
-                    ).exists()
-            if group.company and group.company == user.company:
-                allowed = True
-            if not allowed:
-                raise permissions.PermissionDenied("Not allowed for this course.")
-        if user.role == User.Role.TEACHER and group.teacher_id != user.id:
-            raise permissions.PermissionDenied("Not allowed for this group.")
-
-        students = list(group.students.all().order_by("first_name", "last_name"))
-        existing = Attendance.objects.filter(group=group, date=target_date)
-        status_map = {item.student_id: item.status for item in existing}
-
-        return Response(
-            {
-                "group": {"id": group.id, "name": group.name},
-                "date": target_date.isoformat(),
-                "students": [
-                    {
-                        "id": student.id,
-                        "first_name": student.first_name,
-                        "last_name": student.last_name,
-                        "status": status_map.get(student.id),
-                    }
-                    for student in students
-                ],
-            }
-        )
-
-    def post(self, request):
-        if request.user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
-            raise permissions.PermissionDenied("Course admins cannot mark attendance.")
-        group_id = request.data.get("group")
-        date_str = request.data.get("date")
-        items = request.data.get("items", [])
-        if not group_id or not date_str:
-            return Response(
-                {"detail": "group and date are required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        try:
-            target_date = date.fromisoformat(date_str)
-        except ValueError:
-            return Response(
-                {"detail": "Invalid date format. Use YYYY-MM-DD."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        group = get_object_or_404(Group, pk=group_id)
-        user = request.user
-        if user.role == User.Role.MANAGER:
-            raise permissions.PermissionDenied("Not allowed for managers.")
-        if user.role == User.Role.STUDENT:
-            raise permissions.PermissionDenied("Not allowed for students.")
-        if user.role == User.Role.TEACHER and group.teacher_id != user.id:
-            raise permissions.PermissionDenied("Not allowed for this group.")
-
-        students = {student.id: student for student in group.students.all()}
-        updated = []
-
-        for item in items:
-            student_id = item.get("student")
-            status_value = item.get("status")
-            if student_id not in students:
-                continue
-            if status_value not in dict(Attendance.Status.choices):
-                continue
-            record, _ = Attendance.objects.update_or_create(
-                group=group,
-                student=students[student_id],
-                date=target_date,
-                defaults={"status": status_value},
-            )
-            updated.append(record)
-
-        return Response(
-            {
-                "saved": len(updated),
-                "date": target_date.isoformat(),
-            }
-        )
+from .domains.attendance.views import AttendanceMarkView
 
 
 # Compatibility re-export. New code should import from core.domains.marketplace.views.
