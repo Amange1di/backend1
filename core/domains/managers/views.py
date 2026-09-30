@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from core.audit import write_audit
 from core.models import User
 from core.domains.auth.first_login import issue_first_login_password
 from core.domains.users.serializers import (
@@ -135,6 +136,13 @@ class ManagerViewSet(viewsets.ModelViewSet):
         manager.is_active = False
         manager.save(update_fields=["is_active"])
         Token.objects.filter(user=manager).delete()
+        write_audit(
+            request,
+            action="manager.deactivated",
+            obj=manager,
+            company=manager.company,
+            after={"is_active": False},
+        )
         return Response(
             status=status.HTTP_204_NO_CONTENT
         )
