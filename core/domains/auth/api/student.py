@@ -232,7 +232,10 @@ class StudentSetPasswordView(APIView):
                 "must_set_password",
             ]
         )
-        token, _ = Token.objects.get_or_create(
+        Token.objects.filter(
+            user=request.user
+        ).delete()
+        token = Token.objects.create(
             user=request.user
         )
 
@@ -376,6 +379,7 @@ class StudentProfileView(APIView):
                 update_fields=student_fields
             )
 
+        password_changed = bool(password)
         if password:
             request.user.set_password(password)
             request.user.must_set_password = False
@@ -392,6 +396,11 @@ class StudentProfileView(APIView):
                     dict.fromkeys(user_fields)
                 )
             )
+
+        if password_changed:
+            Token.objects.filter(
+                user=request.user
+            ).delete()
 
         return self.get(request)
 
