@@ -98,11 +98,7 @@ def ensure_student_access_allowed(
     if (
         not student.company
         or not get_company_student_cabinet_enabled(
-            (
-                student.company.name
-                if student.company
-                else ""
-            )
+            student.company
         )
     ):
         raise PermissionDenied(
