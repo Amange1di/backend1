@@ -32,6 +32,11 @@ class ForecastSerializer(serializers.ModelSerializer):
     variance = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True, allow_null=True)
     variance_percent = serializers.DecimalField(max_digits=8, decimal_places=2, read_only=True, allow_null=True)
 
+    def validate_period_month(self, value):
+        if not 1 <= value <= 12:
+            raise serializers.ValidationError("Month must be between 1 and 12.")
+        return value
+
     class Meta:
         model = Forecast
         fields = [
@@ -65,6 +70,11 @@ class AccountingReportSerializer(serializers.ModelSerializer):
 
 class MonthlySummarySerializer(serializers.ModelSerializer):
     profit_margin = serializers.DecimalField(max_digits=8, decimal_places=2, read_only=True)
+
+    def validate_month(self, value):
+        if not 1 <= value <= 12:
+            raise serializers.ValidationError("Month must be between 1 and 12.")
+        return value
 
     class Meta:
         model = MonthlySummary
