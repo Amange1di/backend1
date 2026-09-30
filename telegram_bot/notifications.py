@@ -15,6 +15,7 @@ from core.models import (
     HomeworkTask,
     Task,
     Student,
+    Company,
 )
 
 from .config import (
@@ -47,12 +48,12 @@ async def send_lead_notification(lead: TrialLead):
     if not BOT_TOKEN:
         return
 
-    company_name = await _get_lead_company_name(lead)
-    if not company_name:
+    company_id = lead.company_id
+    if not company_id:
         logger.warning(f"Lead {lead.id} has no company")
         return
 
-    managers = await _get_managers_for_company(company_name)
+    managers = await _get_managers_for_company(company_id)
     if not managers:
         return
 
@@ -352,11 +353,11 @@ async def send_task_status_changed_notification(task: Task):
     if not BOT_TOKEN:
         return
 
-    company_name = await _get_task_company_name(task)
-    if not company_name:
+    company_id = task.company_id
+    if not company_id:
         return
 
-    admins = await _get_course_admins_for_company(company_name)
+    admins = await _get_course_admins_for_company(company_id)
     if not admins:
         return
 
@@ -390,29 +391,35 @@ async def send_task_status_changed_notification(task: Task):
             logger.error(f"Failed to send task status notification to {admin.username}: {e}")
 
 
-async def send_daily_lead_summary(company_name: str):
+async def send_daily_lead_summary(company_id: int):
     """Send a daily summary of new leads to course admins."""
     if not BOT_TOKEN:
         return
 
-    admins = await _get_course_admins_for_company(company_name)
+    admins = await _get_course_admins_for_company(company_id)
     if not admins:
         return
 
     today = date.today()
 
     @sync_to_async
-    def _get_today_leads_stats(cname: str):
+    def _get_today_leads_stats(cid: int):
+        company = Company.objects.only("name").filter(id=cid).first()
+        if not company:
+            return None, 0, 0
+
         leads_today = TrialLead.objects.filter(
-            company_name=cname,
+            company_id=cid,
             created_at__date=today,
         )
         total = leads_today.count()
-        contacted = leads_today.filter(status=TrialLead.Status.CONTACTED).count()
-        return total, contacted
+        contacted = leads_today.filter(
+            status=TrialLead.Status.CONTACTED
+        ).count()
+        return company.name, total, contacted
 
-    total, contacted = await _get_today_leads_stats(company_name)
-    if total == 0:
+    company_name, total, contacted = await _get_today_leads_stats(company_id)
+    if not company_name or total == 0:
         return
 
     text = (
@@ -433,20 +440,17 @@ async def send_daily_lead_summary(company_name: str):
         except Exception as e:
             logger.error(f"Failed to send summary to admin {admin.username}: {e}")
 
-
 async def send_new_student_notification(student: Student):
     """Send a notification about a new student to all managers of the company."""
     if not BOT_TOKEN:
         return
 
-    company_name = getattr(student, "company_name", None)
-    if not company_name and student.company:
-        company_name = student.company.name
-    if not company_name:
+    company_id = student.company_id
+    if not company_id:
         logger.warning(f"Student {student.id} has no company")
         return
 
-    managers = await _get_managers_for_company(company_name)
+    managers = await _get_managers_for_company(company_id)
     if not managers:
         return
 
