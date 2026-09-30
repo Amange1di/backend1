@@ -1,6 +1,3 @@
-import secrets
-from datetime import timedelta
-
 from django.db import models
 from django.utils import timezone
 from rest_framework import viewsets
@@ -9,7 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
-from core.models import Student, TelegramBindCode, User
+from core.models import Student, User
 from core.permissions import (
     IsCourseAdminOrManagerOrStudentReadOnly,
 )
@@ -19,6 +16,7 @@ from .serializers import (
     TransferGroupSerializer,
 )
 from .services import sync_student_user
+from core.domains.auth.first_login import issue_first_login_password
 
 
 class StudentViewSet(viewsets.ModelViewSet):
@@ -353,35 +351,13 @@ class StudentViewSet(viewsets.ModelViewSet):
             )
             student.refresh_from_db()
 
-        student.user.set_unusable_password()
-        student.user.must_set_password = True
-        student.user.save(
-            update_fields=[
-                "password",
-                "must_set_password",
-            ]
-        )
         Token.objects.filter(
             user=student.user
         ).delete()
-
-        TelegramBindCode.objects.filter(
-            user=student.user,
-            is_used=False,
-        ).update(is_used=True)
-
-        setup_code = (
-            f"{secrets.randbelow(1_000_000):06d}"
-        )
-        expires_at = (
-            timezone.now()
-            + timedelta(minutes=10)
-        )
-        TelegramBindCode.objects.create(
-            user=student.user,
-            code=setup_code,
-            expires_at=expires_at,
-            is_used=False,
+        one_time_password = (
+            issue_first_login_password(
+                student.user
+            )
         )
 
         return Response(
@@ -390,9 +366,11 @@ class StudentViewSet(viewsets.ModelViewSet):
                     "Student password was reset."
                 ),
                 "must_set_password": True,
-                "setup_code": setup_code,
-                "setup_code_expires_at": (
-                    expires_at.isoformat()
+                "username": (
+                    student.user.username
+                ),
+                "one_time_password": (
+                    one_time_password
                 ),
             }
         )
