@@ -82,7 +82,15 @@ class ManagerViewSet(viewsets.ModelViewSet):
         )
 
         return Response(
-            UserSerializer(manager).data,
+            {
+                "user": UserSerializer(manager).data,
+                "one_time_password": getattr(
+                    manager,
+                    "_one_time_password",
+                    None,
+                ),
+                "requires_password_setup": True,
+            },
             status=status.HTTP_201_CREATED,
         )
 
