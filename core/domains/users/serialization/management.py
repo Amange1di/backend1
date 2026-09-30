@@ -61,8 +61,14 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        forced_role = self.context.get(
-            "force_role"
+        forced_role = (
+            validated_data.pop(
+                "force_role",
+                None,
+            )
+            or self.context.get(
+                "force_role"
+            )
         )
         role = (
             forced_role
@@ -71,8 +77,9 @@ class RegisterSerializer(serializers.ModelSerializer):
                 User.Role.TEACHER,
             )
         )
-        created_by = validated_data.get(
-            "created_by"
+        created_by = validated_data.pop(
+            "created_by",
+            None,
         )
         company = validated_data.pop(
             "company",
