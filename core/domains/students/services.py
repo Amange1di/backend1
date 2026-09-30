@@ -1,10 +1,7 @@
 import re
-import secrets
-from datetime import timedelta
 
-from django.utils import timezone
-
-from core.models import Student, TelegramBindCode, User
+from core.models import Student, User
+from core.domains.auth.first_login import issue_first_login_password
 
 
 def normalize_phone(value: str) -> str:
@@ -66,21 +63,12 @@ def sync_student_user(
             update_fields=["user"]
         )
 
-        setup_code = (
-            f"{secrets.randbelow(1_000_000):06d}"
+        one_time_password = (
+            issue_first_login_password(user)
         )
-        expires_at = (
-            timezone.now()
-            + timedelta(minutes=10)
+        student._one_time_password = (
+            one_time_password
         )
-        TelegramBindCode.objects.create(
-            user=user,
-            code=setup_code,
-            expires_at=expires_at,
-            is_used=False,
-        )
-        student._setup_code = setup_code
-        student._setup_code_expires_at = expires_at
 
         return student
 
