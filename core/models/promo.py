@@ -203,3 +203,36 @@ class PromoCode(models.Model):
                 user.save()
         
         return True
+
+
+class PromoRedemption(models.Model):
+    promo_code = models.ForeignKey(
+        "PromoCode",
+        on_delete=models.CASCADE,
+        related_name="redemptions",
+    )
+    company = models.ForeignKey(
+        "Company",
+        on_delete=models.CASCADE,
+        related_name="promo_redemptions",
+    )
+    user = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="promo_redemptions",
+    )
+    activated_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-activated_at",)
+        constraints = [
+            models.UniqueConstraint(
+                fields=("promo_code", "company"),
+                name="uniq_promo_redemption_company",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.promo_code.code} -> company:{self.company_id}"
