@@ -19,6 +19,7 @@ from core.models import (
     User,
 )
 from core.permissions import IsAdmin
+from core.domains.auth.first_login import issue_first_login_password
 from core.domains.students.serializers import StudentSerializer
 from core.domains.students.services import (
     normalize_phone,
@@ -217,3 +218,27 @@ class CourseAdminDetailView(APIView):
             status=status.HTTP_204_NO_CONTENT
         )
 
+
+
+class CourseAdminResetPasswordView(APIView):
+    permission_classes = [IsAdmin]
+
+    def post(self, request, pk: int):
+        admin = get_object_or_404(
+            User,
+            pk=pk,
+            role=User.Role.COURSE_ADMIN,
+        )
+
+        Token.objects.filter(user=admin).delete()
+        one_time_password = (
+            issue_first_login_password(admin)
+        )
+
+        return Response(
+            {
+                "username": admin.username,
+                "one_time_password": one_time_password,
+                "requires_password_setup": True,
+            }
+        )
