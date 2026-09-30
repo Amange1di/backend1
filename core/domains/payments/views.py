@@ -143,6 +143,15 @@ class PaymentViewSet(viewsets.ModelViewSet):
         group = serializer.validated_data.get(
             "group"
         )
+
+        if student and student.archived_at:
+            raise PermissionDenied(
+                "Archived student cannot receive a new payment."
+            )
+        if group and group.archived_at:
+            raise PermissionDenied(
+                "Archived group cannot receive a new payment."
+            )
         company = serializer.validated_data.get(
             "company"
         )
