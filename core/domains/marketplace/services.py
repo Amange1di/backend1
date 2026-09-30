@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.utils import timezone
 
 from core.models import (
@@ -48,23 +49,31 @@ def charge_promotion(
     reason,
     transaction_type,
 ):
-    balance = ensure_balance(
-        company,
-        amount,
-    )
-    if not balance:
+    if amount <= 0:
         return False
 
-    balance.balance -= amount
-    balance.save()
+    with transaction.atomic():
+        try:
+            balance = (
+                CompanyBalance.objects
+                .select_for_update()
+                .get(company=company)
+            )
+        except CompanyBalance.DoesNotExist:
+            return False
 
-    Transaction.objects.create(
-        company=company,
-        amount=-amount,
-        reason=reason,
-        transaction_type=transaction_type,
-    )
-    return True
+        if balance.balance < amount:
+            return False
+
+        balance.balance -= amount
+        balance.save(update_fields=["balance", "last_update"])
+        Transaction.objects.create(
+            company=company,
+            amount=-amount,
+            reason=reason,
+            transaction_type=transaction_type,
+        )
+        return True
 
 
 def promote_item(item, *, days: int):
