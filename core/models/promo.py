@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 
 from .accounts import User
@@ -25,27 +25,49 @@ class PromoBalance(models.Model):
         return f"{self.promo_code.code} - {self.balance} eC"
     
     def add_coins(self, amount: int):
-        """Добавить монеты на баланс промокода"""
-        self.balance += amount
-        self.save()
-        PromoTransaction.objects.create(
-            promo_code=self.promo_code,
-            amount=amount,
-            transaction_type=PromoTransaction.Type.DEPOSIT,
-        )
-    
-    def spend_coins(self, amount: int) -> bool:
-        """Списать монеты с баланса промокода. Возвращает True если успешно"""
-        if self.balance >= amount:
-            self.balance -= amount
-            self.save()
+        """Atomically add coins to the promo balance."""
+        if amount <= 0:
+            raise ValueError("Amount must be positive.")
+
+        with transaction.atomic():
+            locked = (
+                PromoBalance.objects
+                .select_for_update()
+                .get(pk=self.pk)
+            )
+            locked.balance += amount
+            locked.save(update_fields=["balance", "last_update"])
             PromoTransaction.objects.create(
-                promo_code=self.promo_code,
+                promo_code_id=locked.promo_code_id,
+                amount=amount,
+                transaction_type=PromoTransaction.Type.DEPOSIT,
+            )
+            self.balance = locked.balance
+            return locked.balance
+
+    def spend_coins(self, amount: int) -> bool:
+        """Atomically spend promo coins if enough balance exists."""
+        if amount <= 0:
+            return False
+
+        with transaction.atomic():
+            locked = (
+                PromoBalance.objects
+                .select_for_update()
+                .get(pk=self.pk)
+            )
+            if locked.balance < amount:
+                return False
+
+            locked.balance -= amount
+            locked.save(update_fields=["balance", "last_update"])
+            PromoTransaction.objects.create(
+                promo_code_id=locked.promo_code_id,
                 amount=-amount,
                 transaction_type=PromoTransaction.Type.WITHDRAWAL,
             )
+            self.balance = locked.balance
             return True
-        return False
 
 class PromoTransaction(models.Model):
     """История транзакций промокода"""
