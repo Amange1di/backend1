@@ -29,7 +29,6 @@ from core.domains.users.serializers import (
     CourseAdminUpdateSerializer,
     LoginSerializer,
     RegisterSerializer,
-    StudentIdentityLoginSerializer,
     StudentProfileSerializer,
     StudentSetPasswordSerializer,
     UserSerializer,
