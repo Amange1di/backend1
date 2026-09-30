@@ -67,6 +67,26 @@ class UserAdmin(BaseUserAdmin):
     list_filter = ("role", "is_staff", "is_active")
     readonly_fields = ("created_by",)
 
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.role == User.Role.COURSE_ADMIN:
+            return False
+        return super().has_delete_permission(
+            request,
+            obj,
+        )
+
+    def delete_queryset(self, request, queryset):
+        if queryset.filter(
+            role=User.Role.COURSE_ADMIN
+        ).exists():
+            raise PermissionDenied(
+                "Course admins must be deactivated, not deleted."
+            )
+        return super().delete_queryset(
+            request,
+            queryset,
+        )
+
     def save_model(self, request, obj, form, change):
         if not change and request.user.is_authenticated:
             is_super_admin = request.user.is_superuser or request.user.role == User.Role.ADMIN
@@ -128,6 +148,14 @@ class CompanyAdmin(admin.ModelAdmin):
     search_fields = ("name", "slug")
     readonly_fields = ("slug", "created_at", "updated_at")
     
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def delete_queryset(self, request, queryset):
+        raise PermissionDenied(
+            "Companies must be deactivated, not deleted."
+        )
+
     def students_count(self, obj):
         return obj.students.count()
     students_count.short_description = "Студентов"
