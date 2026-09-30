@@ -83,7 +83,15 @@ class TeacherViewSet(viewsets.ModelViewSet):
         teacher = serializer.save()
 
         return Response(
-            UserSerializer(teacher).data,
+            {
+                "user": UserSerializer(teacher).data,
+                "one_time_password": getattr(
+                    teacher,
+                    "_one_time_password",
+                    None,
+                ),
+                "requires_password_setup": True,
+            },
             status=status.HTTP_201_CREATED,
         )
 
