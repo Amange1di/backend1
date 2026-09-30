@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from core.models import Company, Course, User
 from core.domains.users.passwords import validate_strong_password
+from core.domains.auth.first_login import verify_and_consume_first_login_password
 
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
@@ -14,15 +15,38 @@ class LoginSerializer(serializers.Serializer):
     )
 
     def validate(self, attrs):
+        username = (attrs.get("username") or "").strip()
+        password = attrs.get("password") or ""
+
         user = authenticate(
-            username=attrs.get("username"),
-            password=attrs.get("password"),
+            username=username,
+            password=password,
         )
+        first_login = False
+
+        if not user:
+            candidate = User.objects.filter(
+                username__iexact=username,
+                is_active=True,
+            ).first()
+            if (
+                candidate
+                and candidate.must_set_password
+                and verify_and_consume_first_login_password(
+                    candidate,
+                    password,
+                )
+            ):
+                user = candidate
+                first_login = True
+
         if not user:
             raise serializers.ValidationError(
                 _("Invalid credentials.")
             )
+
         attrs["user"] = user
+        attrs["first_login"] = first_login
         return attrs
 
 class StudentIdentityLoginSerializer(
@@ -34,12 +58,6 @@ class StudentIdentityLoginSerializer(
         required=False,
         allow_blank=True,
         trim_whitespace=False,
-    )
-    setup_code = serializers.CharField(
-        write_only=True,
-        required=False,
-        allow_blank=True,
-        max_length=6,
     )
 
 class StudentSetPasswordSerializer(
