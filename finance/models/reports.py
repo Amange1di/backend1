@@ -84,8 +84,8 @@ class MonthlySummary(models.Model):
     month = models.PositiveIntegerField(
         verbose_name="Месяц (1-12)",
         validators=[
-            MinValueValidator(1),
-            MaxValueValidator(12),
+            MinValueValidator(0),
+            MaxValueValidator(100),
         ],
     )
     total_income = models.DecimalField(
