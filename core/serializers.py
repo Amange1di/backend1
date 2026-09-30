@@ -54,18 +54,8 @@ from .domains.users.serializers import (
 from .domains.courses.serializers import CourseSerializer
 
 
-class AuditoriumSerializer(serializers.ModelSerializer):
-    company_id = serializers.PrimaryKeyRelatedField(
-        source="company",
-        queryset=Company.objects.all(),
-        required=False,
-        allow_null=True,
-    )
+from .domains.auditoriums.serializers import AuditoriumSerializer
 
-    class Meta:
-        model = Auditorium
-        fields = ("id", "name", "number", "company", "company_id", "created_at")
-        read_only_fields = ()
 
 from .domains.students.serializers import (
     StudentSerializer,
@@ -76,10 +66,8 @@ from .domains.students.serializers import (
 from .domains.groups.serializers import GroupSerializer
 
 
-class AttendanceSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Attendance
-        fields = ("id", "group", "student", "date", "status", "created_at")
+from .domains.attendance.serializers import AttendanceSerializer
+
 
 class ExpenseSerializer(serializers.ModelSerializer):
     class Meta:
@@ -150,17 +138,8 @@ class GroupMonthSerializer(serializers.ModelSerializer):
         percent = self.get_teacher_percent_earning(obj)
         return salary + percent
 
-class PaymentSerializer(serializers.ModelSerializer):
-    company_id = serializers.PrimaryKeyRelatedField(
-        source="company",
-        queryset=Company.objects.all(),
-        required=False,
-        allow_null=True,
-    )
+from .domains.payments.serializers import PaymentSerializer
 
-    class Meta:
-        model = Payment
-        fields = ("id", "student", "group", "company", "company_id", "amount", "status", "paid_at", "due_date", "reminder_sent_at", "created_at")
 
 from .domains.homework.serializers import (
     HomeworkSubmissionSerializer,
