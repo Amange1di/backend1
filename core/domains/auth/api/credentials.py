@@ -7,7 +7,7 @@ from rest_framework import permissions, status
 from rest_framework.authtoken.models import Token
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
-from rest_framework.throttling import AnonRateThrottle
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from core.models import (
@@ -39,12 +39,12 @@ from ..services import (
     resolve_support_telegram,
 )
 
-class LoginThrottle(AnonRateThrottle):
-    rate = "10/hour"
+class LoginThrottle(ScopedRateThrottle):
+    scope = "login"
 
 
-class RegisterThrottle(AnonRateThrottle):
-    rate = "5/hour"
+class RegisterThrottle(ScopedRateThrottle):
+    scope = "register"
 
 class RegisterView(APIView):
     permission_classes = [
