@@ -34,7 +34,7 @@ from core.domains.users.serializers import (
     UserSerializer,
 )
 
-from .services import (
+from ..services import (
     ensure_student_access_allowed,
     resolve_support_telegram,
 )
