@@ -2,6 +2,8 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
+from core.security import validate_upload
+
 from core.models import (
     Company,
     HomeworkSubmission,
@@ -41,6 +43,13 @@ class HomeworkSubmissionSerializer(serializers.ModelSerializer):
                 "allow_null": True,
             },
         }
+
+    def validate_file(self, value):
+        return validate_upload(
+            value,
+            max_bytes=10 * 1024 * 1024,
+            allowed_extensions={"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "jpg", "jpeg", "png", "webp"},
+        )
 
     def get_file_url(self, obj):
         if not obj.file:
@@ -151,6 +160,13 @@ class HomeworkTaskSerializer(serializers.ModelSerializer):
                 "allow_null": True,
             },
         }
+
+    def validate_attachment(self, value):
+        return validate_upload(
+            value,
+            max_bytes=10 * 1024 * 1024,
+            allowed_extensions={"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "jpg", "jpeg", "png", "webp"},
+        )
 
     def get_attachment_url(self, obj):
         if not obj.attachment:
