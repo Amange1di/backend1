@@ -330,7 +330,7 @@ class FirstLoginSetPasswordView(APIView):
             user=request.user
         )
 
-        return Response(
+        response = Response(
             {
                 "token": token.key,
                 "user": UserSerializer(
@@ -339,6 +339,24 @@ class FirstLoginSetPasswordView(APIView):
                 "requires_password_setup": False,
             }
         )
+        response.set_cookie(
+            key="csrftoken",
+            value=get_token(request),
+            max_age=60 * 60 * 24 * 30,
+            httponly=False,
+            samesite="Lax",
+            secure=not settings.DEBUG,
+        )
+        response.set_cookie(
+            key="token",
+            value=token.key,
+            max_age=60 * 60 * 24 * 30,
+            httponly=True,
+            samesite="Lax",
+            secure=not settings.DEBUG,
+            path="/",
+        )
+        return response
 
 
 class LogoutView(APIView):
