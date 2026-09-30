@@ -35,6 +35,12 @@ class StudentIdentityLoginSerializer(
         allow_blank=True,
         trim_whitespace=False,
     )
+    setup_code = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+        max_length=6,
+    )
 
 class StudentSetPasswordSerializer(
     serializers.Serializer
