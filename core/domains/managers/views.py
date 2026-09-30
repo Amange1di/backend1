@@ -1,9 +1,11 @@
 from rest_framework.authtoken.models import Token
 from rest_framework import permissions, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from core.models import User
+from core.domains.auth.first_login import issue_first_login_password
 from core.domains.users.serializers import (
     RegisterSerializer,
     UserSerializer,
@@ -92,6 +94,35 @@ class ManagerViewSet(viewsets.ModelViewSet):
                 "requires_password_setup": True,
             },
             status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="reset-password",
+    )
+    def reset_password(
+        self,
+        request,
+        pk=None,
+    ):
+        if request.user.role != User.Role.COURSE_ADMIN:
+            raise PermissionDenied(
+                "Only course admins can reset manager passwords."
+            )
+
+        manager = self.get_object()
+        Token.objects.filter(user=manager).delete()
+        one_time_password = (
+            issue_first_login_password(manager)
+        )
+
+        return Response(
+            {
+                "username": manager.username,
+                "one_time_password": one_time_password,
+                "requires_password_setup": True,
+            }
         )
 
     def destroy(self, request, *args, **kwargs):
