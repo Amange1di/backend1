@@ -1,0 +1,57 @@
+from rest_framework import serializers
+
+from core.models import Company, TrialLead
+
+
+class TrialLeadSerializer(serializers.ModelSerializer):
+    group_assigned_label = serializers.CharField(
+        source="group_assigned.name",
+        read_only=True,
+    )
+    company_id = serializers.PrimaryKeyRelatedField(
+        source="company",
+        queryset=Company.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+    assigned_manager = serializers.SerializerMethodField(
+        read_only=True,
+    )
+
+    class Meta:
+        model = TrialLead
+        fields = (
+            "id",
+            "full_name",
+            "phone",
+            "age",
+            "course_interest",
+            "trial_attended",
+            "status",
+            "trial_date",
+            "source",
+            "comment",
+            "converted_to_student",
+            "group_assigned",
+            "group_assigned_label",
+            "payment_status",
+            "company",
+            "company_id",
+            "assigned_manager",
+            "created_at",
+        )
+        read_only_fields = ()
+
+    def get_assigned_manager(self, obj):
+        assignment = getattr(obj, "assignment", None)
+        if assignment and assignment.manager:
+            manager = assignment.manager
+            full_name = (
+                f"{manager.first_name} {manager.last_name}".strip()
+            )
+            return {
+                "id": manager.id,
+                "name": full_name or manager.username,
+                "username": manager.username,
+            }
+        return None
