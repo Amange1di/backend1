@@ -1,24 +1,55 @@
 """
-Custom authentication backends.
-
-CookieTokenAuthentication accepts the legacy DRF token from an httpOnly
-cookie, but requires CSRF validation for unsafe cookie-authenticated requests.
-Header-based Token authentication remains CSRF-independent.
+Custom authentication backends with first-login restrictions.
 """
 
 from django.utils.translation import gettext_lazy as _
 from rest_framework.authentication import SessionAuthentication, TokenAuthentication
 from rest_framework.authtoken.models import Token
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 
 
-class CookieTokenAuthentication(TokenAuthentication):
-    """Authenticate by Authorization header or the httpOnly token cookie."""
+FIRST_LOGIN_ALLOWED_PATHS = {
+    "/api/auth/me/",
+    "/api/auth/logout/",
+    "/api/auth/first-login/set-password/",
+    "/api/auth/student/set-password/",
+}
+
+
+def _enforce_first_login_scope(request, user):
+    if (
+        user.must_set_password
+        and request.path not in FIRST_LOGIN_ALLOWED_PATHS
+    ):
+        raise PermissionDenied(
+            _(
+                "You must set your own password "
+                "before using the application."
+            )
+        )
+
+
+class RestrictedTokenAuthentication(TokenAuthentication):
+    """DRF token auth with a restricted first-login session."""
 
     def authenticate(self, request):
         auth = super().authenticate(request)
+        if auth is None:
+            return None
+        user, token = auth
+        _enforce_first_login_scope(request, user)
+        return user, token
+
+
+class CookieTokenAuthentication(RestrictedTokenAuthentication):
+    """Authenticate by Authorization header or httpOnly token cookie."""
+
+    def authenticate(self, request):
+        auth = TokenAuthentication.authenticate(self, request)
         if auth is not None:
-            return auth
+            user, token = auth
+            _enforce_first_login_scope(request, user)
+            return user, token
 
         token_key = request.COOKIES.get("token")
         if not token_key:
@@ -32,8 +63,7 @@ class CookieTokenAuthentication(TokenAuthentication):
         if not token.user.is_active:
             raise AuthenticationFailed(_("User inactive or deleted."))
 
-        # Cookies are sent automatically by browsers, so unsafe requests
-        # must pass Django CSRF validation.
         SessionAuthentication().enforce_csrf(request)
+        _enforce_first_login_scope(request, token.user)
 
-        return (token.user, token)
+        return token.user, token
