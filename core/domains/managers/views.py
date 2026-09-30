@@ -1,3 +1,4 @@
+from rest_framework.authtoken.models import Token
 from rest_framework import permissions, status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -83,6 +84,20 @@ class ManagerViewSet(viewsets.ModelViewSet):
         return Response(
             UserSerializer(manager).data,
             status=status.HTTP_201_CREATED,
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        manager = self.get_object()
+        if request.user.role != User.Role.COURSE_ADMIN:
+            raise PermissionDenied(
+                "Only course admins can deactivate managers."
+            )
+
+        manager.is_active = False
+        manager.save(update_fields=["is_active"])
+        Token.objects.filter(user=manager).delete()
+        return Response(
+            status=status.HTTP_204_NO_CONTENT
         )
 
     def get_serializer_class(self):
