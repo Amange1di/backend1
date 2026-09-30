@@ -9,9 +9,6 @@ from core.models import (
     User,
     UserBalance,
 )
-from core.domains.users.services import (
-    resolve_user_company_name,
-)
 
 
 class UserBalanceHistoryView(APIView):
@@ -34,10 +31,20 @@ class UserBalanceHistoryView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        company_name = resolve_user_company_name(
-            request.user
+        company_id = (
+            request.user.company_id
+            or getattr(
+                getattr(
+                    request.user,
+                    "created_by",
+                    None,
+                ),
+                "company_id",
+                None,
+            )
         )
-        if not company_name:
+
+        if not company_id:
             return Response(
                 {
                     "detail": (
@@ -47,24 +54,9 @@ class UserBalanceHistoryView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        user_company = request.user.company
-
-        if (
-            not user_company
-            and request.user.role
-            == User.Role.MANAGER
-        ):
-            company_name = (
-                resolve_user_company_name(
-                    request.user
-                )
-            )
-            if company_name:
-                user_company = (
-                    Company.objects.filter(
-                        name=company_name
-                    ).first()
-                )
+        user_company = Company.objects.filter(
+            id=company_id
+        ).first()
 
         if not user_company:
             return Response(
