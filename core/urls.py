@@ -1,16 +1,14 @@
 from django.urls import include, path
 
 from .views import (
-    BroadcastView,
     CrmContactView,
     CspReportView,
-    GenerateTelegramBindCodeView,
-    GetTelegramBindCodeView,
     UserBalanceMeView,
 )
 from .sync_views import SyncExportView, SyncImportView
 
 urlpatterns = [
+    path("", include("core.domains.telegram.urls")),
     path("", include("core.domains.super_admin.urls")),
     path("", include("core.domains.auth.urls")),
     path("", include("core.domains.finance.urls")),
@@ -30,15 +28,12 @@ urlpatterns = [
     path("", include("core.domains.contracts.urls")),
     
     # Broadcast (mass mailing)
-    path("broadcast/send/", BroadcastView.as_view(), name="broadcast-send"),
     
     # Finance endpoints
     
     # Marketplace endpoints
     
     # Telegram bind code generation
-    path("bot/generate-bind-code/", GenerateTelegramBindCodeView.as_view(), name="bot-generate-bind-code"),
-    path("bot/bind-code/", GetTelegramBindCodeView.as_view(), name="bot-bind-code"),
     
     # CRM website contact form (public, no slug required)
     path("public/crm-contact/", CrmContactView.as_view(), name="crm-contact"),
