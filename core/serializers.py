@@ -455,27 +455,8 @@ class StudentProfileSerializer(serializers.Serializer):
         required=False, allow_blank=True, write_only=True, trim_whitespace=False, min_length=6
     )
 
-class CourseSerializer(serializers.ModelSerializer):
-    admins = serializers.PrimaryKeyRelatedField(
-        many=True,
-        required=False,
-        queryset=User.objects.filter(
-            models.Q(role=User.Role.COURSE_ADMIN) | models.Q(role=User.Role.TEACHER)
-        ),
-    )
+from .domains.courses.serializers import CourseSerializer
 
-    class Meta:
-        model = Course
-        fields = (
-            "id",
-            "title",
-            "price",
-            "lesson_duration_minutes",
-            "description",
-            "schedule",
-            "admins",
-            "created_at",
-        )
 
 class AuditoriumSerializer(serializers.ModelSerializer):
     company_id = serializers.PrimaryKeyRelatedField(
