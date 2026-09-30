@@ -22,7 +22,7 @@ class StudentSerializer(serializers.ModelSerializer):
     group_ids = serializers.PrimaryKeyRelatedField(
         many=True,
         write_only=True,
-        queryset=Group.objects.all(),
+        queryset=Group.objects.filter(archived_at__isnull=True),
         required=False,
     )
     groups = serializers.PrimaryKeyRelatedField(
@@ -122,7 +122,7 @@ class StudentSerializer(serializers.ModelSerializer):
 
 class TransferGroupSerializer(serializers.Serializer):
     new_group = serializers.PrimaryKeyRelatedField(
-        queryset=Group.objects.all()
+        queryset=Group.objects.filter(archived_at__isnull=True)
     )
     note = serializers.CharField(
         required=False,
