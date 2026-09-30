@@ -101,8 +101,6 @@ from .permissions import (
 )
 from .serializers import (
     CourseAdminUpdateSerializer,
-    ExpenseSerializer,
-    GroupMonthSerializer,
     LoginSerializer,
     RegisterSerializer,
     StudentIdentityLoginSerializer,
@@ -1159,6 +1157,109 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
 
 
 from .domains.attendance.views import AttendanceMarkView
+
+
+# Compatibility re-export. New code should import from core.domains.marketplace.views.
+from .domains.marketplace.views import (
+    MarketplaceCompanyViewSet,
+    MarketplaceCourseViewSet,
+    MarketplaceJobViewSet,
+    MyCoursesView,
+    MyJobsView,
+    BoostCourseView,
+    BoostJobView,
+    UrgentCourseView,
+    UrgentJobView,
+    PublicCourseViewSet,
+    PublicJobViewSet,
+)
+
+
+# Create your views here.
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  TELEGRAM BIND CODE GENERATION
+# ═══════════════════════════════════════════════════════════════════════
+
+import random
+
+
+class GenerateTelegramBindCodeView(APIView):
+    """
+    Generate a one-time code for binding a Telegram account.
+
+    POST /api/bot/generate-bind-code/
+    Authenticated user generates a 6-digit code.
+    The code is valid for 10 minutes.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+
+        # Invalidate any existing pending codes for this user
+        TelegramBindCode.objects.filter(
+            user=user,
+            is_used=False,
+            expires_at__gt=timezone.now(),
+        ).update(is_used=True)
+
+        # Generate a 6-digit code
+        code = f"{random.randint(0, 999999):06d}"
+        expires_at = timezone.now() + timedelta(minutes=10)
+
+        bind_code = TelegramBindCode.objects.create(
+            user=user,
+            code=code,
+            expires_at=expires_at,
+            is_used=False,
+        )
+
+        return Response({
+            "code": bind_code.code,
+            "expires_at": bind_code.expires_at.isoformat(),
+            "message": (
+                f"Код действителен 10 минут. "
+                f"Используйте в Telegram: /start {user.username} {bind_code.code}"
+            ),
+        })
+
+
+class GetTelegramBindCodeView(APIView):
+    """
+    Get the current active pending bind code for the authenticated user.
+
+    GET /api/bot/bind-code/
+    Returns the code if one exists and is still valid.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        pending_code = TelegramBindCode.objects.filter(
+            user=user,
+            is_used=False,
+            expires_at__gt=timezone.now(),
+        ).first()
+
+        if not pending_code:
+            return Response({
+                "code": None,
+                "message": "Нет активного кода. Сгенерируйте новый.",
+            })
+
+        return Response({
+            "code": pending_code.code,
+            "expires_at": pending_code.expires_at.isoformat(),
+        })
+
+
+# Compatibility re-export. New code should import from core.domains.finance.views.
+from .domains.finance.views import (
+    ExpenseViewSet,
+    GroupMonthViewSet,
+)
 
 
 # Compatibility re-export. New code should import from core.domains.marketplace.views.
