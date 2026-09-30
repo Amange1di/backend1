@@ -1,6 +1,7 @@
 from rest_framework import viewsets
 from rest_framework.exceptions import PermissionDenied
 
+from core.audit import write_audit
 from core.models import Payment, User
 from core.permissions import (
     IsCourseAdminOrManagerOrStudentReadOnly,
@@ -10,9 +11,9 @@ from .serializers import PaymentSerializer
 
 
 class PaymentViewSet(viewsets.ModelViewSet):
-    queryset = Payment.objects.all().order_by(
-        "-created_at"
-    )
+    queryset = Payment.objects.filter(
+        archived_at__isnull=True
+    ).order_by("-created_at")
     serializer_class = PaymentSerializer
     permission_classes = [
         IsCourseAdminOrManagerOrStudentReadOnly
@@ -164,16 +165,27 @@ class PaymentViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         if request.user.role in (
-            User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
             User.Role.STUDENT,
         ):
             raise PermissionDenied(
-                "Not allowed to delete payments."
+                "Not allowed to archive payments."
             )
 
-        return super().destroy(
+        payment = self.get_object()
+        payment.archived_at = timezone.now()
+        payment.save(update_fields=["archived_at"])
+
+        write_audit(
             request,
-            *args,
-            **kwargs,
+            action="payment.archived",
+            obj=payment,
+            company=payment.company,
+            after={
+                "archived_at": payment.archived_at.isoformat(),
+                "amount": str(payment.amount),
+                "status": payment.status,
+            },
         )
+
+        return Response(status=204)
