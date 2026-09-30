@@ -230,7 +230,7 @@ REST_FRAMEWORK = {
     },
 }
 
-# CORS settings from environment variable or defaults
+# CORS settings from environment variable or safe defaults.
 CORS_ALLOWED_ORIGINS_ENV = os.environ.get("CORS_ALLOWED_ORIGINS", "")
 if CORS_ALLOWED_ORIGINS_ENV:
     CORS_ALLOWED_ORIGINS = [
@@ -238,33 +238,58 @@ if CORS_ALLOWED_ORIGINS_ENV:
         for origin in CORS_ALLOWED_ORIGINS_ENV.split(",")
         if origin.strip()
     ]
-else:
+elif DEBUG:
     CORS_ALLOWED_ORIGINS = [
         "http://localhost:3000",
         "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8000",
+        "https://eduosh1.vercel.app",
+    ]
+else:
+    CORS_ALLOWED_ORIGINS = [
         "https://eduosh1.vercel.app",
         "https://eduosh.kg",
-        "http://eduosh.kg",
         "https://backend1-ritn.onrender.com",
-        "http://127.0.0.1:8000",
-        "http://192.168.31.129:3000",
-        "http://192.168.31.129:3001",
-        "http://127.0.0.1:3000",
-        "http://10.79.196.178:3000",
-        "http://10.79.196.178:8000",
-        "http://162.62.231.244",
-        "https://162.62.231.244",
     ]
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = False
 
-CSRF_TRUSTED_ORIGINS = [
-    "https://eduosh1.vercel.app",
-    "https://backend1-ritn.onrender.com",
-    "http://162.62.231.244",
-    "https://162.62.231.244",
-]
+CSRF_TRUSTED_ORIGINS_ENV = os.environ.get("CSRF_TRUSTED_ORIGINS", "")
+if CSRF_TRUSTED_ORIGINS_ENV:
+    CSRF_TRUSTED_ORIGINS = [
+        origin.strip()
+        for origin in CSRF_TRUSTED_ORIGINS_ENV.split(",")
+        if origin.strip()
+    ]
+elif DEBUG:
+    CSRF_TRUSTED_ORIGINS = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8000",
+        "https://eduosh1.vercel.app",
+    ]
+else:
+    CSRF_TRUSTED_ORIGINS = [
+        "https://eduosh1.vercel.app",
+        "https://eduosh.kg",
+        "https://backend1-ritn.onrender.com",
+    ]
+
+# Sync/import safety limits.
+SYNC_SECRET = os.environ.get("SYNC_SECRET", "").strip()
+SYNC_MAX_BYTES = int(os.environ.get("SYNC_MAX_BYTES", 10 * 1024 * 1024))
+SYNC_MAX_OBJECTS = int(os.environ.get("SYNC_MAX_OBJECTS", "50000"))
+
+# Request/file upload limits to reduce memory-exhaustion risk.
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(
+    os.environ.get("DATA_UPLOAD_MAX_MEMORY_SIZE", 10 * 1024 * 1024)
+)
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(
+    os.environ.get("FILE_UPLOAD_MAX_MEMORY_SIZE", 5 * 1024 * 1024)
+)
 
 LANGUAGES = [
     ("ru", "Russian"),
