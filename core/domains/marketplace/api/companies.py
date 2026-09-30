@@ -26,7 +26,6 @@ from ..services import (
     charge_promotion,
     mark_urgent,
     promote_item,
-    resolve_user_company_name,
 )
 
 class MarketplaceCompanyViewSet(viewsets.ModelViewSet):
