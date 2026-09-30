@@ -7,6 +7,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from core.models import Student, User
+from core.audit import write_audit
 from core.permissions import (
     IsCourseAdminOrManagerOrStudentReadOnly,
 )
@@ -20,9 +21,9 @@ from core.domains.auth.first_login import issue_first_login_password
 
 
 class StudentViewSet(viewsets.ModelViewSet):
-    queryset = Student.objects.all().order_by(
-        "-created_at"
-    )
+    queryset = Student.objects.filter(
+        archived_at__isnull=True
+    ).order_by("-created_at")
     serializer_class = StudentSerializer
     permission_classes = [
         IsCourseAdminOrManagerOrStudentReadOnly
