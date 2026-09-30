@@ -305,14 +305,42 @@ class StudentViewSet(viewsets.ModelViewSet):
             User.Role.STUDENT,
         ):
             raise PermissionDenied(
-                "Not allowed to delete students."
+                "Not allowed to archive students."
             )
 
-        return super().destroy(
-            request,
-            *args,
-            **kwargs,
+        student = self.get_object()
+        student.archived_at = timezone.now()
+        student.can_login = False
+        student.save(
+            update_fields=[
+                "archived_at",
+                "can_login",
+            ]
         )
+
+        if student.user_id:
+            student.user.is_active = False
+            student.user.save(
+                update_fields=["is_active"]
+            )
+            Token.objects.filter(
+                user=student.user
+            ).delete()
+
+        write_audit(
+            request,
+            action="student.archived",
+            obj=student,
+            company=student.company,
+            after={
+                "archived_at": (
+                    student.archived_at.isoformat()
+                ),
+                "can_login": False,
+            },
+        )
+
+        return Response(status=204)
 
     @action(
         detail=True,
