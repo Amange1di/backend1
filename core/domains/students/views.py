@@ -38,7 +38,8 @@ class StudentViewSet(viewsets.ModelViewSet):
             and user.role == User.Role.COURSE_ADMIN
         ):
             return queryset.filter(
-                models.Q(
+                models.Q(company=user.company)
+                | models.Q(
                     primary_course__admins=user
                 )
                 | models.Q(
