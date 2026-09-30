@@ -106,3 +106,22 @@ class TelegramBindCode(models.Model):
         """Код действителен если не использован и не истёк"""
         from django.utils import timezone
         return not self.is_used and self.expires_at > timezone.now()
+
+
+class FirstLoginCredential(models.Model):
+    user = models.OneToOneField(
+        "User",
+        on_delete=models.CASCADE,
+        related_name="first_login_credential",
+    )
+    password_hash = models.CharField(max_length=128)
+    is_used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "First Login Credential"
+        verbose_name_plural = "First Login Credentials"
+
+    def __str__(self) -> str:
+        return f"{self.user.username} (used={self.is_used})"
