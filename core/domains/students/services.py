@@ -23,7 +23,7 @@ def build_student_username(
     company = re.sub(
         r"[^a-z0-9]+",
         "",
-        company_name.lower(),
+        company_name,
     )[:24]
     prefix = company or "eduosh"
 
