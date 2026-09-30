@@ -57,6 +57,33 @@ class MarketplaceCompanyViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    def destroy(self, request, *args, **kwargs):
+        company = self.get_object()
+        user = request.user
+
+        if user.role == User.Role.MANAGER:
+            raise PermissionDenied(
+                "Managers cannot delete companies."
+            )
+
+        if (
+            user.role == User.Role.COURSE_ADMIN
+            and company.owner_id != user.id
+        ):
+            raise PermissionDenied(
+                "Not allowed for this company."
+            )
+
+        company.is_active = False
+        company.save(update_fields=["is_active"])
+        User.objects.filter(
+            company=company
+        ).update(is_active=False)
+
+        return Response(
+            status=status.HTTP_204_NO_CONTENT
+        )
+
     def perform_create(self, serializer):
         user = self.request.user
         if user.role not in (
