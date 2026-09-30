@@ -40,15 +40,17 @@ from ..services import (
 )
 
 class LoginThrottle(AnonRateThrottle):
-    rate = "1000/hour"
+    rate = "10/hour"
+
 
 class RegisterThrottle(AnonRateThrottle):
-    rate = "1000/hour"
+    rate = "5/hour"
 
 class RegisterView(APIView):
     permission_classes = [
         permissions.AllowAny
     ]
+    throttle_classes = [RegisterThrottle]
 
     def post(self, request):
         if (
@@ -144,10 +146,27 @@ class RegisterView(APIView):
             and request.user.role
             == User.Role.COURSE_ADMIN
         ):
-            if (
-                requested_role
-                == User.Role.MANAGER
+            if requested_role not in (
+                User.Role.MANAGER,
+                User.Role.TEACHER,
             ):
+                return Response(
+                    {
+                        "detail": (
+                            "Course admins can only create "
+                            "teachers or managers."
+                        )
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            if not request.user.company_id:
+                return Response(
+                    {"detail": "Company is required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if requested_role == User.Role.MANAGER:
                 if not request.user.can_create_manager():
                     return Response(
                         {
@@ -165,15 +184,22 @@ class RegisterView(APIView):
                 user = serializer.save(
                     force_role=User.Role.MANAGER,
                     created_by=request.user,
+                    company=request.user.company,
                 )
             else:
                 user = serializer.save(
                     force_role=User.Role.TEACHER,
                     created_by=request.user,
+                    company=request.user.company,
                 )
         else:
             user = serializer.save(
-                force_role=User.Role.TEACHER
+                force_role=User.Role.TEACHER,
+                company=None,
+                created_by=None,
+                max_managers=0,
+                max_pages=1,
+                max_blocks=7,
             )
 
         token, _ = Token.objects.get_or_create(
