@@ -1,6 +1,8 @@
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
+from core.security import sanitize_json_content
+
 from core.models import (
     Company,
     Course,
@@ -12,6 +14,9 @@ from core.models import (
 
 
 class LandingSectionSerializer(serializers.ModelSerializer):
+    def validate_content(self, value):
+        return sanitize_json_content(value)
+
     class Meta:
         model = LandingSection
         fields = (
