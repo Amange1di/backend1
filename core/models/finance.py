@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -109,29 +109,51 @@ class CompanyBalance(models.Model):
         return f"{company_str} - {self.balance} eC"
     
     def add_coins(self, amount: int, reason: str):
-        """Добавить монеты"""
-        self.balance += amount
-        self.save()
-        Transaction.objects.create(
-            company=self.company,
-            amount=amount,
-            reason=reason,
-            transaction_type=Transaction.Type.DEPOSIT,
-        )
-    
-    def spend_coins(self, amount: int, reason: str) -> bool:
-        """Списать монеты. Возвращает True если успешно"""
-        if self.balance >= amount:
-            self.balance -= amount
-            self.save()
+        """Atomically add coins and write the ledger entry."""
+        if amount <= 0:
+            raise ValueError("Amount must be positive.")
+
+        with transaction.atomic():
+            locked = (
+                CompanyBalance.objects
+                .select_for_update()
+                .get(pk=self.pk)
+            )
+            locked.balance += amount
+            locked.save(update_fields=["balance", "last_update"])
             Transaction.objects.create(
-                company=self.company,
+                company_id=locked.company_id,
+                amount=amount,
+                reason=reason,
+                transaction_type=Transaction.Type.DEPOSIT,
+            )
+            self.balance = locked.balance
+            return locked.balance
+
+    def spend_coins(self, amount: int, reason: str) -> bool:
+        """Atomically spend coins if the balance is sufficient."""
+        if amount <= 0:
+            return False
+
+        with transaction.atomic():
+            locked = (
+                CompanyBalance.objects
+                .select_for_update()
+                .get(pk=self.pk)
+            )
+            if locked.balance < amount:
+                return False
+
+            locked.balance -= amount
+            locked.save(update_fields=["balance", "last_update"])
+            Transaction.objects.create(
+                company_id=locked.company_id,
                 amount=-amount,
                 reason=reason,
                 transaction_type=Transaction.Type.WITHDRAWAL,
             )
+            self.balance = locked.balance
             return True
-        return False
 
 class Transaction(models.Model):
     """История транзакций eduCoin"""
@@ -199,29 +221,51 @@ class UserBalance(models.Model):
         return f"{self.user.username} - {self.balance} eC"
     
     def add_coins(self, amount: int, reason: str):
-        """Добавить монеты"""
-        self.balance += amount
-        self.save()
-        UserTransaction.objects.create(
-            user=self.user,
-            amount=amount,
-            reason=reason,
-            transaction_type=UserTransaction.Type.DEPOSIT,
-        )
-    
-    def spend_coins(self, amount: int, reason: str) -> bool:
-        """Списать монеты. Возвращает True если успешно"""
-        if self.balance >= amount:
-            self.balance -= amount
-            self.save()
+        """Atomically add coins and write the user ledger entry."""
+        if amount <= 0:
+            raise ValueError("Amount must be positive.")
+
+        with transaction.atomic():
+            locked = (
+                UserBalance.objects
+                .select_for_update()
+                .get(pk=self.pk)
+            )
+            locked.balance += amount
+            locked.save(update_fields=["balance", "last_update"])
             UserTransaction.objects.create(
-                user=self.user,
+                user_id=locked.user_id,
+                amount=amount,
+                reason=reason,
+                transaction_type=UserTransaction.Type.DEPOSIT,
+            )
+            self.balance = locked.balance
+            return locked.balance
+
+    def spend_coins(self, amount: int, reason: str) -> bool:
+        """Atomically spend user coins if the balance is sufficient."""
+        if amount <= 0:
+            return False
+
+        with transaction.atomic():
+            locked = (
+                UserBalance.objects
+                .select_for_update()
+                .get(pk=self.pk)
+            )
+            if locked.balance < amount:
+                return False
+
+            locked.balance -= amount
+            locked.save(update_fields=["balance", "last_update"])
+            UserTransaction.objects.create(
+                user_id=locked.user_id,
                 amount=-amount,
                 reason=reason,
                 transaction_type=UserTransaction.Type.WITHDRAWAL,
             )
+            self.balance = locked.balance
             return True
-        return False
 
 class UserTransaction(models.Model):
     """История транзакций пользователя eduCoin"""
