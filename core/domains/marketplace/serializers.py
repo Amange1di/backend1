@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from core.models import Company, JobVacancy, PublicCourse
+from core.security import validate_upload
 
 
 class CompanySerializer(serializers.ModelSerializer):
@@ -80,11 +81,19 @@ class PublicCourseSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = (
+            "company",
             "slug",
             "rating",
             "reviews_count",
             "views",
             "applications_count",
+        )
+
+    def validate_image(self, value):
+        return validate_upload(
+            value,
+            max_bytes=5 * 1024 * 1024,
+            allowed_extensions={"jpg", "jpeg", "png", "webp"},
         )
 
     def get_landing_page_slug(self, obj):
@@ -140,6 +149,7 @@ class JobVacancySerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = (
+            "company",
             "views",
             "applications_count",
         )
@@ -202,12 +212,20 @@ class JobVacancyDetailSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = (
+            "company",
             "views",
             "applications_count",
         )
 
 
 class CompanyCreateUpdateSerializer(serializers.ModelSerializer):
+    def validate_logo(self, value):
+        return validate_upload(
+            value,
+            max_bytes=5 * 1024 * 1024,
+            allowed_extensions={"jpg", "jpeg", "png", "webp"},
+        )
+
     class Meta:
         model = Company
         fields = (
