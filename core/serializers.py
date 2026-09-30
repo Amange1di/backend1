@@ -69,74 +69,11 @@ from .domains.groups.serializers import GroupSerializer
 from .domains.attendance.serializers import AttendanceSerializer
 
 
-class ExpenseSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Expense
-        fields = (
-            "id", "company", "description", "amount", "category", "date",
-            "created_at", "updated_at",
-        )
-        read_only_fields = ("company",)
+from .domains.finance.serializers import (
+    ExpenseSerializer,
+    GroupMonthSerializer,
+)
 
-class GroupMonthSerializer(serializers.ModelSerializer):
-    teacher_percent_earning = serializers.SerializerMethodField()
-    teacher_total_earning = serializers.SerializerMethodField()
-    group_name = serializers.CharField(source="group.name", read_only=True)
-    teacher_name = serializers.SerializerMethodField()
-    month_label = serializers.SerializerMethodField()
-
-    class Meta:
-        model = GroupMonth
-        fields = (
-            "id", "group", "group_name", "month_number", "month_label", "teacher_salary", "status",
-            "completed_at", "created_at",
-            "teacher_percent_earning", "teacher_total_earning",
-            "teacher_name",
-        )
-        read_only_fields = ("created_at",)
-
-    def get_month_label(self, obj):
-        """Вычисляем реальный месяц/год на основе start_date группы и month_number."""
-        group = obj.group
-        start_date = getattr(group, "start_date", None)
-        if not start_date:
-            return f"Месяц {obj.month_number}"
-        # month_number=1 → start_date, month_number=2 → start_date + 1 месяц и т.д.
-        from dateutil.relativedelta import relativedelta
-        month_date = start_date + relativedelta(months=obj.month_number - 1)
-        months_russian = [
-            "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
-            "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
-        ]
-        return f"{months_russian[month_date.month - 1]} {month_date.year}"
-
-    def get_teacher_name(self, obj):
-        group = obj.group
-        if not group:
-            return None
-        teacher = getattr(group, "teacher", None)
-        if teacher:
-            return f"{teacher.first_name} {teacher.last_name}".strip() or str(teacher)
-        return None
-
-    def get_teacher_percent_earning(self, obj):
-        """Вычисляем автоматический % учителя за месяц: students × course_price × teacher_percent / 100"""
-        group = obj.group
-        teacher_percent = group.teacher_percent or 0
-        course = group.course
-        if not teacher_percent or teacher_percent <= 0 or not course:
-            return 0
-        student_count = group.students.count() or 0
-        if student_count == 0:
-            return 0
-        course_price = course.price or 0
-        return int((course_price * student_count * teacher_percent) / 100)
-
-    def get_teacher_total_earning(self, obj):
-        """Общий заработок учителя за месяц: teacher_salary + teacher_percent_earning"""
-        salary = int(obj.teacher_salary) if obj.teacher_salary else 0
-        percent = self.get_teacher_percent_earning(obj)
-        return salary + percent
 
 from .domains.payments.serializers import PaymentSerializer
 
