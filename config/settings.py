@@ -156,13 +156,18 @@ elif os.environ.get("DB_ENGINE") == "postgresql":
             "PORT": os.environ.get("DB_PORT", "5432"),
         }
     }
-else:
+elif DEBUG:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": BASE_DIR / "db.sqlite3",
         }
     }
+else:
+    raise ImproperlyConfigured(
+        "Production database is not configured. "
+        "Set DATABASE_URL or DB_ENGINE=postgresql."
+    )
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
