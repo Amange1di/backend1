@@ -81,16 +81,23 @@ class Command(BaseCommand):
                     today = date.today()
                     companies = (
                         TrialLead.objects
-                        .filter(created_at__date=today)
-                        .values_list("company_name", flat=True)
+                        .filter(
+                            created_at__date=today,
+                            company_id__isnull=False,
+                        )
+                        .values_list(
+                            "company_id",
+                            "company__name",
+                        )
                         .distinct()
                     )
-                    for company_name in companies:
-                        if company_name:
-                            await send_daily_lead_summary(company_name)
-                            self.stdout.write(
-                                self.style.SUCCESS(f"  ✓ Lead summary sent: {company_name}")
+                    for company_id, company_name in companies:
+                        await send_daily_lead_summary(company_id)
+                        self.stdout.write(
+                            self.style.SUCCESS(
+                                f"  ✓ Lead summary sent: {company_name} (id={company_id})"
                             )
+                        )
 
                 # ── Payment debt reminders ──
                 if send_payment_reminders:
@@ -101,7 +108,7 @@ class Command(BaseCommand):
 
                     companies_qs = Company.objects.filter(is_active=True)
                     for company in companies_qs:
-                        debtors = await _get_students_with_debt(company.name)
+                        debtors = await _get_students_with_debt(company.id)
                         if not debtors:
                             continue
                         for student, payment, days_overdue in debtors:
