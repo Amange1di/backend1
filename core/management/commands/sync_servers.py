@@ -32,7 +32,7 @@ from django.core import serializers
 from django.db import transaction
 from django.core.management.base import BaseCommand, CommandError
 
-from core.sync_views import _get_sync_objects, _save_or_update
+from core.domains.sync.views import _get_sync_objects, _save_or_update
 
 logger = logging.getLogger(__name__)
 
