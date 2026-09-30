@@ -52,33 +52,33 @@ def _save_telegram_chat_id(user: User, chat_id: int):
 
 
 @sync_to_async
-def _get_managers_for_company(company_name: str):
+def _get_managers_for_company(company_id: int):
     return list(
         User.objects.filter(
             role=User.Role.MANAGER,
-            company_name=company_name,
+            company_id=company_id,
             telegram_chat_id__isnull=False,
         ).exclude(telegram_chat_id=0)
     )
 
 
 @sync_to_async
-def _get_teachers_for_company(company_name: str):
+def _get_teachers_for_company(company_id: int):
     return list(
         User.objects.filter(
             role=User.Role.TEACHER,
-            company_name=company_name,
+            company_id=company_id,
             telegram_chat_id__isnull=False,
         ).exclude(telegram_chat_id=0)
     )
 
 
 @sync_to_async
-def _get_course_admins_for_company(company_name: str):
+def _get_course_admins_for_company(company_id: int):
     return list(
         User.objects.filter(
             role=User.Role.COURSE_ADMIN,
-            company_name=company_name,
+            company_id=company_id,
             telegram_chat_id__isnull=False,
         ).exclude(telegram_chat_id=0)
     )
@@ -110,7 +110,11 @@ def _get_teachers_with_chat_id():
 
 @sync_to_async
 def _get_group_by_id(group_id: int):
-    return Group.objects.select_related("course", "teacher").get(id=group_id)
+    return Group.objects.select_related(
+        "course",
+        "teacher",
+        "company",
+    ).get(id=group_id)
 
 
 @sync_to_async
@@ -214,7 +218,7 @@ def _get_group_course_name(group) -> str:
 
 @sync_to_async
 def _get_group_company_name(group) -> Optional[str]:
-    return group.company_name or (group.company.name if group.company else None)
+    return group.company.name if group.company else None
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -233,7 +237,7 @@ def _get_students_for_group(group_id: int):
 
 
 @sync_to_async
-def _get_students_with_debt(company_name: str):
+def _get_students_with_debt(company_id: int):
     """
     Get students who have debt payments, have Telegram, and have not been reminded recently.
     Returns list of (student, payment, days_overdue) tuples.
@@ -246,7 +250,7 @@ def _get_students_with_debt(company_name: str):
 
     debt_payments = Payment.objects.filter(
         status=Payment.Status.DEBT,
-        company__name=company_name,
+        company_id=company_id,
         student__user__telegram_chat_id__isnull=False,
     ).exclude(
         student__user__telegram_chat_id=0
@@ -329,7 +333,7 @@ def _update_lead_status_contacted(lead: TrialLead):
 
 @sync_to_async
 def _get_lead_company_name(lead: TrialLead) -> Optional[str]:
-    return lead.company_name or (lead.company.name if lead.company else None)
+    return lead.company.name if lead.company else None
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -399,9 +403,7 @@ def _get_task_created_by_name(task: Task) -> str:
 
 @sync_to_async
 def _get_task_company_name(task: Task) -> Optional[str]:
-    if task.company:
-        return task.company.name
-    return task.company_name or None
+    return task.company.name if task.company else None
 
 
 @sync_to_async
