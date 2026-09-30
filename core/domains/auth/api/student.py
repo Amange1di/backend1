@@ -43,6 +43,13 @@ class StudentLoginView(APIView):
     permission_classes = [
         permissions.AllowAny
     ]
+    throttle_classes = [AnonRateThrottle]
+
+    def get_throttles(self):
+        throttles = super().get_throttles()
+        for throttle in throttles:
+            throttle.rate = "10/hour"
+        return throttles
 
     def post(self, request):
         serializer = (
