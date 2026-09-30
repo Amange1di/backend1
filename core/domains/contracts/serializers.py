@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from core.models import Contract, ContractTemplate
+from core.security import sanitize_contract_html
 
 
 class ContractSerializer(serializers.ModelSerializer):
@@ -50,6 +51,9 @@ class ContractSerializer(serializers.ModelSerializer):
 
 
 class ContractTemplateSerializer(serializers.ModelSerializer):
+    def validate_html_content(self, value):
+        return sanitize_contract_html(value)
+
     class Meta:
         model = ContractTemplate
         fields = (
