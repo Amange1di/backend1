@@ -201,7 +201,16 @@ class CourseAdminDetailView(APIView):
             pk=pk,
             role=User.Role.COURSE_ADMIN,
         )
-        admin.delete()
+
+        admin.is_active = False
+        admin.save(update_fields=["is_active"])
+        Token.objects.filter(user=admin).delete()
+
+        if admin.company_id:
+            Company.objects.filter(
+                id=admin.company_id
+            ).update(is_active=False)
+
         return Response(
             status=status.HTTP_204_NO_CONTENT
         )
