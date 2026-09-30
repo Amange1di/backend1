@@ -17,15 +17,11 @@ from .views import (
     FinanceExportView,
     GroupMonthViewSet,
     GroupViewSet,
-    LandingHeaderLinkViewSet,
-    LandingPageViewSet,
     LoginView,
     LogoutView,
     ManagerViewSet,
     MeView,
     PaymentViewSet,
-    PublicLandingDetailView,
-    PublicLandingLeadCreateView,
     RegisterView,
     StudentLoginView,
     StudentProfileView,
@@ -50,14 +46,13 @@ router.register("attendance", AttendanceViewSet)
 router.register("group-months", GroupMonthViewSet)
 router.register("expenses", ExpenseViewSet)
 router.register("payments", PaymentViewSet)
-router.register("landing-pages", LandingPageViewSet, basename="landing-pages")
-router.register("landing-header-links", LandingHeaderLinkViewSet, basename="landing-header-links")
 
 # Marketplace routers
 
 # Public marketplace
 
 urlpatterns = [
+    path("", include("core.domains.landing.urls")),
     path("", include("core.domains.marketplace.urls")),
     path("", include("core.domains.trials.urls")),
     path("", include("core.domains.tasks.urls")),
@@ -103,8 +98,6 @@ urlpatterns = [
     path("sync/import/", SyncImportView.as_view(), name="sync-import"),
 
     # Public landing pages (must be after router.urls to avoid conflicting with public/courses and public/jobs)
-    path("public/landing-pages/<slug:slug>/", PublicLandingDetailView.as_view(), name="public-landing-detail"),
-    path("public/landing-pages/<slug:slug>/lead/", PublicLandingLeadCreateView.as_view(), name="public-landing-lead"),
     
     # Router URLs (must be before generic public/ paths)
     path("", include(router.urls)),
