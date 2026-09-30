@@ -17,8 +17,6 @@ from .views import (
     FinanceExportView,
     GroupMonthViewSet,
     GroupViewSet,
-    HomeworkSubmissionViewSet,
-    HomeworkTaskViewSet,
     LandingHeaderLinkViewSet,
     LandingPageViewSet,
     LoginView,
@@ -63,8 +61,6 @@ router.register("expenses", ExpenseViewSet)
 router.register("payments", PaymentViewSet)
 router.register("landing-pages", LandingPageViewSet, basename="landing-pages")
 router.register("landing-header-links", LandingHeaderLinkViewSet, basename="landing-header-links")
-router.register("homework-tasks", HomeworkTaskViewSet, basename="homework-tasks")
-router.register("homework-submissions", HomeworkSubmissionViewSet, basename="homework-submissions")
 router.register("trial-leads", TrialLeadViewSet, basename="trial-leads")
 router.register("tasks", TaskViewSet, basename="tasks")
 
@@ -78,6 +74,7 @@ router.register("public/courses", PublicCourseViewSet, basename="public-courses"
 router.register("public/jobs", PublicJobViewSet, basename="public-jobs")
 
 urlpatterns = [
+    path("", include("core.domains.homework.urls")),
     path("", include("core.domains.contracts.urls")),
     path("auth/register/", RegisterView.as_view(), name="auth-register"),
     path("auth/course-admins/", CourseAdminCreateView.as_view(), name="auth-course-admins"),
