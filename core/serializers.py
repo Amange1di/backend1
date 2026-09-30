@@ -17,9 +17,6 @@ from .models import (
     LandingHeaderLink,
     LandingPage,
     LandingSection,
-    HomeworkTaskAttachment,
-    HomeworkSubmission,
-    HomeworkTask,
     Payment,
     Student,
     TrialLead,
@@ -31,8 +28,6 @@ from .models import (
     JobVacancy,
     StudentApplication,
     TeacherApplication,
-    Contract,
-    ContractTemplate,
 )
 
 def normalize_phone(value: str) -> str:
@@ -731,7 +726,14 @@ class PaymentSerializer(serializers.ModelSerializer):
         model = Payment
         fields = ("id", "student", "group", "company", "company_id", "amount", "status", "paid_at", "due_date", "reminder_sent_at", "created_at")
 
-from .domains.homework.serializers import (\n    HomeworkSubmissionSerializer,\n    HomeworkTaskAttachmentSerializer,\n    HomeworkTaskSerializer,\n)\n\n\nclass TrialLeadSerializer(serializers.ModelSerializer):
+from .domains.homework.serializers import (
+    HomeworkSubmissionSerializer,
+    HomeworkTaskAttachmentSerializer,
+    HomeworkTaskSerializer,
+)
+
+
+class TrialLeadSerializer(serializers.ModelSerializer):
     group_assigned_label = serializers.CharField(
         source="group_assigned.name", read_only=True
     )
@@ -1058,7 +1060,13 @@ class LandingPublicPageSerializer(serializers.ModelSerializer):
             "facebook": getattr(obj.company, 'facebook', None),
         }
 
-from .domains.contracts.serializers import (\n    ContractSerializer,\n    ContractTemplateSerializer,\n)\n\n\nclass PromoCodeSerializer(serializers.ModelSerializer):
+from .domains.contracts.serializers import (
+    ContractSerializer,
+    ContractTemplateSerializer,
+)
+
+
+class PromoCodeSerializer(serializers.ModelSerializer):
     balance = serializers.SerializerMethodField()
 
     class Meta:
