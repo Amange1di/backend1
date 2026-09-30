@@ -25,7 +25,6 @@ from .views import (
     StudentLoginView,
     StudentProfileView,
     StudentSetPasswordView,
-    StudentViewSet,
     TeacherViewSet,
     SuperAdminStatsView,
     GenerateTelegramBindCodeView,
@@ -37,7 +36,6 @@ from .sync_views import SyncExportView, SyncImportView
 router = DefaultRouter()
 router.register("teachers", TeacherViewSet)
 router.register("managers", ManagerViewSet, basename="managers")
-router.register("students", StudentViewSet)
 router.register("groups", GroupViewSet)
 router.register("auditoriums", AuditoriumViewSet)
 router.register("attendance", AttendanceViewSet)
@@ -50,6 +48,7 @@ router.register("payments", PaymentViewSet)
 # Public marketplace
 
 urlpatterns = [
+    path("", include("core.domains.students.urls")),
     path("", include("core.domains.courses.urls")),
     path("", include("core.domains.landing.urls")),
     path("", include("core.domains.marketplace.urls")),
