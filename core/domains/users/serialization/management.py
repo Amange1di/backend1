@@ -9,6 +9,12 @@ from core.models import Company, Course, User
 from core.domains.users.passwords import validate_strong_password
 
 class RegisterSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+        max_length=200,
+    )
     password = serializers.CharField(
         write_only=True,
         min_length=6,
@@ -25,6 +31,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "username",
+            "company_name",
             "password",
             "first_name",
             "last_name",
@@ -98,6 +105,10 @@ class RegisterSerializer(serializers.ModelSerializer):
         )
         company = validated_data.pop(
             "company",
+            None,
+        )
+        validated_data.pop(
+            "company_name",
             None,
         )
 
