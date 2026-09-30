@@ -31,7 +31,6 @@ from .views import (
     StudentProfileView,
     StudentSetPasswordView,
     StudentViewSet,
-    TaskViewSet,
     TeacherViewSet,
     TrialLeadViewSet,
     MarketplaceCompanyViewSet,
@@ -62,7 +61,6 @@ router.register("payments", PaymentViewSet)
 router.register("landing-pages", LandingPageViewSet, basename="landing-pages")
 router.register("landing-header-links", LandingHeaderLinkViewSet, basename="landing-header-links")
 router.register("trial-leads", TrialLeadViewSet, basename="trial-leads")
-router.register("tasks", TaskViewSet, basename="tasks")
 
 # Marketplace routers
 router.register("marketplace/companies", MarketplaceCompanyViewSet, basename="marketplace-companies")
@@ -74,6 +72,7 @@ router.register("public/courses", PublicCourseViewSet, basename="public-courses"
 router.register("public/jobs", PublicJobViewSet, basename="public-jobs")
 
 urlpatterns = [
+    path("", include("core.domains.tasks.urls")),
     path("", include("core.domains.homework.urls")),
     path("", include("core.domains.contracts.urls")),
     path("auth/register/", RegisterView.as_view(), name="auth-register"),
