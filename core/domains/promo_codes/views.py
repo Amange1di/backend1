@@ -10,10 +10,6 @@ from core.models import (
     Transaction,
     User,
 )
-from core.domains.users.services import (
-    resolve_user_company_name,
-)
-
 from .serializers import PromoCodeSerializer
 
 
@@ -188,10 +184,15 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
                 update_fields=["is_active"]
             )
 
-        company_name = (
-            resolve_user_company_name(user)
+        company = (
+            getattr(user, "company", None)
+            or getattr(
+                getattr(user, "created_by", None),
+                "company",
+                None,
+            )
         )
-        if not company_name:
+        if not company:
             return Response(
                 {
                     "detail": (
@@ -203,7 +204,7 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
 
         company_balance, _ = (
             CompanyBalance.objects.get_or_create(
-                company_name=company_name,
+                company=company,
                 defaults={"balance": 0},
             )
         )
@@ -218,7 +219,7 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
             )
         else:
             Transaction.objects.create(
-                company_name=company_name,
+                company=company,
                 user=user,
                 amount=0,
                 reason=(
