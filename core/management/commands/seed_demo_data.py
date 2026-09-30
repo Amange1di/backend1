@@ -12,9 +12,11 @@ from core.models import (
     CompanyBalance,
     CompanyCategory,
     CompanyCity,
+    Contract,
     Course,
     Expense,
     Group,
+    GroupMonth,
     HomeworkSubmission,
     HomeworkTask,
     JobVacancy,
@@ -480,6 +482,51 @@ class Command(BaseCommand):
                     "is_active": True,
                     "views": 70 + index * 20,
                     "applications": 5 + index * 3,
+                },
+            )
+
+        for group in groups:
+            for month_number in range(1, 4):
+                GroupMonth.objects.update_or_create(
+                    group=group,
+                    month_number=month_number,
+                    defaults={
+                        "teacher_salary": Decimal("25000.00") + month_number * 1500,
+                        "status": (
+                            GroupMonth.Status.COMPLETED
+                            if month_number == 1
+                            else GroupMonth.Status.PENDING
+                        ),
+                        "completed_at": (
+                            now - timedelta(days=10)
+                            if month_number == 1
+                            else None
+                        ),
+                    },
+                )
+
+        for index, student in enumerate(students[:6], start=1):
+            Contract.objects.update_or_create(
+                contract_number=f"DEMO-2026-{index:03d}",
+                defaults={
+                    "company": company,
+                    "student": student,
+                    "group": groups[(index - 1) % len(groups)],
+                    "status": (
+                        Contract.Status.SIGNED
+                        if index % 2 == 0
+                        else Contract.Status.DRAFT
+                    ),
+                    "amount": Decimal("18000.00") + (index % 3) * 1000,
+                    "start_date": today - timedelta(days=20),
+                    "end_date": today + timedelta(days=70),
+                    "terms": "Demo contract for local CRM development.",
+                    "created_by": admin,
+                    "signed_at": (
+                        now - timedelta(days=5)
+                        if index % 2 == 0
+                        else None
+                    ),
                 },
             )
 
