@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
@@ -6,6 +7,7 @@ from rest_framework.response import Response
 
 from core.models import (
     CompanyBalance,
+    PromoBalance,
     PromoCode,
     Transaction,
     User,
@@ -85,106 +87,13 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
             User.Role.MANAGER,
         ):
             raise PermissionDenied(
-                (
-                    "Only admins, course admins "
-                    "and managers can activate "
-                    "promo codes."
-                )
+                "Only admins, course admins and managers can activate promo codes."
             )
 
-        code = (
-            request.data.get(
-                "code",
-                "",
-            ).strip()
-        )
+        code = (request.data.get("code", "") or "").strip()
         if not code:
             return Response(
-                {
-                    "detail": (
-                        "Promo code is required."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            promo_code = PromoCode.objects.get(
-                code=code
-            )
-        except PromoCode.DoesNotExist:
-            return Response(
-                {
-                    "detail": (
-                        "Promo code not found."
-                    )
-                },
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        if user.role in (
-            User.Role.COURSE_ADMIN,
-            User.Role.MANAGER,
-        ):
-            creator = promo_code.created_by
-            creator_is_admin = (
-                creator
-                and (
-                    creator.is_superuser
-                    or creator.role
-                    in (
-                        User.Role.ADMIN,
-                        User.Role.SUPER_ADMIN,
-                    )
-                )
-            )
-            if not creator_is_admin:
-                return Response(
-                    {
-                        "detail": (
-                            "Вы можете активировать "
-                            "только промокоды созданные "
-                            "супер-админом."
-                        )
-                    },
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-
-        if (
-            promo_code.expiry_date
-            and promo_code.expiry_date
-            < timezone.now()
-        ):
-            return Response(
-                {
-                    "detail": (
-                        "Cannot activate expired "
-                        "promo code."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if (
-            promo_code.current_usages
-            >= promo_code.max_usages
-        ):
-            return Response(
-                {
-                    "detail": (
-                        "Promo code usage limit reached."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if not promo_code.is_active:
-            return Response(
-                {
-                    "detail": (
-                        "Promo code is inactive."
-                    )
-                },
+                {"detail": "Promo code is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -198,50 +107,130 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
         )
         if not company:
             return Response(
-                {
-                    "detail": (
-                        "Компания не найдена."
-                    )
-                },
+                {"detail": "Компания не найдена."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        company_balance, _ = (
-            CompanyBalance.objects.get_or_create(
+        with transaction.atomic():
+            try:
+                promo_code = (
+                    PromoCode.objects
+                    .select_for_update()
+                    .select_related("created_by")
+                    .get(code=code)
+                )
+            except PromoCode.DoesNotExist:
+                return Response(
+                    {"detail": "Promo code not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            if user.role in (
+                User.Role.COURSE_ADMIN,
+                User.Role.MANAGER,
+            ):
+                creator = promo_code.created_by
+                creator_is_admin = (
+                    creator
+                    and (
+                        creator.is_superuser
+                        or creator.role
+                        in (
+                            User.Role.ADMIN,
+                            User.Role.SUPER_ADMIN,
+                        )
+                    )
+                )
+                if not creator_is_admin:
+                    return Response(
+                        {
+                            "detail": (
+                                "Вы можете активировать только промокоды "
+                                "созданные супер-админом."
+                            )
+                        },
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
+            if not promo_code.is_active:
+                return Response(
+                    {"detail": "Promo code is inactive."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if (
+                promo_code.expiry_date
+                and promo_code.expiry_date < timezone.now()
+            ):
+                return Response(
+                    {"detail": "Cannot activate expired promo code."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if promo_code.current_usages >= promo_code.max_usages:
+                return Response(
+                    {"detail": "Promo code usage limit reached."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if promo_code.reward_type != PromoCode.RewardType.COINS:
+                return Response(
+                    {
+                        "detail": (
+                            "This promo reward type is not enabled yet."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            ledger_reason = f"Промокод: {promo_code.code}"
+            already_used = Transaction.objects.filter(
+                company=company,
+                reason=ledger_reason,
+                transaction_type=Transaction.Type.DEPOSIT,
+            ).exists()
+            if already_used:
+                return Response(
+                    {"detail": "Promo code already used by this company."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            try:
+                promo_balance = (
+                    PromoBalance.objects
+                    .select_for_update()
+                    .get(promo_code=promo_code)
+                )
+            except PromoBalance.DoesNotExist:
+                return Response(
+                    {"detail": "Promo code has no funded balance."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if promo_balance.balance < promo_code.reward_value:
+                return Response(
+                    {"detail": "Promo code balance is insufficient."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if not promo_balance.spend_coins(promo_code.reward_value):
+                return Response(
+                    {"detail": "Promo code balance is insufficient."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            company_balance, _ = CompanyBalance.objects.get_or_create(
                 company=company,
                 defaults={"balance": 0},
             )
-        )
-
-        if (
-            promo_code.reward_type
-            == PromoCode.RewardType.COINS
-        ):
             company_balance.add_coins(
                 promo_code.reward_value,
-                f"Промокод: {promo_code.code}",
-            )
-        else:
-            Transaction.objects.create(
-                company=company,
-                user=user,
-                amount=0,
-                reason=(
-                    "Промокод (бонус лимит): "
-                    f"{promo_code.code}"
-                ),
-                transaction_type=(
-                    Transaction.Type.BONUS
-                ),
+                ledger_reason,
             )
 
-        promo_code.current_usages += 1
-        promo_code.save(
-            update_fields=["current_usages"]
-        )
+            promo_code.current_usages += 1
+            promo_code.save(update_fields=["current_usages"])
 
         return Response(
-            PromoCodeSerializer(
-                promo_code
-            ).data
+            PromoCodeSerializer(promo_code).data
         )
