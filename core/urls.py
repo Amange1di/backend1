@@ -6,7 +6,6 @@ from .views import (
     AttendanceViewSet,
     AuditoriumViewSet,
     BroadcastView,
-    CourseViewSet,
     DashboardView,
     CourseAdminCreateView,
     CourseAdminDetailView,
@@ -36,7 +35,6 @@ from .views import (
 from .sync_views import SyncExportView, SyncImportView
 
 router = DefaultRouter()
-router.register("courses", CourseViewSet)
 router.register("teachers", TeacherViewSet)
 router.register("managers", ManagerViewSet, basename="managers")
 router.register("students", StudentViewSet)
@@ -52,6 +50,7 @@ router.register("payments", PaymentViewSet)
 # Public marketplace
 
 urlpatterns = [
+    path("", include("core.domains.courses.urls")),
     path("", include("core.domains.landing.urls")),
     path("", include("core.domains.marketplace.urls")),
     path("", include("core.domains.trials.urls")),
