@@ -8,10 +8,8 @@ from .views import (
     CourseAdminDetailView,
     CrmContactView,
     CspReportView,
-    ExpenseViewSet,
     FinanceDashboardView,
     FinanceExportView,
-    GroupMonthViewSet,
     LoginView,
     LogoutView,
     MeView,
@@ -27,14 +25,13 @@ from .views import (
 from .sync_views import SyncExportView, SyncImportView
 
 router = DefaultRouter()
-router.register("group-months", GroupMonthViewSet)
-router.register("expenses", ExpenseViewSet)
 
 # Marketplace routers
 
 # Public marketplace
 
 urlpatterns = [
+    path("", include("core.domains.finance.urls")),
     path("", include("core.domains.payments.urls")),
     path("", include("core.domains.attendance.urls")),
     path("", include("core.domains.auditoriums.urls")),
