@@ -2,10 +2,8 @@ from django.urls import include, path
 
 from .views import (
     BroadcastView,
-    DashboardView,
     CrmContactView,
     CspReportView,
-    SuperAdminStatsView,
     GenerateTelegramBindCodeView,
     GetTelegramBindCodeView,
     UserBalanceMeView,
@@ -13,6 +11,7 @@ from .views import (
 from .sync_views import SyncExportView, SyncImportView
 
 urlpatterns = [
+    path("", include("core.domains.super_admin.urls")),
     path("", include("core.domains.auth.urls")),
     path("", include("core.domains.finance.urls")),
     path("", include("core.domains.payments.urls")),
@@ -29,8 +28,6 @@ urlpatterns = [
     path("", include("core.domains.tasks.urls")),
     path("", include("core.domains.homework.urls")),
     path("", include("core.domains.contracts.urls")),
-    path("dashboard/", DashboardView.as_view(), name="dashboard"),
-    path("super-admin/stats/", SuperAdminStatsView.as_view(), name="super-admin-stats"),
     
     # Broadcast (mass mailing)
     path("broadcast/send/", BroadcastView.as_view(), name="broadcast-send"),
