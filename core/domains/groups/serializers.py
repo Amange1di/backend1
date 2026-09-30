@@ -12,7 +12,7 @@ class GroupSerializer(serializers.ModelSerializer):
     student_ids = serializers.PrimaryKeyRelatedField(
         many=True,
         write_only=True,
-        queryset=Student.objects.all(),
+        queryset=Student.objects.filter(archived_at__isnull=True),
         required=False,
     )
     course_title = serializers.CharField(
