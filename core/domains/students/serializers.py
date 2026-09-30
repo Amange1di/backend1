@@ -11,6 +11,8 @@ from .services import sync_student_user
 
 
 class StudentSerializer(serializers.ModelSerializer):
+    setup_code = serializers.SerializerMethodField()
+    setup_code_expires_at = serializers.SerializerMethodField()
     user = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.filter(
             role=User.Role.STUDENT
@@ -36,6 +38,8 @@ class StudentSerializer(serializers.ModelSerializer):
         model = Student
         fields = (
             "id",
+            "setup_code",
+            "setup_code_expires_at",
             "user",
             "first_name",
             "last_name",
@@ -50,7 +54,27 @@ class StudentSerializer(serializers.ModelSerializer):
             "notes",
             "created_at",
         )
-        read_only_fields = ("company", "company_id")
+        read_only_fields = (
+            "company",
+            "company_id",
+            "setup_code",
+            "setup_code_expires_at",
+        )
+
+    def get_setup_code(self, obj):
+        return getattr(
+            obj,
+            "_setup_code",
+            None,
+        )
+
+    def get_setup_code_expires_at(self, obj):
+        value = getattr(
+            obj,
+            "_setup_code_expires_at",
+            None,
+        )
+        return value.isoformat() if value else None
 
     def create(self, validated_data):
         group_ids = validated_data.pop(
