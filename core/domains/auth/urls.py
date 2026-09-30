@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     CourseAdminCreateView,
     CourseAdminDetailView,
+    CourseAdminResetPasswordView,
     FirstLoginSetPasswordView,
     LoginView,
     LogoutView,
@@ -26,6 +27,11 @@ urlpatterns = [
         "auth/course-admins/<int:pk>/",
         CourseAdminDetailView.as_view(),
         name="auth-course-admin-detail",
+    ),
+    path(
+        "auth/course-admins/<int:pk>/reset-password/",
+        CourseAdminResetPasswordView.as_view(),
+        name="auth-course-admin-reset-password",
     ),
     path(
         "auth/login/",
