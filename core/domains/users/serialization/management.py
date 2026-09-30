@@ -8,6 +8,7 @@ from rest_framework.authtoken.models import Token
 
 from core.models import Company, Course, User
 from core.domains.users.passwords import validate_strong_password
+from core.domains.auth.first_login import issue_first_login_password
 
 class RegisterSerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(
@@ -18,7 +19,8 @@ class RegisterSerializer(serializers.ModelSerializer):
     )
     password = serializers.CharField(
         write_only=True,
-        min_length=6,
+        required=False,
+        allow_blank=True,
     )
     company_id = serializers.PrimaryKeyRelatedField(
         source="company",
@@ -56,9 +58,6 @@ class RegisterSerializer(serializers.ModelSerializer):
                 _("A user with that username already exists.")
             )
         return candidate
-
-    def validate_password(self, value):
-        return validate_strong_password(value)
 
     def validate_role(self, value):
         if isinstance(value, str):
@@ -162,10 +161,10 @@ class RegisterSerializer(serializers.ModelSerializer):
             created_by=created_by,
             role=role,
         )
-        user.set_password(
-            validated_data["password"]
-        )
+        user.set_unusable_password()
+        user.must_set_password = True
         user.save()
+        issue_first_login_password(user)
         return user
 
 class TeacherCreateSerializer(serializers.Serializer):
@@ -174,7 +173,8 @@ class TeacherCreateSerializer(serializers.Serializer):
     )
     password = serializers.CharField(
         write_only=True,
-        min_length=6,
+        required=False,
+        allow_blank=True,
     )
     first_name = serializers.CharField()
     last_name = serializers.CharField(
@@ -229,9 +229,6 @@ class TeacherCreateSerializer(serializers.Serializer):
                 )
             )
         return candidate
-
-    def validate_password(self, value):
-        return validate_strong_password(value)
 
     def validate_color(self, value):
         if not value:
@@ -341,10 +338,10 @@ class TeacherCreateSerializer(serializers.Serializer):
             created_by=creator,
             role=User.Role.TEACHER,
         )
-        teacher.set_password(
-            validated_data["password"]
-        )
+        teacher.set_unusable_password()
+        teacher.must_set_password = True
         teacher.save()
+        issue_first_login_password(teacher)
 
         if courses:
             teacher.teaching_courses.set(
