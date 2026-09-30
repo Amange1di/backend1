@@ -4,7 +4,7 @@ from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import Company, Course, Student, User, Contract, Group, ContractTemplate
+from core.models import Company, Contract, ContractTemplate, Course, Group, Student, User
 
 
 @override_settings(
