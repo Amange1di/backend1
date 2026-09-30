@@ -6,6 +6,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.audit import write_audit
 from core.models import (
     Company,
     JobVacancy,
@@ -79,6 +80,14 @@ class MarketplaceCompanyViewSet(viewsets.ModelViewSet):
         User.objects.filter(
             company=company
         ).update(is_active=False)
+
+        write_audit(
+            request,
+            action="company.deactivated",
+            obj=company,
+            company=company,
+            after={"is_active": False},
+        )
 
         return Response(
             status=status.HTTP_204_NO_CONTENT
