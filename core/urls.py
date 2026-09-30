@@ -47,9 +47,6 @@ from .views import (
     GenerateTelegramBindCodeView,
     GetTelegramBindCodeView,
     UserBalanceMeView,
-    ContractViewSet,
-    ContractTemplateViewSet,
-    StudentContractsView,
 )
 from .sync_views import SyncExportView, SyncImportView
 
@@ -70,8 +67,6 @@ router.register("homework-tasks", HomeworkTaskViewSet, basename="homework-tasks"
 router.register("homework-submissions", HomeworkSubmissionViewSet, basename="homework-submissions")
 router.register("trial-leads", TrialLeadViewSet, basename="trial-leads")
 router.register("tasks", TaskViewSet, basename="tasks")
-router.register("contracts", ContractViewSet, basename="contracts")
-router.register("contract-templates", ContractTemplateViewSet, basename="contract-templates")
 
 # Marketplace routers
 router.register("marketplace/companies", MarketplaceCompanyViewSet, basename="marketplace-companies")
@@ -83,6 +78,7 @@ router.register("public/courses", PublicCourseViewSet, basename="public-courses"
 router.register("public/jobs", PublicJobViewSet, basename="public-jobs")
 
 urlpatterns = [
+    path("", include("core.domains.contracts.urls")),
     path("auth/register/", RegisterView.as_view(), name="auth-register"),
     path("auth/course-admins/", CourseAdminCreateView.as_view(), name="auth-course-admins"),
     path("auth/course-admins/<int:pk>/", CourseAdminDetailView.as_view(), name="auth-course-admin-detail"),
@@ -90,7 +86,6 @@ urlpatterns = [
     path("auth/student/login/", StudentLoginView.as_view(), name="auth-student-login"),
     path("auth/student/set-password/", StudentSetPasswordView.as_view(), name="auth-student-set-password"),
     path("auth/student/profile/", StudentProfileView.as_view(), name="auth-student-profile"),
-    path("auth/student/contracts/", StudentContractsView.as_view(), name="auth-student-contracts"),
     path("auth/me/", MeView.as_view(), name="auth-me"),
     path("auth/logout/", LogoutView.as_view(), name="auth-logout"),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
