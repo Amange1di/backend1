@@ -56,15 +56,15 @@ class LandingPageViewSet(viewsets.ModelViewSet):
                     status=status_filter
                 )
 
-            company_name = (
+            company_id = (
                 self.request.query_params.get(
-                    "company_name",
+                    "company_id",
                     "",
                 ).strip()
             )
-            if company_name:
+            if company_id.isdigit():
                 queryset = queryset.filter(
-                    company=company_name
+                    company_id=int(company_id)
                 )
 
             return queryset
@@ -324,15 +324,15 @@ class LandingHeaderLinkViewSet(
             user.role == User.Role.ADMIN
             or user.is_superuser
         ):
-            company_name = (
+            company_id = (
                 self.request.query_params.get(
-                    "company_name",
+                    "company_id",
                     "",
                 ).strip()
             )
-            if company_name:
+            if company_id.isdigit():
                 queryset = queryset.filter(
-                    company=company_name
+                    company_id=int(company_id)
                 )
             return queryset
 
