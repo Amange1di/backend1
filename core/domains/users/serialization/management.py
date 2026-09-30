@@ -4,6 +4,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
+from rest_framework.authtoken.models import Token
 
 from core.models import Company, Course, User
 from core.domains.users.passwords import validate_strong_password
@@ -457,6 +458,9 @@ class TeacherUpdateSerializer(serializers.ModelSerializer):
             teacher.save(
                 update_fields=["password"]
             )
+            Token.objects.filter(
+                user=teacher
+            ).delete()
         return teacher
 
 class CourseAdminUpdateSerializer(
@@ -515,6 +519,9 @@ class CourseAdminUpdateSerializer(
             user.save(
                 update_fields=["password"]
             )
+            Token.objects.filter(
+                user=user
+            ).delete()
         return user
 
     def validate_max_pages(self, value):
