@@ -2,6 +2,8 @@ import os
 import importlib
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 # Load .env file first
 try:
     from dotenv import load_dotenv
@@ -13,15 +15,18 @@ except ImportError:
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get(
-    "SECRET_KEY",
-    "django-insecure-change-me-in-production-"
-    + "".join([chr(97 + i) for i in range(26)]),
-)
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
+
+# Never silently run production with a predictable signing key.
+SECRET_KEY = os.environ.get("SECRET_KEY", "").strip()
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = "django-insecure-local-development-only"
+    else:
+        raise ImproperlyConfigured(
+            "SECRET_KEY must be configured when DEBUG=False."
+        )
 
 ALLOWED_HOSTS_ENV = os.environ.get("ALLOWED_HOSTS", "")
 if ALLOWED_HOSTS_ENV:
@@ -73,9 +78,13 @@ MIDDLEWARE = [
 # Security headers for production
 SECURE_SSL_REDIRECT = not DEBUG
 SESSION_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SAMESITE = "Lax"
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 X_FRAME_OPTIONS = "DENY"
 SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
@@ -125,7 +134,11 @@ if DATABASE_URL:
                 "PORT": DB_PORT,
             }
         }
-    except Exception:
+    except Exception as exc:
+        if not DEBUG:
+            raise ImproperlyConfigured(
+                "DATABASE_URL is invalid; refusing to fall back to SQLite in production."
+            ) from exc
         DATABASES = {
             "default": {
                 "ENGINE": "django.db.backends.sqlite3",
