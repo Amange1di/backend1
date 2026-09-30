@@ -125,100 +125,11 @@ from .domains.auth.services import (
 from .domains.users.services import resolve_user_company_name
 
 
-class UserBalanceHistoryView(APIView):
-    """История транзакций eduCoin для компании"""
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        if request.user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
-            return Response(
-                {"detail": "Доступно только для course_admin и manager."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        
-        company_name = resolve_user_company_name(request.user)
-        if not company_name:
-            return Response(
-                {"detail": "Компания не найдена."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        
-        # Находим компанию пользователя (учитывая created_by для менеджеров)
-        user_company = request.user.company
-        if not user_company and request.user.role == User.Role.MANAGER:
-            company_name = resolve_user_company_name(request.user)
-            if company_name:
-                user_company = Company.objects.filter(name=company_name).first()
-        if not user_company:
-            return Response(
-                {"detail": "Компания не найдена."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        
-        transactions = Transaction.objects.filter(
-            company=user_company
-        ).order_by("-timestamp")
-        
-        # Получаем баланс компании
-        balance = 0
-        try:
-            company_balance = CompanyBalance.objects.get(company=user_company)
-            balance = company_balance.balance
-        except CompanyBalance.DoesNotExist:
-            pass
-        
-        data = []
-        for t in transactions:
-            data.append({
-                "id": t.id,
-                "amount": t.amount,
-                "reason": t.reason,
-                "transaction_type": t.transaction_type,
-                "transaction_type_display": t.get_transaction_type_display(),
-                "timestamp": t.timestamp.isoformat(),
-                "balance_after": balance,
-            })
-            balance -= t.amount
-        
-        return Response({
-            "balance": CompanyBalance.objects.filter(company=user_company).first().balance if CompanyBalance.objects.filter(company=user_company).exists() else 0,
-            "transactions": data,
-        })
-
-
-class UserBalanceMeView(APIView):
-    """Текущий баланс компании eduCoin"""
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        if request.user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
-            return Response(
-                {"detail": "Доступно только для course_admin и manager."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        
-        # Находим компанию пользователя (учитывая created_by для менеджеров)
-        user_company = request.user.company
-        if not user_company and request.user.role == User.Role.MANAGER:
-            company_name = resolve_user_company_name(request.user)
-            if company_name:
-                user_company = Company.objects.filter(name=company_name).first()
-        if not user_company:
-            return Response(
-                {"balance": 0},
-            )
-        
-        balance = 0
-        try:
-            company_balance = CompanyBalance.objects.get(company=user_company)
-            balance = company_balance.balance
-        except CompanyBalance.DoesNotExist:
-            pass
-        
-        return Response({
-            "balance": balance,
-            "company_name": user_company.name,
-        })
+# Compatibility re-export. New code should import from core.domains.balances.views.
+from .domains.balances.views import (
+    UserBalanceHistoryView,
+    UserBalanceMeView,
+)
 
 
 def resolve_support_telegram(user: User) -> str:
@@ -323,64 +234,8 @@ from .domains.landing.views import (
 )
 
 
-class CrmContactView(APIView):
-    """Public endpoint for the CRM's own landing page contact form.
-
-    Creates a TrialLead without company association and notifies superadmins.
-    """
-    permission_classes = [permissions.AllowAny]
-    throttle_classes = [AnonRateThrottle, PublicSubmitThrottle]
-    parser_classes = [JSONParser]
-
-    def post(self, request):
-        full_name = (request.data.get("full_name") or "").strip()
-        phone = (request.data.get("phone") or "").strip()
-        if not full_name or not phone:
-            return Response(
-                {"detail": "Full name and phone are required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        comment = (request.data.get("comment") or "").strip()
-        telegram = (request.data.get("telegram") or "").strip()
-
-        # Санитизация полей от HTML перед сохранением
-        safe_full_name = bleach.clean(full_name, tags=[], strip=True)[:200]
-        safe_comment = bleach.clean(comment, tags=[], strip=True)[:1000]
-        safe_telegram = bleach.clean(telegram, tags=[], strip=True)[:200]
-
-        # Save as TrialLead with source "crm-landing" (no company)
-        comment_parts = []
-        if safe_comment:
-            comment_parts.append(safe_comment)
-        if safe_telegram:
-            comment_parts.append(f"Telegram: {safe_telegram}")
-        lead = TrialLead.objects.create(
-            full_name=safe_full_name,
-            phone=phone,
-            source="crm-landing",
-            comment="\n".join(comment_parts),
-            company=None,
-        )
-
-        # Notify superadmins (используем санитизированные данные)
-        try:
-            from telegram_bot.notifications import send_crm_contact_notification
-            from asgiref.sync import async_to_sync
-
-            async_to_sync(send_crm_contact_notification)(
-                full_name=safe_full_name,
-                phone=phone,
-                comment=safe_comment,
-                telegram=safe_telegram,
-            )
-        except Exception as e:
-            logger.warning(f"Failed to send CRM contact notification: {e}")
-
-        return Response(
-            {"id": lead.id, "detail": "Contact request received."},
-            status=status.HTTP_201_CREATED,
-        )
+# Compatibility re-export. New code should import from core.domains.public.views.
+from .domains.public.views import CrmContactView
 
 
 # Compatibility re-export. New code should import from core.domains.trials.views.
@@ -479,19 +334,6 @@ from .domains.finance.views import (
 )
 
 
-class UserBalanceMeView(APIView):
-    """
-    Get current user's eduCoin balance.
-    GET /api/user/balance/me/
-    """
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        user = request.user
-        user_balance, created = UserBalance.objects.get_or_create(user=user)
-        return Response({'balance': user_balance.balance})
-
-
 # Compatibility re-export. New code should import from core.domains.contracts.views.
 from .domains.contracts.views import (
     ContractViewSet,
@@ -500,52 +342,4 @@ from .domains.contracts.views import (
 )
 
 
-class CspReportView(APIView):
-    """
-    Public endpoint для сбора CSP violation report-ов.
-    Браузеры отправляют POST с Content-Type application/csp-report (не application/json!), 
-    поэтому читаем тело вручную через json.loads(request.body).
-    Все нарушения логируются для мониторинга.
-    """
-    permission_classes = [permissions.AllowAny]
-    authentication_classes = []  # No auth needed for CSP reports
-
-    def post(self, request):
-        import json
-        try:
-            report = json.loads(request.body)
-        except (ValueError, AttributeError, TypeError):
-            # Невалидный JSON или пустое тело — игнорируем
-            return Response(status=204)
-        
-        # CSP report может быть в формате {"csp-report": {...}} или плоским
-        csp_report = report.get("csp-report", report)
-        
-        if not isinstance(csp_report, dict):
-            return Response(status=204)
-        
-        blocked_uri = csp_report.get("blocked-uri", "unknown")
-        violated_directive = csp_report.get("violated-directive", "unknown")
-        document_uri = csp_report.get("document-uri", "unknown")
-        original_policy = csp_report.get("original-policy", "")
-        disposition = csp_report.get("disposition", "unknown")
-        source_file = csp_report.get("source-file", "")
-        line_number = csp_report.get("line-number", "")
-        
-        logger.warning(
-            "CSP Violation | directive=%s | blocked=%s | document=%s | disposition=%s | source=%s:%s | policy=%s",
-            violated_directive,
-            blocked_uri,
-            document_uri,
-            disposition,
-            source_file,
-            line_number,
-            original_policy[:500],
-        )
-        
-        # В production можно также сохранять в БД, отправлять в Sentry и т.д.
-        if settings.DEBUG:
-            logger.debug("Full CSP report: %s", csp_report)
-        
-        return Response(status=204)  # No content — браузеру не нужен ответ
-
+from .domains.public.views import CspReportView
