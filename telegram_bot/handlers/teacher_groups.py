@@ -80,6 +80,7 @@ async def handle_rejection_comment(update: Update, context: ContextTypes.DEFAULT
     course_name = await _get_group_course_name(group)
     teacher = await _get_user_by_chat_id(chat_id)
     teacher_name = f"{teacher.first_name} {teacher.last_name}".strip() or teacher.username
+    company_id = group.company_id
     company_name = await _get_group_company_name(group)
     
     # Удаление ожидания
@@ -94,8 +95,8 @@ async def handle_rejection_comment(update: Update, context: ContextTypes.DEFAULT
     )
     
     # Уведомляем курс-админов
-    if company_name:
-        admins = await _get_course_admins_for_company(company_name)
+    if company_id:
+        admins = await _get_course_admins_for_company(company_id)
         application = _get_application()
         if admins:
             for admin in admins:
@@ -285,11 +286,12 @@ async def confirm_group_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _update_group_status(group_id, Group.Status.ACTIVE)
 
     course_name = await _get_group_course_name(group)
+    company_id = group.company_id
     company_name = await _get_group_company_name(group)
 
     # Build keyboard for course admins
     keyboard = []
-    if company_name:
+    if company_id:
         keyboard.append([
             InlineKeyboardButton(
                 "🔁 Повторить отправку",
@@ -309,9 +311,9 @@ async def confirm_group_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer("✅ Группа подтверждена!", show_alert=True)
 
     # Notify course admins
-    if company_name:
+    if company_id:
         teacher_name = f"{teacher.first_name} {teacher.last_name}".strip() or teacher.username
-        admins = await _get_course_admins_for_company(company_name)
+        admins = await _get_course_admins_for_company(company_id)
         application = _get_application()
         for admin in admins:
             try:
