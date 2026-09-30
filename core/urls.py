@@ -32,13 +32,6 @@ from .views import (
     StudentSetPasswordView,
     StudentViewSet,
     TeacherViewSet,
-    MarketplaceCompanyViewSet,
-    MarketplaceCourseViewSet,
-    MarketplaceJobViewSet,
-    MyCoursesView,
-    MyJobsView,
-    PublicCourseViewSet,
-    PublicJobViewSet,
     SuperAdminStatsView,
     GenerateTelegramBindCodeView,
     GetTelegramBindCodeView,
@@ -61,15 +54,11 @@ router.register("landing-pages", LandingPageViewSet, basename="landing-pages")
 router.register("landing-header-links", LandingHeaderLinkViewSet, basename="landing-header-links")
 
 # Marketplace routers
-router.register("marketplace/companies", MarketplaceCompanyViewSet, basename="marketplace-companies")
-router.register("marketplace/courses", MarketplaceCourseViewSet, basename="marketplace-courses")
-router.register("marketplace/jobs", MarketplaceJobViewSet, basename="marketplace-jobs")
 
 # Public marketplace
-router.register("public/courses", PublicCourseViewSet, basename="public-courses")
-router.register("public/jobs", PublicJobViewSet, basename="public-jobs")
 
 urlpatterns = [
+    path("", include("core.domains.marketplace.urls")),
     path("", include("core.domains.trials.urls")),
     path("", include("core.domains.tasks.urls")),
     path("", include("core.domains.homework.urls")),
@@ -95,8 +84,6 @@ urlpatterns = [
     path("attendance/mark/", AttendanceMarkView.as_view(), name="attendance-mark"),
     
     # Marketplace endpoints
-    path("marketplace/my-courses/", MyCoursesView.as_view(), name="marketplace-my-courses"),
-    path("marketplace/my-jobs/", MyJobsView.as_view(), name="marketplace-my-jobs"),
     
     # Telegram bind code generation
     path("bot/generate-bind-code/", GenerateTelegramBindCodeView.as_view(), name="bot-generate-bind-code"),
