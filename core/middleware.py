@@ -1,72 +1,79 @@
-"""
-Кастомный middleware для Rate Limiting и дополнительных заголовков безопасности
-"""
+"""Application-level rate limiting and security response headers."""
+
+import ipaddress
+
 from django.conf import settings
 from django.core.cache import cache
 from django.http import JsonResponse
-import re
+
+
+def _get_client_ip(request) -> str:
+    """Return a normalized client IP without trusting a spoofable XFF prefix."""
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    candidates = [part.strip() for part in forwarded.split(",") if part.strip()]
+
+    # Reverse proxies append the connecting address to X-Forwarded-For.
+    # Using the right-most valid address prevents a client from bypassing
+    # the limiter by changing the first value on every request.
+    for candidate in reversed(candidates):
+        try:
+            return str(ipaddress.ip_address(candidate))
+        except ValueError:
+            continue
+
+    remote = request.META.get("REMOTE_ADDR", "")
+    try:
+        return str(ipaddress.ip_address(remote))
+    except ValueError:
+        return "unknown"
 
 
 class RateLimitMiddleware:
-    """
-    Rate limiting по IP адресу для публичных endpoints
-    Отключается при DEBUG=True для удобства локальной разработки.
-    """
+    """Coarse IP limiter; DRF throttles still protect sensitive endpoints."""
+
     def __init__(self, get_response):
         self.get_response = get_response
-        # Исключить из rate limit
-        self.excluded_paths = ['/admin/', '/api/docs/']
-    
+        self.excluded_paths = ["/admin/", "/api/docs/"]
+
     def __call__(self, request):
-        # Пропустить rate limit при DEBUG (локальная разработка)
         if settings.DEBUG:
             return self.get_response(request)
-        
-        # Пропустить excluded пути
+
         if any(request.path.startswith(path) for path in self.excluded_paths):
             return self.get_response(request)
-        
-        # Получаем IP адрес
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-        if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0].strip()
+
+        ip = _get_client_ip(request)
+        cache_key = f"rate_limit:{ip}"
+
+        if cache.add(cache_key, 1, timeout=60):
+            request_count = 1
         else:
-            ip = request.META.get('REMOTE_ADDR', 'unknown')
-        
-        # Ограничение: 200 запросов в минуту
-        cache_key = f'rate_limit_{ip}'
-        request_count = cache.get(cache_key, 0)
-        
-        if request_count >= 200:
+            try:
+                request_count = cache.incr(cache_key)
+            except (ValueError, NotImplementedError):
+                request_count = cache.get(cache_key, 0) + 1
+                cache.set(cache_key, request_count, 60)
+
+        if request_count > 200:
             return JsonResponse(
-                {'detail': 'Слишком много запросов. Попробуйте позже.'},
-                status=429
+                {"detail": "Слишком много запросов. Попробуйте позже."},
+                status=429,
             )
-        
-        cache.set(cache_key, request_count + 1, 60)  # 60 секунд
-        
+
         response = self.get_response(request)
-        
-        # Добавляем заголовки безопасности
-        response['X-Content-Type-Options'] = 'nosniff'
-        response['X-Frame-Options'] = 'DENY'
-        response['X-XSS-Protection'] = '1; mode=block'
-        
+        response["X-Content-Type-Options"] = "nosniff"
+        response["X-Frame-Options"] = "DENY"
         return response
 
 
 class SecurityHeadersMiddleware:
-    """
-    Добавление дополнительных заголовков безопасности
-    """
+    """Add browser security headers that are not emitted elsewhere."""
+
     def __init__(self, get_response):
         self.get_response = get_response
-    
+
     def __call__(self, request):
         response = self.get_response(request)
-        
-        # Дополнительные заголовки безопасности
-        response['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-        response['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
-        
+        response["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
         return response
