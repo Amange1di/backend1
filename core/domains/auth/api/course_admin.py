@@ -149,13 +149,15 @@ class CourseAdminCreateView(APIView):
             balance=0,
         )
 
-        token, _ = Token.objects.get_or_create(
-            user=user
-        )
         return Response(
             {
-                "token": token.key,
                 "user": UserSerializer(user).data,
+                "one_time_password": getattr(
+                    user,
+                    "_one_time_password",
+                    None,
+                ),
+                "requires_password_setup": True,
             },
             status=status.HTTP_201_CREATED,
         )
