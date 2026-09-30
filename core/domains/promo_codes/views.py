@@ -1,4 +1,4 @@
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
@@ -9,9 +9,11 @@ from core.models import (
     CompanyBalance,
     PromoBalance,
     PromoCode,
-    Transaction,
+    PromoRedemption,
     User,
 )
+from core.audit import write_audit
+
 from .serializers import PromoCodeSerializer
 
 
@@ -183,17 +185,19 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            ledger_reason = f"Промокод: {promo_code.code}"
-            already_used = Transaction.objects.filter(
-                company=company,
-                reason=ledger_reason,
-                transaction_type=Transaction.Type.DEPOSIT,
-            ).exists()
-            if already_used:
+            try:
+                PromoRedemption.objects.create(
+                    promo_code=promo_code,
+                    company=company,
+                    user=user,
+                )
+            except IntegrityError:
                 return Response(
                     {"detail": "Promo code already used by this company."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+
+            ledger_reason = f"Промокод: {promo_code.code}"
 
             try:
                 promo_balance = (
@@ -230,6 +234,17 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
 
             promo_code.current_usages += 1
             promo_code.save(update_fields=["current_usages"])
+
+        write_audit(
+            request,
+            action="promo.redeemed",
+            obj=promo_code,
+            company=company,
+            after={
+                "reward_value": promo_code.reward_value,
+                "current_usages": promo_code.current_usages,
+            },
+        )
 
         return Response(
             PromoCodeSerializer(promo_code).data
