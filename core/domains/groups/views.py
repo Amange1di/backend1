@@ -1,9 +1,11 @@
 from django.db import models
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from core.audit import write_audit
 from core.models import (
     Group,
     User,
@@ -19,9 +21,9 @@ from .services import (
 
 
 class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
-    queryset = Group.objects.all().order_by(
-        "-created_at"
-    )
+    queryset = Group.objects.filter(
+        archived_at__isnull=True
+    ).order_by("-created_at")
     serializer_class = GroupSerializer
     permission_classes = [
         IsCourseAdminOrTeacherReadOnly
@@ -480,14 +482,24 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         if request.user.role == User.Role.MANAGER:
             raise PermissionDenied(
-                "Managers cannot delete groups."
+                "Managers cannot archive groups."
             )
 
-        return super().destroy(
+        group = self.get_object()
+        group.archived_at = timezone.now()
+        group.save(update_fields=["archived_at"])
+
+        write_audit(
             request,
-            *args,
-            **kwargs,
+            action="group.archived",
+            obj=group,
+            company=group.company,
+            after={
+                "archived_at": group.archived_at.isoformat(),
+            },
         )
+
+        return Response(status=204)
 
     @action(
         detail=True,
