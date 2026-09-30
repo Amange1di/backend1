@@ -1,3 +1,6 @@
+import secrets
+from datetime import timedelta
+
 from django.db import models
 from django.utils import timezone
 from rest_framework import viewsets
@@ -6,7 +9,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
-from core.models import Student, User
+from core.models import Student, TelegramBindCode, User
 from core.permissions import (
     IsCourseAdminOrManagerOrStudentReadOnly,
 )
@@ -362,12 +365,35 @@ class StudentViewSet(viewsets.ModelViewSet):
             user=student.user
         ).delete()
 
+        TelegramBindCode.objects.filter(
+            user=student.user,
+            is_used=False,
+        ).update(is_used=True)
+
+        setup_code = (
+            f"{secrets.randbelow(1_000_000):06d}"
+        )
+        expires_at = (
+            timezone.now()
+            + timedelta(minutes=10)
+        )
+        TelegramBindCode.objects.create(
+            user=student.user,
+            code=setup_code,
+            expires_at=expires_at,
+            is_used=False,
+        )
+
         return Response(
             {
                 "detail": (
                     "Student password was reset."
                 ),
                 "must_set_password": True,
+                "setup_code": setup_code,
+                "setup_code_expires_at": (
+                    expires_at.isoformat()
+                ),
             }
         )
 
