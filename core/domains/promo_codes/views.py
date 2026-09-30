@@ -179,9 +179,13 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
             )
 
         if not promo_code.is_active:
-            promo_code.is_active = True
-            promo_code.save(
-                update_fields=["is_active"]
+            return Response(
+                {
+                    "detail": (
+                        "Promo code is inactive."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         company = (
