@@ -3,27 +3,25 @@
 from .api import (
     CourseAdminCreateView,
     CourseAdminDetailView,
+    FirstLoginSetPasswordView,
     LoginThrottle,
     LoginView,
     LogoutView,
     MeView,
     RegisterThrottle,
     RegisterView,
-    StudentLoginView,
     StudentProfileView,
-    StudentSetPasswordView,
 )
 
 __all__ = [
     "CourseAdminCreateView",
     "CourseAdminDetailView",
+    "FirstLoginSetPasswordView",
     "LoginThrottle",
     "LoginView",
     "LogoutView",
     "MeView",
     "RegisterThrottle",
     "RegisterView",
-    "StudentLoginView",
     "StudentProfileView",
-    "StudentSetPasswordView",
 ]
