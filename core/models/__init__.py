@@ -1,6 +1,6 @@
 # Domain-split Django models. Public imports remain compatible with `core.models`.
 
-from .accounts import User, TelegramBindCode
+from .accounts import User, TelegramBindCode, FirstLoginCredential
 from .education import Course, Auditorium, Student, Group, Attendance, GroupMonth
 from .finance import Payment, Expense, CompanyBalance, Transaction, UserBalance, UserTransaction
 from .leads import TrialLead, LeadAssignment
@@ -16,6 +16,7 @@ from .audit import AuditLog
 __all__ = [
     "User",
     "TelegramBindCode",
+    "FirstLoginCredential",
     "Course",
     "Auditorium",
     "Student",
