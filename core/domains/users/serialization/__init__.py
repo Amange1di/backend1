@@ -1,4 +1,4 @@
-from .auth import LoginSerializer, StudentIdentityLoginSerializer, StudentSetPasswordSerializer
+from .auth import LoginSerializer, StudentSetPasswordSerializer
 from .base import UserSerializer, UserUpdateSerializer
 from .management import (
     CourseAdminUpdateSerializer,
@@ -12,7 +12,6 @@ __all__ = [
     "CourseAdminUpdateSerializer",
     "LoginSerializer",
     "RegisterSerializer",
-    "StudentIdentityLoginSerializer",
     "StudentProfileSerializer",
     "StudentSetPasswordSerializer",
     "TeacherCreateSerializer",
