@@ -1,10 +1,8 @@
-import re
-
 from django.contrib.auth import authenticate
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
-from core.models import Company, Course, User
+from core.models import User
 from core.domains.users.passwords import validate_strong_password
 from core.domains.auth.first_login import verify_and_consume_first_login_password
 
@@ -48,17 +46,6 @@ class LoginSerializer(serializers.Serializer):
         attrs["user"] = user
         attrs["first_login"] = first_login
         return attrs
-
-class StudentIdentityLoginSerializer(
-    serializers.Serializer
-):
-    phone_number = serializers.CharField()
-    password = serializers.CharField(
-        write_only=True,
-        required=False,
-        allow_blank=True,
-        trim_whitespace=False,
-    )
 
 class StudentSetPasswordSerializer(
     serializers.Serializer
