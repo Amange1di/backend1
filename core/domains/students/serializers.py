@@ -17,11 +17,7 @@ class StudentSerializer(serializers.ModelSerializer):
     )
     one_time_password = serializers.SerializerMethodField()
     user = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.filter(
-            role=User.Role.STUDENT
-        ),
-        required=False,
-        allow_null=True,
+        read_only=True,
     )
     group_ids = serializers.PrimaryKeyRelatedField(
         many=True,
@@ -58,6 +54,7 @@ class StudentSerializer(serializers.ModelSerializer):
             "created_at",
         )
         read_only_fields = (
+            "user",
             "company",
             "company_id",
             "username",
