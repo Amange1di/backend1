@@ -1,8 +1,13 @@
 import os
 import importlib
+import builtins
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
+from django.utils.translation import gettext_lazy
+
+# Compatibility for a legacy model module that still uses _() at import time.
+builtins._ = gettext_lazy
 
 # Load .env file first
 try:
