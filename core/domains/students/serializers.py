@@ -28,11 +28,8 @@ class StudentSerializer(serializers.ModelSerializer):
         many=True,
         read_only=True,
     )
-    company_id = serializers.PrimaryKeyRelatedField(
-        source="company",
-        queryset=Company.objects.all(),
-        required=False,
-        allow_null=True,
+    company_id = serializers.IntegerField(
+        read_only=True,
     )
 
     class Meta:
@@ -53,7 +50,7 @@ class StudentSerializer(serializers.ModelSerializer):
             "notes",
             "created_at",
         )
-        read_only_fields = ()
+        read_only_fields = ("company", "company_id")
 
     def create(self, validated_data):
         group_ids = validated_data.pop(
