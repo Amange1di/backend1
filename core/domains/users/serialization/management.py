@@ -1,10 +1,12 @@
 import re
 
 from django.contrib.auth import authenticate
+from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from core.models import Company, Course, User
+from core.domains.users.passwords import validate_strong_password
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
@@ -36,6 +38,19 @@ class RegisterSerializer(serializers.ModelSerializer):
             "max_blocks",
             "role",
         )
+
+    def validate_username(self, value):
+        candidate = value.strip()
+        if User.objects.filter(
+            username__iexact=candidate
+        ).exists():
+            raise serializers.ValidationError(
+                _("A user with that username already exists.")
+            )
+        return candidate
+
+    def validate_password(self, value):
+        return validate_strong_password(value)
 
     def validate_role(self, value):
         if isinstance(value, str):
@@ -142,7 +157,9 @@ class RegisterSerializer(serializers.ModelSerializer):
         return user
 
 class TeacherCreateSerializer(serializers.Serializer):
-    username = serializers.CharField()
+    username = serializers.CharField(
+        validators=[UnicodeUsernameValidator()],
+    )
     password = serializers.CharField(
         write_only=True,
         min_length=6,
@@ -190,15 +207,19 @@ class TeacherCreateSerializer(serializers.Serializer):
     )
 
     def validate_username(self, value):
+        candidate = value.strip()
         if User.objects.filter(
-            username=value
+            username__iexact=candidate
         ).exists():
             raise serializers.ValidationError(
                 _(
                     "A user with that username already exists."
                 )
             )
-        return value
+        return candidate
+
+    def validate_password(self, value):
+        return validate_strong_password(value)
 
     def validate_color(self, value):
         if not value:
@@ -354,6 +375,11 @@ class TeacherUpdateSerializer(serializers.ModelSerializer):
             "course_ids",
         )
 
+    def validate_password(self, value):
+        if not value:
+            return value
+        return validate_strong_password(value, user=self.instance)
+
     def validate_color(self, value):
         if not value:
             return "#45B2EF"
@@ -454,6 +480,11 @@ class CourseAdminUpdateSerializer(
             "max_blocks",
             "password",
         )
+
+    def validate_password(self, value):
+        if not value:
+            return value
+        return validate_strong_password(value, user=self.instance)
 
     def update(
         self,
