@@ -235,14 +235,31 @@ class LoginView(APIView):
         user = serializer.validated_data[
             "user"
         ]
-        token, _ = Token.objects.get_or_create(
-            user=user
+        first_login = bool(
+            serializer.validated_data.get(
+                "first_login"
+            )
         )
+
+        if first_login:
+            Token.objects.filter(
+                user=user
+            ).delete()
+            token = Token.objects.create(
+                user=user
+            )
+        else:
+            token, _ = Token.objects.get_or_create(
+                user=user
+            )
 
         response = Response(
             {
                 "token": token.key,
                 "user": UserSerializer(user).data,
+                "requires_password_setup": (
+                    user.must_set_password
+                ),
             }
         )
         response.set_cookie(
