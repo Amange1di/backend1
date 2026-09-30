@@ -1,8 +1,6 @@
 from django.urls import include, path
 
-from .views import (
-)
-from .sync_views import SyncExportView, SyncImportView
+from .domains.sync.views import SyncExportView, SyncImportView
 
 urlpatterns = [
     path("", include("core.domains.balances.urls")),
@@ -25,25 +23,6 @@ urlpatterns = [
     path("", include("core.domains.tasks.urls")),
     path("", include("core.domains.homework.urls")),
     path("", include("core.domains.contracts.urls")),
-    
-    # Broadcast (mass mailing)
-    
-    # Finance endpoints
-    
-    # Marketplace endpoints
-    
-    # Telegram bind code generation
-    
-    # CRM website contact form (public, no slug required)
-
-    # CSP violation report endpoint (POST only, no auth)
-
-    # User balance
-
-    # Server sync endpoints (для синхронизации БД между серверами)
     path("sync/export/", SyncExportView.as_view(), name="sync-export"),
     path("sync/import/", SyncImportView.as_view(), name="sync-import"),
-
-    # Public landing pages (must be after router.urls to avoid conflicting with public/courses and public/jobs)
-    
 ]
