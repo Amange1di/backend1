@@ -4,19 +4,21 @@ from datetime import date, timedelta
 from core.models import Task, User
 
 
-def resolve_user_company_name(user: User) -> str:
-    if getattr(user, "company", None) and user.company.name:
-        return user.company.name.strip()
+def resolve_user_company_id(user: User):
+    if getattr(user, "company_id", None):
+        return user.company_id
 
-    if user.role == User.Role.MANAGER and user.created_by:
-        created_by = user.created_by
-        if (
-            getattr(created_by, "company", None)
-            and created_by.company.name
-        ):
-            return created_by.company.name.strip()
+    if (
+        user.role == User.Role.MANAGER
+        and user.created_by
+    ):
+        return getattr(
+            user.created_by,
+            "company_id",
+            None,
+        )
 
-    return ""
+    return None
 
 
 def add_months(value: date, months: int) -> date:
