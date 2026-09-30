@@ -1,5 +1,4 @@
 from django.urls import include, path
-from rest_framework.routers import DefaultRouter
 
 from .views import (
     BroadcastView,
@@ -14,12 +13,6 @@ from .views import (
     UserBalanceMeView,
 )
 from .sync_views import SyncExportView, SyncImportView
-
-router = DefaultRouter()
-
-# Marketplace routers
-
-# Public marketplace
 
 urlpatterns = [
     path("", include("core.domains.auth.urls")),
@@ -69,6 +62,4 @@ urlpatterns = [
 
     # Public landing pages (must be after router.urls to avoid conflicting with public/courses and public/jobs)
     
-    # Router URLs (must be before generic public/ paths)
-    path("", include(router.urls)),
 ]
