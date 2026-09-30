@@ -44,6 +44,7 @@ SYNC_MODELS_ORDERED = [
     "core.Company",
     "core.Course",
     "core.User",
+    "core.FirstLoginCredential",
     "core.Auditorium",
     # 2. Зависимые от базовых
     "core.Student",
@@ -78,6 +79,8 @@ SYNC_MODELS_ORDERED = [
     "core.PromoCode",
     "core.PromoBalance",
     "core.PromoTransaction",
+    "core.PromoRedemption",
+    "core.AuditLog",
     # 8. Расходы
     "core.Expense",
     # 9. Telegram
@@ -200,9 +203,12 @@ class SyncImportView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        if request.user.role not in ("admin", "super_admin"):
+        if not (
+            request.user.is_superuser
+            or request.user.role == "super_admin"
+        ):
             return Response(
-                {"detail": "Only admins can import data."},
+                {"detail": "Only super admins can import data."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
