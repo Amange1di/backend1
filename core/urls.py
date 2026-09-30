@@ -1,13 +1,12 @@
 from django.urls import include, path
 
 from .views import (
-    CrmContactView,
-    CspReportView,
-    UserBalanceMeView,
 )
 from .sync_views import SyncExportView, SyncImportView
 
 urlpatterns = [
+    path("", include("core.domains.balances.urls")),
+    path("", include("core.domains.public.urls")),
     path("", include("core.domains.telegram.urls")),
     path("", include("core.domains.super_admin.urls")),
     path("", include("core.domains.auth.urls")),
@@ -36,13 +35,10 @@ urlpatterns = [
     # Telegram bind code generation
     
     # CRM website contact form (public, no slug required)
-    path("public/crm-contact/", CrmContactView.as_view(), name="crm-contact"),
 
     # CSP violation report endpoint (POST only, no auth)
-    path("csp-report/", CspReportView.as_view(), name="csp-report"),
 
     # User balance
-    path("user/balance/me/", UserBalanceMeView.as_view(), name="user-balance-me"),
 
     # Server sync endpoints (для синхронизации БД между серверами)
     path("sync/export/", SyncExportView.as_view(), name="sync-export"),
