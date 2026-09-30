@@ -23,6 +23,8 @@ class LandingSectionSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = (
+            "company",
+            "company_id",
             "created_at",
             "updated_at",
         )
@@ -89,11 +91,8 @@ class LandingPageSerializer(serializers.ModelSerializer):
         read_only=True,
     )
     sections_count = serializers.SerializerMethodField()
-    company_id = serializers.PrimaryKeyRelatedField(
-        source="company",
-        queryset=Company.objects.all(),
-        required=False,
-        allow_null=True,
+    company_id = serializers.IntegerField(
+        read_only=True,
     )
 
     class Meta:
@@ -117,6 +116,8 @@ class LandingPageSerializer(serializers.ModelSerializer):
             "header_links",
         )
         read_only_fields = (
+            "company",
+            "company_id",
             "owner",
             "status",
             "moderation_comment",
