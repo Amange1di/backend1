@@ -121,7 +121,6 @@ from .serializers import (
     TeacherUpdateSerializer,
     TransferGroupSerializer,
     TrialLeadSerializer,
-    TaskSerializer,
     UserUpdateSerializer,
     UserSerializer,
     PromoCodeSerializer,
@@ -2496,98 +2495,8 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
         )
 
 
-class TaskViewSet(viewsets.ModelViewSet):
-    queryset = Task.objects.all().order_by("-created_at")
-    serializer_class = TaskSerializer
-    permission_classes = [IsCourseAdminOrManager]
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        user = self.request.user
-        if user.is_authenticated and user.role == User.Role.COURSE_ADMIN:
-            if not user.company:
-                return queryset.none()
-            return queryset.filter(company=user.company)
-        if user.is_authenticated and user.role == User.Role.MANAGER:
-            if not user.company:
-                return queryset.none()
-            return queryset.filter(assigned_to=user, company=user.company)
-        return queryset.none()
-
-    def create(self, request, *args, **kwargs):
-        user = request.user
-        if user.role != User.Role.COURSE_ADMIN:
-            raise PermissionDenied("Only course admins can create tasks.")
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        assigned_to = serializer.validated_data.get("assigned_to")
-        if not assigned_to or assigned_to.role != User.Role.MANAGER:
-            raise PermissionDenied("Task must be assigned to a manager.")
-        if resolve_user_company_name(assigned_to) != resolve_user_company_name(user):
-            raise PermissionDenied("Manager must belong to the same company.")
-
-        tasks = build_task_instances(serializer.validated_data, user)
-        Task.objects.bulk_create(tasks)
-        data = TaskSerializer(tasks, many=True).data
-        return Response(data, status=status.HTTP_201_CREATED)
-
-    def perform_update(self, serializer):
-        user = self.request.user
-        if user.role == User.Role.MANAGER:
-            # Managers can only update status of their tasks
-            if self.get_object().assigned_to_id != user.id:
-                raise PermissionDenied("Not allowed for this task.")
-            allowed_fields = {"status", "is_seen"}
-            update_fields = set(serializer.validated_data.keys())
-            if not update_fields.issubset(allowed_fields):
-                raise PermissionDenied("Managers can only update status or seen flag.")
-            serializer.save()
-            return
-        if user.role == User.Role.COURSE_ADMIN:
-            assigned_to = serializer.validated_data.get("assigned_to")
-            if assigned_to and resolve_user_company_name(assigned_to) != resolve_user_company_name(user):
-                raise PermissionDenied("Manager must belong to the same company.")
-            serializer.save()
-            return
-        raise PermissionDenied("Not allowed.")
-
-    def destroy(self, request, *args, **kwargs):
-        if request.user.role != User.Role.COURSE_ADMIN:
-            raise PermissionDenied("Only course admins can delete tasks.")
-        return super().destroy(request, *args, **kwargs)
-
-    @action(detail=False, methods=["post"], url_path="mark-seen")
-    def mark_seen(self, request):
-        user = request.user
-        if user.role != User.Role.MANAGER:
-            raise PermissionDenied("Only managers can mark tasks as seen.")
-        data = request.data
-        ids = []
-        if isinstance(data, dict):
-            ids = data.get("ids", []) or []
-        elif isinstance(data, list):
-            ids = data
-        elif isinstance(data, str):
-            # Allow plain payloads like "1,2,3" or "5"
-            raw = data.strip()
-            if raw:
-                if "," in raw:
-                    ids = [item.strip() for item in raw.split(",") if item.strip()]
-                else:
-                    ids = [raw]
-
-        normalized_ids = []
-        for item in ids:
-            try:
-                normalized_ids.append(int(item))
-            except (TypeError, ValueError):
-                continue
-
-        queryset = self.get_queryset()
-        if normalized_ids:
-            queryset = queryset.filter(id__in=normalized_ids)
-        updated = queryset.update(is_seen=True)
-        return Response({"updated": updated})
+# Compatibility re-export. New code should import from core.domains.tasks.views.
+from .domains.tasks.views import TaskViewSet
 
 
 def validate_landing_page_for_publication(page: LandingPage, owner: User | None):
@@ -2614,55 +2523,6 @@ from .domains.homework.views import (
 )
 
 
-def build_task_instances(validated_data, user):
-    repeat_type = validated_data.get("repeat_type", Task.RepeatType.NONE)
-    start_date = validated_data["due_date"]
-    end_date = start_date + timedelta(days=180)
-    dates = []
-
-    if repeat_type == Task.RepeatType.DAILY:
-        current = start_date
-        while current <= end_date:
-            dates.append(current)
-            current = current + timedelta(days=1)
-    elif repeat_type == Task.RepeatType.WEEKLY:
-        current = start_date
-        while current <= end_date:
-            dates.append(current)
-            current = current + timedelta(days=7)
-    elif repeat_type == Task.RepeatType.MONTHLY:
-        current = start_date
-        while current <= end_date:
-            dates.append(current)
-            current = add_months(current, 1)
-    else:
-        dates.append(start_date)
-
-    tasks = []
-    for due_date in dates:
-        tasks.append(
-            Task(
-                title=validated_data.get("title", ""),
-                description=validated_data.get("description", ""),
-                assigned_to=validated_data.get("assigned_to"),
-                company=user.company,
-                created_by=user,
-                due_date=due_date,
-                due_time=validated_data.get("due_time"),
-                status=validated_data.get("status", Task.Status.PENDING),
-                priority=validated_data.get("priority", Task.Priority.MEDIUM),
-                repeat_type=repeat_type,
-            )
-        )
-    return tasks
-
-
-def add_months(value: date, months: int) -> date:
-    month = value.month - 1 + months
-    year = value.year + month // 12
-    month = month % 12 + 1
-    day = min(value.day, monthrange(year, month)[1])
-    return date(year, month, day)
 def compute_age_groups(queryset):
     buckets = [
         ("<13", 0, 12),
