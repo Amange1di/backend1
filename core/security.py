@@ -7,6 +7,11 @@ from rest_framework import serializers
 SAFE_RICH_TEXT_TAGS = [
     "a", "b", "br", "em", "i", "li", "ol", "p", "strong", "ul",
 ]
+SAFE_CONTRACT_TAGS = [
+    "b", "br", "div", "em", "h1", "h2", "h3", "h4", "h5", "h6",
+    "i", "li", "ol", "p", "span", "strong", "table", "tbody", "td",
+    "th", "thead", "tr", "ul",
+]
 SAFE_RICH_TEXT_ATTRIBUTES = {
     "a": ["href", "title", "rel"],
 }
@@ -19,6 +24,16 @@ def sanitize_rich_text(value: str) -> str:
         tags=SAFE_RICH_TEXT_TAGS,
         attributes=SAFE_RICH_TEXT_ATTRIBUTES,
         protocols=SAFE_PROTOCOLS,
+        strip=True,
+    )
+
+
+def sanitize_contract_html(value: str) -> str:
+    return bleach.clean(
+        value,
+        tags=SAFE_CONTRACT_TAGS,
+        attributes={},
+        protocols=[],
         strip=True,
     )
 
