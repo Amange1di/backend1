@@ -5,8 +5,6 @@ from .views import (
     DashboardView,
     CrmContactView,
     CspReportView,
-    FinanceDashboardView,
-    FinanceExportView,
     SuperAdminStatsView,
     GenerateTelegramBindCodeView,
     GetTelegramBindCodeView,
@@ -38,8 +36,6 @@ urlpatterns = [
     path("broadcast/send/", BroadcastView.as_view(), name="broadcast-send"),
     
     # Finance endpoints
-    path("finance/dashboard/", FinanceDashboardView.as_view(), name="finance-dashboard"),
-    path("finance/export/<str:export_format>/", FinanceExportView.as_view(), name="finance-export"),
     
     # Marketplace endpoints
     
