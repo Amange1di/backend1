@@ -74,6 +74,7 @@ class Student(models.Model):
     )
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self) -> str:
         return f"{self.first_name} {self.last_name}".strip()
@@ -138,6 +139,7 @@ class Group(models.Model):
         help_text="Процент от оплаты, который получает учитель (0-100)",
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self) -> str:
         status_icon = {
