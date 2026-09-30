@@ -35,6 +35,7 @@ class Payment(models.Model):
         help_text="Когда было отправлено последнее напоминание об оплате",
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self) -> str:
         return f"{self.student} - {self.amount} ({self.status})"
