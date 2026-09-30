@@ -108,6 +108,14 @@ class CourseAdmin(admin.ModelAdmin):
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def delete_queryset(self, request, queryset):
+        raise PermissionDenied(
+            "Students must be archived, not deleted."
+        )
+
     list_display = (
         "user",
         "first_name",
@@ -124,6 +132,14 @@ class StudentAdmin(admin.ModelAdmin):
 
 @admin.register(Group)
 class GroupAdmin(admin.ModelAdmin):
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def delete_queryset(self, request, queryset):
+        raise PermissionDenied(
+            "Groups must be archived, not deleted."
+        )
+
     list_display = ("name", "course", "teacher", "start_date", "end_date")
     search_fields = ("name",)
     list_filter = ("course", "teacher")
@@ -137,6 +153,14 @@ class AttendanceAdmin(admin.ModelAdmin):
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def delete_queryset(self, request, queryset):
+        raise PermissionDenied(
+            "Payments must be archived, not deleted."
+        )
+
     list_display = ("student", "group", "amount", "status", "paid_at")
     list_filter = ("status", "paid_at")
 
