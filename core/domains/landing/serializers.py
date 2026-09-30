@@ -37,11 +37,8 @@ class LandingHeaderLinkSerializer(serializers.ModelSerializer):
         source="target_page.title",
         read_only=True,
     )
-    company_id = serializers.PrimaryKeyRelatedField(
-        source="company",
-        queryset=Company.objects.all(),
-        required=False,
-        allow_null=True,
+    company_id = serializers.IntegerField(
+        read_only=True,
     )
 
     class Meta:
