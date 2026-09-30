@@ -184,7 +184,7 @@ class BoostJobView(APIView):
                 f"Продвижение вакансии: {job.title}"
             ),
             transaction_type=(
-                Transaction.TransactionType.BOOST
+                Transaction.Type.WITHDRAWAL
             ),
         ):
             return Response(
@@ -236,7 +236,7 @@ class UrgentJobView(APIView):
                 f"Срочный бейдж для вакансии: {job.title}"
             ),
             transaction_type=(
-                Transaction.TransactionType.URGENT
+                Transaction.Type.WITHDRAWAL
             ),
         ):
             return Response(
