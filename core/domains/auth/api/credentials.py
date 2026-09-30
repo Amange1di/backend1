@@ -281,6 +281,60 @@ class LoginView(APIView):
         )
         return response
 
+class FirstLoginSetPasswordView(APIView):
+    permission_classes = [
+        permissions.IsAuthenticated
+    ]
+
+    def post(self, request):
+        if not request.user.must_set_password:
+            return Response(
+                {
+                    "detail": (
+                        "Password setup is not required."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = StudentSetPasswordSerializer(
+            data=request.data
+        )
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        request.user.set_password(
+            serializer.validated_data[
+                "password"
+            ]
+        )
+        request.user.must_set_password = False
+        request.user.save(
+            update_fields=[
+                "password",
+                "must_set_password",
+            ]
+        )
+
+        Token.objects.filter(
+            user=request.user
+        ).delete()
+        token = Token.objects.create(
+            user=request.user
+        )
+
+        return Response(
+            {
+                "token": token.key,
+                "user": UserSerializer(
+                    request.user
+                ).data,
+                "requires_password_setup": False,
+            }
+        )
+
+
 class LogoutView(APIView):
     permission_classes = [
         permissions.IsAuthenticated
