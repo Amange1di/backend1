@@ -14,6 +14,7 @@ Views for bidirectional database synchronization between servers.
 
 import json
 import logging
+import secrets
 
 from django.conf import settings
 from django.core import serializers
@@ -34,7 +35,7 @@ def _check_sync_secret(request) -> bool:
         logger.warning("SYNC_SECRET not configured — sync endpoints disabled")
         return False
     header_secret = request.headers.get("X-Sync-Secret", "")
-    return header_secret == sync_secret
+    return bool(header_secret) and secrets.compare_digest(header_secret, sync_secret)
 
 
 # Модели в порядке зависимостей (FK: родитель ДО дочернего)
@@ -151,7 +152,10 @@ class SyncExportView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        if request.user.role not in ("admin", "super_admin"):
+        if not (
+            request.user.is_superuser
+            or request.user.role == "super_admin"
+        ):
             return Response(
                 {"detail": "Only admins can export data."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -172,9 +176,9 @@ class SyncExportView(APIView):
             )
             return HttpResponse(data, content_type="application/json")
         except Exception as e:
-            logger.error(f"Sync export failed: {e}")
+            logger.exception("Sync export failed")
             return Response(
-                {"detail": f"Export failed: {str(e)}"},
+                {"detail": "Export failed."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -203,6 +207,12 @@ class SyncImportView(APIView):
             )
 
         raw_data = request.body
+        max_bytes = getattr(settings, "SYNC_MAX_BYTES", 10 * 1024 * 1024)
+        if len(raw_data) > max_bytes:
+            return Response(
+                {"detail": "Sync payload is too large."},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
         if not raw_data:
             return Response(
                 {"detail": "No data provided."},
@@ -216,6 +226,30 @@ class SyncImportView(APIView):
                     {"detail": "Expected a JSON array."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+
+            max_objects = getattr(settings, "SYNC_MAX_OBJECTS", 50000)
+            if len(data) > max_objects:
+                return Response(
+                    {"detail": "Too many objects in sync payload."},
+                    status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                )
+
+            allowed_models = {
+                label.lower()
+                for label in SYNC_MODELS_ORDERED
+            }
+            for item in data:
+                if not isinstance(item, dict):
+                    return Response(
+                        {"detail": "Invalid sync object."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                model_label = str(item.get("model", "")).lower()
+                if model_label not in allowed_models:
+                    return Response(
+                        {"detail": "Sync payload contains a disallowed model."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
         except json.JSONDecodeError:
             return Response(
                 {"detail": "Invalid JSON."},
@@ -240,8 +274,8 @@ class SyncImportView(APIView):
                 "imported": count,
             })
         except Exception as e:
-            logger.error(f"Sync import failed: {e}")
+            logger.exception("Sync import failed")
             return Response(
-                {"detail": f"Import failed: {str(e)}"},
+                {"detail": "Import failed."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
