@@ -1,7 +1,26 @@
 from django.db import models
+from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
 from .accounts import User
+
+
+def build_homework_upload_path(instance, filename: str) -> str:
+    company = None
+    if hasattr(instance, "company") and instance.company:
+        company = instance.company
+    elif (
+        hasattr(instance, "task")
+        and instance.task
+        and instance.task.company
+    ):
+        company = instance.task.company
+
+    if not company:
+        return f"homework/shared/{filename}"
+
+    prefix = slugify(company.name) or "shared"
+    return f"homework/{prefix}/{filename}"
 
 
 class HomeworkTask(models.Model):
