@@ -17,14 +17,12 @@ from .views import (
     GroupMonthViewSet,
     LoginView,
     LogoutView,
-    ManagerViewSet,
     MeView,
     PaymentViewSet,
     RegisterView,
     StudentLoginView,
     StudentProfileView,
     StudentSetPasswordView,
-    TeacherViewSet,
     SuperAdminStatsView,
     GenerateTelegramBindCodeView,
     GetTelegramBindCodeView,
@@ -33,8 +31,6 @@ from .views import (
 from .sync_views import SyncExportView, SyncImportView
 
 router = DefaultRouter()
-router.register("teachers", TeacherViewSet)
-router.register("managers", ManagerViewSet, basename="managers")
 router.register("auditoriums", AuditoriumViewSet)
 router.register("attendance", AttendanceViewSet)
 router.register("group-months", GroupMonthViewSet)
@@ -46,6 +42,8 @@ router.register("payments", PaymentViewSet)
 # Public marketplace
 
 urlpatterns = [
+    path("", include("core.domains.managers.urls")),
+    path("", include("core.domains.teachers.urls")),
     path("", include("core.domains.groups.urls")),
     path("", include("core.domains.students.urls")),
     path("", include("core.domains.courses.urls")),
