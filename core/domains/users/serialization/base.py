@@ -3,8 +3,10 @@ import re
 from django.contrib.auth import authenticate
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
+from rest_framework.authtoken.models import Token
 
-from core.models import Company, Course, User
+from core.models import User
+from core.domains.users.passwords import validate_strong_password
 
 class UserSerializer(serializers.ModelSerializer):
     created_by = serializers.IntegerField(
@@ -24,11 +26,8 @@ class UserSerializer(serializers.ModelSerializer):
         source="company.name",
         read_only=True,
     )
-    company_id = serializers.PrimaryKeyRelatedField(
-        source="company",
-        queryset=Company.objects.all(),
-        required=False,
-        allow_null=True,
+    company_id = serializers.IntegerField(
+        read_only=True,
     )
 
     class Meta:
@@ -60,7 +59,33 @@ class UserSerializer(serializers.ModelSerializer):
             "course_ids",
             "course_titles",
         )
-        read_only_fields = ()
+        read_only_fields = (
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "phone",
+            "address",
+            "telegram",
+            "salary_rate",
+            "working_hours",
+            "color",
+            "company",
+            "company_id",
+            "company_name",
+            "is_student_cabinet_enabled",
+            "must_set_password",
+            "created_by",
+            "role",
+            "is_active",
+            "max_managers",
+            "max_pages",
+            "max_blocks",
+            "managers_count",
+            "course_ids",
+            "course_titles",
+        )
 
     def get_managers_count(self, obj):
         if obj.role != User.Role.COURSE_ADMIN:
@@ -116,6 +141,14 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             "password",
         )
 
+    def validate_password(self, value):
+        if not value:
+            return value
+        return validate_strong_password(
+            value,
+            user=self.instance,
+        )
+
     def update(
         self,
         instance,
@@ -134,5 +167,8 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             user.save(
                 update_fields=["password"]
             )
+            Token.objects.filter(
+                user=user
+            ).delete()
         return user
 
