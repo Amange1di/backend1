@@ -69,23 +69,18 @@ class MarketplaceJobViewSet(viewsets.ModelViewSet):
                 "Only course admins and managers can create jobs."
             )
 
-        owner = (
-            user
-            if user.role == User.Role.COURSE_ADMIN
-            else user.created_by
-        )
-        company = serializer.validated_data.get(
-            "company"
-        )
+        company = user.company
+        if not company and user.role == User.Role.MANAGER:
+            company = getattr(
+                getattr(user, "created_by", None),
+                "company",
+                None,
+            )
 
         if not company:
-            company = Company.objects.filter(
-                owner=owner
-            ).first()
-            if not company:
-                raise PermissionDenied(
-                    "No company found. Create a company first."
-                )
+            raise PermissionDenied(
+                "No company found. Create a company first."
+            )
 
         serializer.save(company=company)
 
