@@ -9,11 +9,8 @@ class TaskSerializer(serializers.ModelSerializer):
         source="created_by_id",
         read_only=True,
     )
-    company_id = serializers.PrimaryKeyRelatedField(
-        source="company",
-        queryset=Company.objects.all(),
-        required=False,
-        allow_null=True,
+    company_id = serializers.IntegerField(
+        read_only=True,
     )
 
     class Meta:
@@ -35,7 +32,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "company_id",
             "created_at",
         )
-        read_only_fields = ()
+        read_only_fields = ("company", "company_id", "created_by")
 
     def get_assigned_to_name(self, obj):
         if not obj.assigned_to:
