@@ -185,18 +185,6 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            try:
-                PromoRedemption.objects.create(
-                    promo_code=promo_code,
-                    company=company,
-                    user=user,
-                )
-            except IntegrityError:
-                return Response(
-                    {"detail": "Promo code already used by this company."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
             ledger_reason = f"Промокод: {promo_code.code}"
 
             try:
@@ -217,10 +205,22 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            if not promo_balance.spend_coins(promo_code.reward_value):
+            try:
+                with transaction.atomic():
+                    PromoRedemption.objects.create(
+                        promo_code=promo_code,
+                        company=company,
+                        user=user,
+                    )
+            except IntegrityError:
                 return Response(
-                    {"detail": "Promo code balance is insufficient."},
+                    {"detail": "Promo code already used by this company."},
                     status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if not promo_balance.spend_coins(promo_code.reward_value):
+                raise RuntimeError(
+                    "Promo balance changed unexpectedly while locked."
                 )
 
             company_balance, _ = CompanyBalance.objects.get_or_create(
