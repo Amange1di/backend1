@@ -3,6 +3,7 @@
 from .api import (
     CourseAdminCreateView,
     CourseAdminDetailView,
+    CourseAdminResetPasswordView,
     FirstLoginSetPasswordView,
     LoginThrottle,
     LoginView,
@@ -16,6 +17,7 @@ from .api import (
 __all__ = [
     "CourseAdminCreateView",
     "CourseAdminDetailView",
+    "CourseAdminResetPasswordView",
     "FirstLoginSetPasswordView",
     "LoginThrottle",
     "LoginView",
