@@ -1,0 +1,1 @@
+"""Auditoriums domain package."""
