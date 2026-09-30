@@ -1,7 +1,10 @@
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
     ExpenseViewSet,
+    FinanceDashboardView,
+    FinanceExportView,
     GroupMonthViewSet,
 )
 
@@ -17,4 +20,16 @@ router.register(
     basename="expenses",
 )
 
-urlpatterns = router.urls
+urlpatterns = [
+    path(
+        "finance/dashboard/",
+        FinanceDashboardView.as_view(),
+        name="finance-dashboard",
+    ),
+    path(
+        "finance/export/<str:export_format>/",
+        FinanceExportView.as_view(),
+        name="finance-export",
+    ),
+    *router.urls,
+]
