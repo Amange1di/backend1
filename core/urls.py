@@ -15,7 +15,6 @@ from .views import (
     FinanceDashboardView,
     FinanceExportView,
     GroupMonthViewSet,
-    GroupViewSet,
     LoginView,
     LogoutView,
     ManagerViewSet,
@@ -36,7 +35,6 @@ from .sync_views import SyncExportView, SyncImportView
 router = DefaultRouter()
 router.register("teachers", TeacherViewSet)
 router.register("managers", ManagerViewSet, basename="managers")
-router.register("groups", GroupViewSet)
 router.register("auditoriums", AuditoriumViewSet)
 router.register("attendance", AttendanceViewSet)
 router.register("group-months", GroupMonthViewSet)
@@ -48,6 +46,7 @@ router.register("payments", PaymentViewSet)
 # Public marketplace
 
 urlpatterns = [
+    path("", include("core.domains.groups.urls")),
     path("", include("core.domains.students.urls")),
     path("", include("core.domains.courses.urls")),
     path("", include("core.domains.landing.urls")),
