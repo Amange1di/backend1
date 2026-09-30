@@ -1,3 +1,4 @@
+from rest_framework.authtoken.models import Token
 from rest_framework import status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -127,13 +128,16 @@ class TeacherViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         if request.user.role == User.Role.MANAGER:
             raise PermissionDenied(
-                "Managers cannot delete teachers."
+                "Managers cannot deactivate teachers."
             )
 
-        return super().destroy(
-            request,
-            *args,
-            **kwargs,
+        teacher = self.get_object()
+        teacher.is_active = False
+        teacher.save(update_fields=["is_active"])
+        Token.objects.filter(user=teacher).delete()
+
+        return Response(
+            status=status.HTTP_204_NO_CONTENT
         )
 
     def get_serializer_class(self):
