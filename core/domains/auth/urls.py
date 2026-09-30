@@ -3,13 +3,12 @@ from django.urls import path
 from .views import (
     CourseAdminCreateView,
     CourseAdminDetailView,
+    FirstLoginSetPasswordView,
     LoginView,
     LogoutView,
     MeView,
     RegisterView,
-    StudentLoginView,
     StudentProfileView,
-    StudentSetPasswordView,
 )
 
 urlpatterns = [
@@ -34,14 +33,9 @@ urlpatterns = [
         name="auth-login",
     ),
     path(
-        "auth/student/login/",
-        StudentLoginView.as_view(),
-        name="auth-student-login",
-    ),
-    path(
-        "auth/student/set-password/",
-        StudentSetPasswordView.as_view(),
-        name="auth-student-set-password",
+        "auth/first-login/set-password/",
+        FirstLoginSetPasswordView.as_view(),
+        name="auth-first-login-set-password",
     ),
     path(
         "auth/student/profile/",
