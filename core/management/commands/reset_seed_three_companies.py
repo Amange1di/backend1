@@ -6,6 +6,8 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
+from finance.models import Budget, BudgetCategory, MonthlySummary
+
 from core.models import (
     Attendance,
     Auditorium,
@@ -298,6 +300,11 @@ class Command(BaseCommand):
                 today=today,
             )
             self._create_group_months(groups=groups, start_date=start_date, today=today)
+            self._create_finance_reporting(
+                company=company,
+                start_date=start_date,
+                today=today,
+            )
             self._create_contracts(
                 company=company,
                 course_admin=course_admin,
@@ -514,7 +521,7 @@ class Command(BaseCommand):
                 total_months=4,
                 start_date=group_start,
                 end_date=group_start + timedelta(days=120),
-                teacher_percent=Decimal("30.00") + index,
+                teacher_percent=Decimal(str(6 + ((index + len(prefix)) % 4))),
             )
             Group.objects.filter(pk=group.pk).update(
                 created_at=self._at_date(group_start, 9)
@@ -652,16 +659,23 @@ class Command(BaseCommand):
                 lesson_number += 1
 
     def _create_payments(self, *, company, students, start_date, today):
-        months = self._month_starts(start_date, today)
+        all_months = self._month_starts(start_date, today)
 
         for student_index, student in enumerate(students):
             group = student.groups.first()
-            if not group:
+            if not group or not group.course:
                 continue
 
-            amount = group.course.price if group.course else Decimal("10000.00")
+            persisted_student = Student.objects.only("created_at").get(pk=student.pk)
+            joined_on = persisted_student.created_at.date()
+            joined_month = date(joined_on.year, joined_on.month, 1)
+
+            # A student pays only from the month they actually joined.
+            months = [month for month in all_months if month >= joined_month]
+            amount = group.course.price
+
             for month_index, month_start in enumerate(months):
-                paid_at = month_start + timedelta(days=4 + student_index % 5)
+                paid_at = month_start + timedelta(days=3 + student_index % 7)
                 if paid_at > today:
                     paid_at = today
 
@@ -669,9 +683,11 @@ class Command(BaseCommand):
                     month_start.year == today.year
                     and month_start.month == today.month
                 )
+
+                # Roughly 10% of current-month invoices stay unpaid.
                 status_value = (
                     Payment.Status.DEBT
-                    if is_current_month and student_index % 5 == 0
+                    if is_current_month and student_index % 10 == 0
                     else Payment.Status.PAID
                 )
 
@@ -855,27 +871,135 @@ class Command(BaseCommand):
                     )
 
     def _create_group_months(self, *, groups, start_date, today):
-        for group in groups:
+        for group_index, group in enumerate(groups, start=1):
             for month_number in range(1, 5):
                 month_start = group.start_date + timedelta(
                     days=(month_number - 1) * 30
                 )
-                completed = month_start + timedelta(days=30) <= today
+                month_end = month_start + timedelta(days=30)
+                completed = month_end <= today
+
+                # Base pay per group stays modest; the automatic percentage
+                # is calculated separately from actual group revenue.
+                base_salary = Decimal(
+                    str(9000 + group_index * 1000 + (month_number - 1) * 500)
+                )
+
                 GroupMonth.objects.create(
                     group=group,
                     month_number=month_number,
-                    teacher_salary=Decimal("22000.00") + month_number * 2000,
+                    teacher_salary=base_salary,
                     status=(
                         GroupMonth.Status.COMPLETED
                         if completed
                         else GroupMonth.Status.PENDING
                     ),
                     completed_at=(
-                        self._at_date(month_start + timedelta(days=30), 18)
+                        self._at_date(month_end, 18)
                         if completed
                         else None
                     ),
                 )
+
+    def _create_finance_reporting(self, *, company, start_date, today):
+        from calendar import monthrange
+        from django.db.models import Sum
+
+        months = self._month_starts(start_date, today)
+
+        for month_start in months:
+            last_day = date(
+                month_start.year,
+                month_start.month,
+                monthrange(month_start.year, month_start.month)[1],
+            )
+            period_end = min(last_day, today)
+
+            income = (
+                Payment.objects.filter(
+                    company=company,
+                    status=Payment.Status.PAID,
+                    paid_at__gte=month_start,
+                    paid_at__lte=period_end,
+                ).aggregate(total=Sum("amount"))["total"]
+                or Decimal("0")
+            )
+            regular_expenses = (
+                Expense.objects.filter(
+                    company=company,
+                    date__gte=month_start,
+                    date__lte=period_end,
+                ).aggregate(total=Sum("amount"))["total"]
+                or Decimal("0")
+            )
+            salaries = (
+                GroupMonth.objects.filter(
+                    group__company=company,
+                    teacher_salary__isnull=False,
+                    completed_at__date__gte=month_start,
+                    completed_at__date__lte=period_end,
+                ).aggregate(total=Sum("teacher_salary"))["total"]
+                or Decimal("0")
+            )
+
+            total_expenses = regular_expenses + salaries
+            students_count = (
+                Payment.objects.filter(
+                    company=company,
+                    paid_at__gte=month_start,
+                    paid_at__lte=period_end,
+                )
+                .values("student_id")
+                .distinct()
+                .count()
+            )
+            groups_count = (
+                Payment.objects.filter(
+                    company=company,
+                    paid_at__gte=month_start,
+                    paid_at__lte=period_end,
+                )
+                .values("group_id")
+                .distinct()
+                .count()
+            )
+
+            MonthlySummary.objects.update_or_create(
+                company=company,
+                year=month_start.year,
+                month=month_start.month,
+                defaults={
+                    "total_income": income,
+                    "total_expenses": total_expenses,
+                    "total_salaries": salaries,
+                    "net_profit": income - total_expenses,
+                    "total_students": students_count,
+                    "total_groups": groups_count,
+                },
+            )
+
+        current_month = date(today.year, today.month, 1)
+        current_month_end = date(
+            today.year,
+            today.month,
+            monthrange(today.year, today.month)[1],
+        )
+        budget_specs = [
+            (BudgetCategory.RENT, Decimal("80000")),
+            (BudgetCategory.UTILITIES, Decimal("22000")),
+            (BudgetCategory.MARKETING, Decimal("40000")),
+            (BudgetCategory.MATERIALS, Decimal("20000")),
+            (BudgetCategory.SALARY, Decimal("180000")),
+        ]
+        for category, amount in budget_specs:
+            Budget.objects.create(
+                company=company,
+                category=category,
+                amount=amount,
+                period_start=current_month,
+                period_end=current_month_end,
+                is_active=True,
+            )
 
     def _create_contracts(
         self,
