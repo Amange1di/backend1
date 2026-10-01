@@ -1,6 +1,9 @@
+from decimal import Decimal, InvalidOperation
+
 from django.conf import settings
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import permissions, status
@@ -13,6 +16,7 @@ from rest_framework.views import APIView
 from core.models import (
     Company,
     CompanyBalance,
+    CompanySubscription,
     CompanyCategory,
     CompanyCity,
     Student,
@@ -93,6 +97,13 @@ class CourseAdminCreateView(APIView):
             or 0
         )
 
+        try:
+            monthly_fee = Decimal(
+                str(request.data.get("monthly_fee", "")).strip()
+            )
+        except (InvalidOperation, TypeError, ValueError):
+            monthly_fee = Decimal("0")
+
         if not company_name:
             return Response(
                 {
@@ -124,6 +135,16 @@ class CourseAdminCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if monthly_fee <= 0:
+            return Response(
+                {
+                    "detail": (
+                        "Monthly platform fee must be greater than 0."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         user = serializer.save(
             created_by=request.user,
             company=None,
@@ -147,6 +168,15 @@ class CourseAdminCreateView(APIView):
         CompanyBalance.objects.create(
             company=company,
             balance=0,
+        )
+
+        CompanySubscription.objects.create(
+            company=company,
+            plan=CompanySubscription.Plan.START,
+            monthly_fee=monthly_fee,
+            status=CompanySubscription.Status.ACTIVE,
+            started_at=timezone.localdate(),
+            auto_renew=True,
         )
 
         return Response(
