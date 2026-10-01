@@ -529,32 +529,59 @@ class Command(BaseCommand):
             "Азамат", "Наргиза", "Эмир", "Айпери", "Бектур", "Мадина",
             "Руслан", "Алина", "Эрлан", "Жылдыз", "Кубаныч", "Назгүл",
             "Ильяз", "Асел", "Нурбек", "Элина", "Самат", "Бермет",
+            "Нурислам", "Аяна", "Дастан", "Арууза", "Ислам", "Элмира",
+            "Байэл", "Салтанат", "Эрбол", "Адина",
         ]
         last_names = [
             "Абдиева", "Токтогулов", "Осмонов", "Жолдошева", "Садыков",
             "Мамбетова", "Ибраимов", "Касымова", "Эргешов", "Асанова",
+            "Турсунов", "Абдыева", "Жээнбеков", "Маматова", "Алиев",
         ]
 
         result = []
         student_number = 0
+        month_starts = self._month_starts(start_date, today)
 
-        for group_index, group in enumerate(groups):
-            for member_index in range(6):
+        for month_index, month_start in enumerate(month_starts):
+            # Deterministic realistic growth: every company gets 20–40 new
+            # students every month, so charts remain stable between seed runs.
+            students_this_month = 20 + (
+                (company_index * 7 + month_index * 9) % 21
+            )
+
+            for local_index in range(students_this_month):
                 student_number += 1
-                first_name = first_names[(student_number - 1) % len(first_names)]
-                last_name = last_names[(student_number - 1) % len(last_names)]
-                join_date = min(
-                    group.start_date + timedelta(days=member_index),
-                    today,
-                )
+
+                group_index = (
+                    month_index + local_index + company_index
+                ) % len(groups)
+                group = groups[group_index]
+                course = courses[group_index]
+
+                first_name = first_names[
+                    (student_number + company_index * 3) % len(first_names)
+                ]
+                last_name = last_names[
+                    (student_number + month_index * 2) % len(last_names)
+                ]
+
+                # Spread registrations through the month, but never into future.
+                join_day = 1 + (local_index * 3 + company_index) % 27
+                join_date = month_start + timedelta(days=join_day - 1)
+                if join_date > today:
+                    join_date = today
 
                 user = User.objects.create_user(
-                    username=f"{prefix}_student_{student_number:02d}",
+                    username=f"{prefix}_student_{student_number:04d}",
                     password="Demo1234!",
                     role=User.Role.STUDENT,
                     first_name=first_name,
                     last_name=last_name,
-                    phone=f"+996 700 {company_index}{group_index}{member_index} {student_number:02d}",
+                    phone=(
+                        f"+996 {500 + company_index} "
+                        f"{month_index + 1:02d}{local_index % 100:02d} "
+                        f"{student_number % 100:02d}"
+                    ),
                     company=company,
                     created_by=course_admin,
                     is_active=True,
@@ -569,15 +596,19 @@ class Command(BaseCommand):
                     first_name=first_name,
                     last_name=last_name,
                     phone=user.phone,
-                    telegram=f"@{prefix}_student_{student_number:02d}",
+                    telegram=f"@{prefix}_student_{student_number:04d}",
                     company=company,
                     can_login=True,
-                    primary_course=courses[group_index],
-                    notes=f"Клиент {company.name}, группа {group.name}",
+                    primary_course=course,
+                    notes=(
+                        f"Клиент {company.name}, группа {group.name}, "
+                        f"регистрация {join_date:%m.%Y}"
+                    ),
                 )
                 Student.objects.filter(pk=student.pk).update(
                     created_at=self._at_date(join_date, 12)
                 )
+
                 group.students.add(student)
                 result.append(student)
 
