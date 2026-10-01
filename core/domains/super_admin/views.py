@@ -8,6 +8,8 @@ from core.models import (
     Auditorium,
     Company,
     CompanyBalance,
+    CompanyPlatformPayment,
+    CompanySubscription,
     Course,
     Group,
     HomeworkSubmission,
@@ -95,12 +97,25 @@ class SuperAdminStatsView(APIView):
         teachers = users.filter(role=User.Role.TEACHER).count()
         students_users = users.filter(role=User.Role.STUDENT).count()
         
-        # Балансы
-        balances = CompanyBalance.objects.all()
-        total_balance = sum(b.balance for b in balances)
-        
-        # Средний баланс
-        avg_balance = total_balance / companies.count() if companies.count() > 0 else 0
+        # Доход платформы от подписок компаний
+        platform_payments = CompanyPlatformPayment.objects.all()
+        if date_from:
+            platform_payments = platform_payments.filter(period_start__gte=date_from)
+        if date_to:
+            platform_payments = platform_payments.filter(period_start__lte=date_to)
+
+        platform_paid = platform_payments.filter(
+            status=CompanyPlatformPayment.Status.PAID
+        )
+        platform_revenue = (
+            platform_paid.aggregate(total=Sum("amount"))["total"] or 0
+        )
+        active_subscriptions = CompanySubscription.objects.filter(
+            status=CompanySubscription.Status.ACTIVE
+        ).count()
+        overdue_subscriptions = CompanySubscription.objects.filter(
+            status=CompanySubscription.Status.OVERDUE
+        ).count()
         
         # Транзакции
         transactions_count = Transaction.objects.count()
@@ -185,8 +200,13 @@ class SuperAdminStatsView(APIView):
         # Детализация по компаниям
         companies_data = []
         for company in companies:
-            balance = CompanyBalance.objects.filter(company=company).first()
-            bal = balance.balance if balance else 0
+            subscription = CompanySubscription.objects.filter(company=company).first()
+            latest_platform_payment = (
+                CompanyPlatformPayment.objects
+                .filter(company=company)
+                .order_by("-period_start")
+                .first()
+            )
             students_count_company = company.students.count()
             managers_count_company = company.users.filter(role=User.Role.MANAGER).count()
             course_admins_company = company.users.filter(role=User.Role.COURSE_ADMIN).count()
@@ -205,7 +225,19 @@ class SuperAdminStatsView(APIView):
                 "course_admins_count": course_admins_company,
                 "teachers_count": teachers_count_company,
                 "groups_count": groups_count_company,
-                "balance": bal,
+                "plan": subscription.plan if subscription else None,
+                "monthly_fee": subscription.monthly_fee if subscription else 0,
+                "subscription_status": subscription.status if subscription else None,
+                "next_payment_date": (
+                    subscription.next_payment_date.isoformat()
+                    if subscription and subscription.next_payment_date
+                    else None
+                ),
+                "last_platform_payment_status": (
+                    latest_platform_payment.status
+                    if latest_platform_payment
+                    else None
+                ),
                 "is_active": is_active,
                 "created_at": company.created_at.isoformat(),
             })
@@ -223,23 +255,33 @@ class SuperAdminStatsView(APIView):
         
         monthly_students_data = [{'month': m['month'].isoformat(), 'count': m['count']} for m in monthly_students[:12]]
         
-        # Платежи по месяцам
-        monthly_payments = Payment.objects.filter(status=Payment.Status.PAID).annotate(
-            month=TruncMonth('paid_at')
-        ).values('month').annotate(
-            total=Sum('amount'),
-            count=Count('id')
-        ).order_by('month')
-        
-        monthly_payments_data = [{'month': m['month'].isoformat(), 'total': m['total'] or 0, 'count': m['count']} for m in monthly_payments[:12]]
+        # Платежи компаний платформе по месяцам
+        monthly_payments = (
+            CompanyPlatformPayment.objects
+            .filter(status=CompanyPlatformPayment.Status.PAID)
+            .annotate(month=TruncMonth("period_start"))
+            .values("month")
+            .annotate(total=Sum("amount"), count=Count("id"))
+            .order_by("month")
+        )
+
+        monthly_payments_data = [
+            {
+                "month": item["month"].isoformat(),
+                "total": item["total"] or 0,
+                "count": item["count"],
+            }
+            for item in monthly_payments[:12]
+        ]
         
         return Response({
             # Основная статистика
             "total_companies": companies_count,
             "total_students": students_count,
             "total_users": users.count(),
-            "total_balance": total_balance,
-            "avg_balance": round(avg_balance, 2),
+            "platform_revenue": platform_revenue,
+            "active_subscriptions": active_subscriptions,
+            "overdue_subscriptions": overdue_subscriptions,
             
             # Пользователи по ролям
             "superadmins": superadmins,
