@@ -8,7 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.models import Expense, Payment, User
-from core.permissions import IsCourseAdminOrManager
+from core.permissions import IsCourseAdmin
 from finance.models import MonthlySummary, SalaryRecord
 from finance.serializers import MonthlySummarySerializer
 
@@ -18,7 +18,7 @@ class MonthlySummaryViewSet(viewsets.ModelViewSet):
     Ежемесячные сводки.
     CRUD + генерация + дашборд.
     """
-    permission_classes = [IsCourseAdminOrManager]
+    permission_classes = [IsCourseAdmin]
     serializer_class = MonthlySummarySerializer
 
     def get_queryset(self):
@@ -37,12 +37,9 @@ class MonthlySummaryViewSet(viewsets.ModelViewSet):
         {"year": 2026, "month": 1}
         """
         user = request.user
-        if user.role == User.Role.COURSE_ADMIN:
-            company = user.company
-        elif user.role == User.Role.MANAGER:
-            company = user.company
-        else:
+        if user.role != User.Role.COURSE_ADMIN:
             return Response({'detail': 'Нет доступа'}, status=403)
+        company = user.company
 
         if not company:
             return Response({'detail': 'Компания не найдена'}, status=404)
