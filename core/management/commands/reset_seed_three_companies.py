@@ -1189,6 +1189,12 @@ class Command(BaseCommand):
                 "active": False,
             },
             {
+                "code": f"INDEPENDENCE{year}",
+                "reward": 1800,
+                "expires": date(year, 8, 31),
+                "active": today == date(year, 8, 31),
+            },
+            {
                 "code": f"BACKTOSCHOOL{year}",
                 "reward": 1500,
                 "expires": date(year, 9, 15),
