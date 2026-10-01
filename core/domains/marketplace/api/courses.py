@@ -224,6 +224,7 @@ class BoostCourseView(APIView):
             transaction_type=(
                 Transaction.Type.WITHDRAWAL
             ),
+            user=user,
         ):
             return Response(
                 {
@@ -276,6 +277,7 @@ class UrgentCourseView(APIView):
             transaction_type=(
                 Transaction.Type.WITHDRAWAL
             ),
+            user=user,
         ):
             return Response(
                 {
