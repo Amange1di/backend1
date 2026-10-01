@@ -651,13 +651,13 @@ class StudentViewSet(viewsets.ModelViewSet):
         request,
         pk=None,
     ):
-        if (
-            request.user.role
-            != User.Role.COURSE_ADMIN
+        if request.user.role not in (
+            User.Role.COURSE_ADMIN,
+            User.Role.MANAGER,
         ):
             raise PermissionDenied(
                 (
-                    "Only course admins can reset "
+                    "Only course admins and managers can reset "
                     "student passwords."
                 )
             )
@@ -694,6 +694,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                     "Student password was reset."
                 ),
                 "must_set_password": True,
+                "login": student.phone,
                 "username": (
                     student.user.username
                 ),
