@@ -1,6 +1,6 @@
 from calendar import monthrange
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.utils import timezone
@@ -10,8 +10,8 @@ from rest_framework.response import Response
 
 from core.models import Expense, Group, User
 from core.permissions import IsCourseAdminOrManagerReadOnly
-from finance.models import SalaryRecord
-from finance.serializers import SalaryRecordSerializer
+from finance.models import SalaryPayment, SalaryRecord
+from finance.serializers import SalaryPaymentSerializer, SalaryRecordSerializer
 
 
 class SalaryRecordViewSet(viewsets.ModelViewSet):
@@ -29,7 +29,11 @@ class SalaryRecordViewSet(viewsets.ModelViewSet):
         if not company:
             return SalaryRecord.objects.none()
 
-        qs = SalaryRecord.objects.filter(company=company).select_related("employee")
+        qs = (
+            SalaryRecord.objects.filter(company=company)
+            .select_related("employee")
+            .prefetch_related("payments", "payments__created_by")
+        )
 
         employee_role = self.request.query_params.get("role")
         status_value = self.request.query_params.get("status")
@@ -51,6 +55,7 @@ class SalaryRecordViewSet(viewsets.ModelViewSet):
         employee = serializer.validated_data["employee"]
         year = serializer.validated_data["year"]
         month = serializer.validated_data["month"]
+
         percent_amount = Decimal("0")
         if employee.role == User.Role.TEACHER:
             percent_amount = self._teacher_percent_for_month(
@@ -58,48 +63,60 @@ class SalaryRecordViewSet(viewsets.ModelViewSet):
                 year,
                 month,
             )
+
         serializer.save(
             company=self._company(),
             percent_amount=percent_amount,
         )
 
-    def _expense_description(self, record):
+    def perform_update(self, serializer):
+        record = serializer.save()
+        record.refresh_payment_status()
+
+    def perform_destroy(self, instance):
+        self._delete_record_expenses(instance)
+        instance.delete()
+
+    def _legacy_expense_description(self, record):
         return (
             f"Зарплата сотрудника #{record.id}: "
             f"{record.employee.get_full_name() or record.employee.username} — "
             f"{record.month:02d}.{record.year}"
         )
 
-    def _sync_salary_expense(self, record):
-        description = self._expense_description(record)
+    def _payment_expense_description(self, payment):
+        record = payment.salary_record
+        return (
+            f"Выплата зарплаты #{payment.id} / начисление #{record.id}: "
+            f"{record.employee.get_full_name() or record.employee.username} — "
+            f"{record.month:02d}.{record.year}"
+        )
 
-        if record.status != SalaryRecord.Status.PAID or not record.paid_at:
-            Expense.objects.filter(
-                company=record.company,
-                description=description,
-            ).delete()
-            return
-
+    def _sync_payment_expense(self, payment):
         Expense.objects.update_or_create(
-            company=record.company,
-            description=description,
+            company=payment.salary_record.company,
+            description=self._payment_expense_description(payment),
             defaults={
-                "amount": record.total_amount,
+                "amount": payment.amount,
                 "category": "salary",
-                "date": record.paid_at,
+                "date": payment.paid_at,
             },
         )
 
-    def perform_update(self, serializer):
-        record = serializer.save()
-        self._sync_salary_expense(record)
-
-    def perform_destroy(self, instance):
+    def _delete_payment_expense(self, payment):
         Expense.objects.filter(
-            company=instance.company,
-            description=self._expense_description(instance),
+            company=payment.salary_record.company,
+            description=self._payment_expense_description(payment),
         ).delete()
-        instance.delete()
+
+    def _delete_record_expenses(self, record):
+        for payment in record.payments.all():
+            self._delete_payment_expense(payment)
+
+        Expense.objects.filter(
+            company=record.company,
+            description=self._legacy_expense_description(record),
+        ).delete()
 
     @action(detail=False, methods=["get"])
     def employees(self, request):
@@ -184,7 +201,11 @@ class SalaryRecordViewSet(viewsets.ModelViewSet):
             company=company,
             role__in=[User.Role.TEACHER, User.Role.MANAGER],
             is_active=True,
-            date_joined__date__lte=date(year, month, monthrange(year, month)[1]),
+            date_joined__date__lte=date(
+                year,
+                month,
+                monthrange(year, month)[1],
+            ),
         )
 
         created = 0
@@ -210,29 +231,63 @@ class SalaryRecordViewSet(viewsets.ModelViewSet):
                         "percent_amount": percent_amount,
                     },
                 )
+
+                record.refresh_payment_status()
+
                 if was_created:
                     created += 1
                 else:
                     updated += 1
 
-                self._sync_salary_expense(record)
+        records = (
+            SalaryRecord.objects.filter(
+                company=company,
+                year=year,
+                month=month,
+            )
+            .select_related("employee")
+            .prefetch_related("payments", "payments__created_by")
+        )
 
         return Response({
             "created": created,
             "updated": updated,
             "records": SalaryRecordSerializer(
-                SalaryRecord.objects.filter(
-                    company=company,
-                    year=year,
-                    month=month,
-                ).select_related("employee"),
+                records,
                 many=True,
+                context={"request": request},
             ).data,
         })
 
-    @action(detail=True, methods=["post"], url_path="mark-paid")
-    def mark_paid(self, request, pk=None):
+    @action(detail=True, methods=["post"], url_path="add-payment")
+    def add_payment(self, request, pk=None):
         record = self.get_object()
+
+        try:
+            amount = Decimal(str(request.data.get("amount", "")))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response(
+                {"detail": "Некорректная сумма выплаты."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if amount <= 0:
+            return Response(
+                {"detail": "Сумма выплаты должна быть больше нуля."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        remaining = record.remaining_amount
+        if amount > remaining:
+            return Response(
+                {
+                    "detail": (
+                        f"Сумма выплаты превышает остаток. "
+                        f"Осталось выплатить: {remaining}."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         paid_at_raw = request.data.get("paid_at")
         if paid_at_raw:
@@ -246,19 +301,109 @@ class SalaryRecordViewSet(viewsets.ModelViewSet):
         else:
             paid_at = timezone.localdate()
 
-        record.status = SalaryRecord.Status.PAID
-        record.paid_at = paid_at
-        record.save(update_fields=["status", "paid_at", "updated_at"])
-        self._sync_salary_expense(record)
+        payment_type = request.data.get(
+            "payment_type",
+            SalaryPayment.PaymentType.SALARY,
+        )
+        valid_types = {choice[0] for choice in SalaryPayment.PaymentType.choices}
+        if payment_type not in valid_types:
+            return Response(
+                {"detail": "Некорректный тип выплаты."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        return Response(SalaryRecordSerializer(record).data)
+        serializer = SalaryPaymentSerializer(
+            data={
+                "amount": amount,
+                "paid_at": paid_at,
+                "payment_type": payment_type,
+                "note": str(request.data.get("note", "")).strip(),
+            }
+        )
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            payment = serializer.save(
+                salary_record=record,
+                created_by=request.user,
+            )
+            self._sync_payment_expense(payment)
+            record.refresh_payment_status()
+
+        record = self.get_queryset().get(pk=record.pk)
+        return Response(
+            SalaryRecordSerializer(
+                record,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"payments/(?P<payment_id>[^/.]+)",
+    )
+    def delete_payment(self, request, pk=None, payment_id=None):
+        record = self.get_object()
+
+        try:
+            payment = record.payments.get(pk=payment_id)
+        except SalaryPayment.DoesNotExist:
+            return Response(
+                {"detail": "Выплата не найдена."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        with transaction.atomic():
+            self._delete_payment_expense(payment)
+            payment.delete()
+            record.refresh_payment_status()
+
+        record = self.get_queryset().get(pk=record.pk)
+        return Response(
+            SalaryRecordSerializer(
+                record,
+                context={"request": request},
+            ).data
+        )
+
+    @action(detail=True, methods=["post"], url_path="mark-paid")
+    def mark_paid(self, request, pk=None):
+        record = self.get_object()
+        remaining = record.remaining_amount
+
+        if remaining <= 0:
+            record.refresh_payment_status()
+            return Response(
+                SalaryRecordSerializer(
+                    record,
+                    context={"request": request},
+                ).data
+            )
+
+        mutable_data = request.data.copy()
+        mutable_data["amount"] = str(remaining)
+        mutable_data.setdefault(
+            "payment_type",
+            SalaryPayment.PaymentType.SALARY,
+        )
+        request._full_data = mutable_data
+        return self.add_payment(request, pk=pk)
 
     @action(detail=True, methods=["post"], url_path="mark-pending")
     def mark_pending(self, request, pk=None):
         record = self.get_object()
-        record.status = SalaryRecord.Status.PENDING
-        record.paid_at = None
-        record.save(update_fields=["status", "paid_at", "updated_at"])
-        self._sync_salary_expense(record)
 
-        return Response(SalaryRecordSerializer(record).data)
+        with transaction.atomic():
+            self._delete_record_expenses(record)
+            record.payments.all().delete()
+            record.refresh_payment_status()
+
+        record = self.get_queryset().get(pk=record.pk)
+        return Response(
+            SalaryRecordSerializer(
+                record,
+                context={"request": request},
+            ).data
+        )
