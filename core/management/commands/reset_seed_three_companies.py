@@ -11,6 +11,8 @@ from core.models import (
     Auditorium,
     Company,
     CompanyBalance,
+    CompanyPlatformPayment,
+    CompanySubscription,
     CompanyCategory,
     CompanyCity,
     Contract,
@@ -86,6 +88,8 @@ class Command(BaseCommand):
                 "description": (
                     "IT академия: frontend, backend, mobile, QA жана UI/UX."
                 ),
+                "plan": CompanySubscription.Plan.PRO,
+                "monthly_fee": Decimal("15000.00"),
                 "courses": [
                     ("Frontend React", 18000, 16, 90, "React, TypeScript, Next.js"),
                     ("Python Django", 20000, 20, 90, "Python, Django, REST API"),
@@ -112,6 +116,8 @@ class Command(BaseCommand):
                 "description": (
                     "Тил борбору: англис, IELTS, түрк жана корей тилдери."
                 ),
+                "plan": CompanySubscription.Plan.GROWTH,
+                "monthly_fee": Decimal("10000.00"),
                 "courses": [
                     ("English A1-A2", 9000, 12, 80, "General English for beginners"),
                     ("IELTS Preparation", 14000, 16, 90, "IELTS Academic preparation"),
@@ -136,6 +142,8 @@ class Command(BaseCommand):
                 "description": (
                     "Бизнес мектеби: сатуу, SMM, эсеп, аналитика жана ишкердик."
                 ),
+                "plan": CompanySubscription.Plan.START,
+                "monthly_fee": Decimal("7000.00"),
                 "courses": [
                     ("SMM & Content", 12000, 10, 80, "SMM strategy, content and ads"),
                     ("Sales Management", 13000, 10, 80, "Sales funnel and negotiation"),
@@ -310,6 +318,13 @@ class Command(BaseCommand):
             )
             self._create_finance_history(
                 company=company,
+                start_date=start_date,
+                today=today,
+            )
+            self._create_platform_billing(
+                company=company,
+                plan=spec["plan"],
+                monthly_fee=spec["monthly_fee"],
                 start_date=start_date,
                 today=today,
             )
@@ -996,6 +1011,66 @@ class Command(BaseCommand):
                 section_type=section_type,
                 order=order,
                 content=section_content,
+            )
+
+    def _create_platform_billing(
+        self,
+        *,
+        company,
+        plan,
+        monthly_fee,
+        start_date,
+        today,
+    ):
+        month_starts = self._month_starts(start_date, today)
+        current_month = date(today.year, today.month, 1)
+        next_month = (
+            date(today.year + 1, 1, 1)
+            if today.month == 12
+            else date(today.year, today.month + 1, 1)
+        )
+
+        subscription = CompanySubscription.objects.create(
+            company=company,
+            plan=plan,
+            monthly_fee=monthly_fee,
+            status=CompanySubscription.Status.ACTIVE,
+            started_at=start_date,
+            next_payment_date=next_month,
+            auto_renew=True,
+        )
+
+        for month_start in month_starts:
+            if month_start.month == 12:
+                period_end = date(month_start.year + 1, 1, 1) - timedelta(days=1)
+            else:
+                period_end = date(
+                    month_start.year,
+                    month_start.month + 1,
+                    1,
+                ) - timedelta(days=1)
+
+            is_current = month_start == current_month
+            paid = not is_current or today.day >= 5
+
+            CompanyPlatformPayment.objects.create(
+                company=company,
+                subscription=subscription,
+                amount=monthly_fee,
+                period_start=month_start,
+                period_end=period_end,
+                due_date=month_start + timedelta(days=4),
+                paid_at=(
+                    self._at_date(month_start + timedelta(days=4), 11)
+                    if paid
+                    else None
+                ),
+                status=(
+                    CompanyPlatformPayment.Status.PAID
+                    if paid
+                    else CompanyPlatformPayment.Status.PENDING
+                ),
+                note=f"Оплата тарифа {subscription.get_plan_display()}",
             )
 
     def _create_finance_history(self, *, company, start_date, today):
