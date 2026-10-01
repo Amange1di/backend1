@@ -37,7 +37,7 @@ class FinanceDashboardView(APIView):
     Дашборд финансовой сводки.
     GET /api/finance/dashboard/
     """
-    permission_classes = [IsCourseAdminOrManager]
+    permission_classes = [IsCourseAdmin]
 
     def get(self, request):
         from django.db.models import Sum
@@ -45,12 +45,9 @@ class FinanceDashboardView(APIView):
         from calendar import monthrange
 
         user = request.user
-        if user.role == User.Role.COURSE_ADMIN:
-            company = user.company
-        elif user.role == User.Role.MANAGER:
-            company = user.company
-        else:
+        if user.role != User.Role.COURSE_ADMIN:
             return Response({'detail': 'Нет доступа'}, status=403)
+        company = user.company
 
         if not company:
             return Response({'detail': 'Компания не найдена'}, status=404)
