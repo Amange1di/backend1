@@ -342,7 +342,8 @@ class PublicJobViewSet(
             .annotate(
                 promotion_rank=models.Case(
                     models.When(
-                        promoted_until__gt=timezone.now(),
+                        models.Q(promoted_until__gt=timezone.now())
+                        | models.Q(urgent_until__gt=timezone.now()),
                         then=models.Value(1),
                     ),
                     default=models.Value(0),
