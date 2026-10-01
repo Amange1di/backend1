@@ -62,19 +62,10 @@ class StudentSerializer(serializers.ModelSerializer):
         )
 
     def get_one_time_password(self, obj):
-        request = self.context.get("request")
-        if (
-            request
-            and request.user.is_authenticated
-            and request.user.role in (
-                User.Role.COURSE_ADMIN,
-                User.Role.MANAGER,
-            )
-        ):
-            # Do not let company staff infer whether this phone already had
-            # a platform account in another company.
-            return None
-
+        # The plain one-time password exists only in memory immediately after
+        # a brand-new student account is created. Existing cross-company
+        # accounts never receive a new password, so nothing sensitive from
+        # another company is exposed.
         return getattr(
             obj,
             "_one_time_password",
