@@ -21,6 +21,14 @@ class Payment(models.Model):
         blank=True,
         related_name="payments",
     )
+    received_by = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="received_payments",
+        help_text="Сотрудник, который принял/зарегистрировал оплату",
+    )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.CharField(max_length=10, choices=Status.choices)
     paid_at = models.DateField(default=timezone.localdate)
