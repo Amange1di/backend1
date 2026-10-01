@@ -1,13 +1,15 @@
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
+from dateutil.relativedelta import relativedelta
+
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
-from finance.models import Budget, BudgetCategory, MonthlySummary
+from finance.models import Budget, BudgetCategory, MonthlySummary, SalaryRecord
 
 from core.models import (
     Attendance,
@@ -293,6 +295,14 @@ class Command(BaseCommand):
                 today=today,
             )
             self._create_group_months(groups=groups, start_date=start_date, today=today)
+            self._create_salary_records(
+                company=company,
+                managers=managers,
+                teachers=teachers,
+                groups=groups,
+                start_date=start_date,
+                today=today,
+            )
             self._create_expenses(company=company, start_date=start_date, today=today)
             self._create_tasks(
                 company=company,
@@ -1015,6 +1025,95 @@ class Command(BaseCommand):
                         self._at_date(month_end, 18)
                         if completed
                         else None
+                    ),
+                )
+
+    def _create_salary_records(
+        self,
+        *,
+        company,
+        managers,
+        teachers,
+        groups,
+        start_date,
+        today,
+    ):
+        current_month = date(today.year, today.month, 1)
+        months = self._month_starts(start_date, today)
+
+        for employee in [*managers, *teachers]:
+            joined_month = date(
+                employee.date_joined.year,
+                employee.date_joined.month,
+                1,
+            )
+            employee_months = [
+                month_start
+                for month_start in months
+                if month_start >= joined_month
+            ]
+
+            for month_index, month_start in enumerate(employee_months):
+                is_current = month_start == current_month
+                base_salary = employee.salary_rate or Decimal("0")
+                percent_amount = Decimal("0")
+                bonus_amount = Decimal("0")
+
+                if employee.role == User.Role.TEACHER:
+                    teaching_groups = [
+                        group
+                        for group in groups
+                        if group.teacher_id == employee.id and group.course
+                    ]
+                    for group in teaching_groups:
+                        teacher_percent = group.teacher_percent or Decimal("0")
+                        if teacher_percent <= 0:
+                            continue
+
+                        student_count = group.students.filter(
+                            created_at__date__lte=(
+                                month_start + relativedelta(months=1) - timedelta(days=1)
+                            )
+                        ).count()
+                        if student_count <= 0:
+                            continue
+
+                        percent_amount += (
+                            group.course.price
+                            * Decimal(student_count)
+                            * teacher_percent
+                            / Decimal("100")
+                        )
+
+                    # Small performance bonus in some completed months.
+                    if not is_current and (month_index + employee.id) % 3 == 0:
+                        bonus_amount = Decimal("5000")
+
+                elif employee.role == User.Role.MANAGER:
+                    if not is_current and (month_index + employee.id) % 4 == 0:
+                        bonus_amount = Decimal("3000")
+
+                paid_at = None
+                status = SalaryRecord.Status.PENDING
+                if not is_current:
+                    next_month = month_start + relativedelta(months=1)
+                    paid_at = next_month - timedelta(days=5)
+                    status = SalaryRecord.Status.PAID
+
+                SalaryRecord.objects.create(
+                    company=company,
+                    employee=employee,
+                    year=month_start.year,
+                    month=month_start.month,
+                    base_salary=base_salary,
+                    percent_amount=percent_amount.quantize(Decimal("0.01")),
+                    bonus_amount=bonus_amount,
+                    status=status,
+                    paid_at=paid_at,
+                    note=(
+                        "Фиксированная ставка + процент от групп"
+                        if employee.role == User.Role.TEACHER
+                        else "Фиксированная зарплата менеджера"
                     ),
                 )
 
