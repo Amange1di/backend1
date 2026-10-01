@@ -48,9 +48,7 @@ class MarketplaceCourseViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = (
-            PublicCourse.objects.filter(
-                is_active=True
-            )
+            PublicCourse.objects.all()
             .select_related("company")
             .prefetch_related(
                 "company__landing_pages"
@@ -59,7 +57,7 @@ class MarketplaceCourseViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if not user.is_authenticated:
-            return queryset
+            return queryset.filter(is_active=True)
 
         if user.role == User.Role.COURSE_ADMIN:
             return queryset.filter(
@@ -86,7 +84,7 @@ class MarketplaceCourseViewSet(viewsets.ModelViewSet):
                 is_active=True
             )
 
-        return queryset
+        return queryset.filter(is_active=True)
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -158,7 +156,6 @@ class MyCoursesView(APIView):
 
         courses = PublicCourse.objects.filter(
             company=user.company,
-            is_active=True,
         )
 
         data = []
