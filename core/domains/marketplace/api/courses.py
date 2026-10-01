@@ -1,5 +1,6 @@
 from django.db import models
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -215,6 +216,16 @@ class BoostCourseView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        if (
+            course.is_promoted
+            and course.promoted_until
+            and course.promoted_until > timezone.now()
+        ):
+            return Response(
+                {"detail": "Этот курс уже находится в ТОП."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         if not charge_promotion(
             company=user.company,
             amount=BOOST_COST,
@@ -266,6 +277,16 @@ class UrgentCourseView(APIView):
             return Response(
                 {"detail": "Недостаточно прав."},
                 status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if (
+            course.is_urgent
+            and course.urgent_until
+            and course.urgent_until > timezone.now()
+        ):
+            return Response(
+                {"detail": "Срочный бейдж для этого курса уже активен."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         if not charge_promotion(
