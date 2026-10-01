@@ -1081,34 +1081,192 @@ class Command(BaseCommand):
             created_at=self._at_date(submitted_date, 13)
         )
 
+        landing_courses = [
+            {
+                "id": course.id,
+                "title": course.title,
+                "description": course.description,
+                "price": f"{int(course.price):,} сом".replace(",", " "),
+                "duration_weeks": course.duration_weeks,
+            }
+            for course in company.courses.filter(is_active=True)[:6]
+        ]
+        landing_teachers = [
+            {
+                "name": f"{teacher.first_name} {teacher.last_name}".strip(),
+                "specialization": (
+                    teacher.teaching_courses.first().title
+                    if teacher.teaching_courses.exists()
+                    else "Преподаватель"
+                ),
+                "color": teacher.color or "#45B2EF",
+            }
+            for teacher in company.users.filter(role=User.Role.TEACHER)[:6]
+        ]
+
         pending_sections = [
             (
                 LandingSection.SectionType.HERO,
                 {
                     "title": f"Новый набор — {company.name}",
-                    "subtitle": "Осенний набор в новые группы",
-                    "buttonText": "Оставить заявку",
+                    "subtitle": (
+                        f"{company.description} Запишитесь сейчас и начните обучение "
+                        "в ближайшей группе."
+                    ),
+                    "button_label": "Оставить заявку",
+                    "button_href": "#lead-form",
+                },
+            ),
+            (
+                LandingSection.SectionType.ABOUT,
+                {
+                    "title": f"О {company.name}",
+                    "text": (
+                        f"{company.description} Мы работаем в Оше и делаем упор "
+                        "на практику, понятную программу и поддержку студентов."
+                    ),
+                },
+            ),
+            (
+                LandingSection.SectionType.STATISTICS,
+                {
+                    "title": "Мы в цифрах",
+                    "items": [
+                        {
+                            "number": str(company.students.count()),
+                            "label": "студентов",
+                        },
+                        {
+                            "number": str(company.courses.filter(is_active=True).count()),
+                            "label": "направлений",
+                        },
+                        {
+                            "number": str(company.users.filter(role=User.Role.TEACHER).count()),
+                            "label": "преподавателей",
+                        },
+                        {
+                            "number": f"{company.rating}",
+                            "label": "рейтинг",
+                        },
+                    ],
                 },
             ),
             (
                 LandingSection.SectionType.COURSE_GRID,
-                {"title": "Популярные направления"},
+                {
+                    "title": "Популярные направления",
+                    "description": "Выберите программу под свою цель и уровень.",
+                    "courses": landing_courses,
+                },
+            ),
+            (
+                LandingSection.SectionType.BENEFITS,
+                {
+                    "title": "Почему выбирают нас",
+                    "items": [
+                        {
+                            "icon": "star",
+                            "title": "Практика с первого дня",
+                            "description": "Минимум сухой теории — больше задач и реальных кейсов.",
+                        },
+                        {
+                            "icon": "group",
+                            "title": "Небольшие группы",
+                            "description": "Преподаватель успевает работать с каждым студентом.",
+                        },
+                        {
+                            "icon": "schedule",
+                            "title": "Удобное расписание",
+                            "description": "Дневные и вечерние группы для учёбы и работы.",
+                        },
+                        {
+                            "icon": "support",
+                            "title": "Поддержка",
+                            "description": "Помогаем по вопросам обучения и домашних заданий.",
+                        },
+                    ],
+                },
+            ),
+            (
+                LandingSection.SectionType.TEACHER_SLIDER,
+                {
+                    "title": "Преподаватели",
+                    "teachers": landing_teachers,
+                },
             ),
             (
                 LandingSection.SectionType.PRICING,
-                {"title": "Стоимость обучения"},
+                {
+                    "title": "Стоимость обучения",
+                    "items": "\n".join(
+                        [
+                            f"{course['title']}|{course['price']}|{course['duration_weeks']} недель"
+                            for course in landing_courses[:3]
+                        ]
+                    ),
+                },
             ),
             (
                 LandingSection.SectionType.TESTIMONIALS,
-                {"title": "Отзывы студентов"},
+                {
+                    "title": "Отзывы студентов",
+                    "items": [
+                        {
+                            "name": "Айдана",
+                            "text": "Очень понравилась практика и понятное объяснение преподавателя.",
+                            "rating": 5,
+                        },
+                        {
+                            "name": "Нурсултан",
+                            "text": "За короткое время собрал хороший результат и стал увереннее.",
+                            "rating": 5,
+                        },
+                        {
+                            "name": "Мээрим",
+                            "text": "Удобное расписание, сильная команда и хорошая атмосфера.",
+                            "rating": 5,
+                        },
+                    ],
+                },
             ),
             (
                 LandingSection.SectionType.FAQ,
-                {"title": "Частые вопросы"},
+                {
+                    "title": "Частые вопросы",
+                    "items": [
+                        {
+                            "q": "Можно начать с нуля?",
+                            "a": "Да. Для начинающих есть группы с базовой программой.",
+                        },
+                        {
+                            "q": "Есть ли пробное занятие?",
+                            "a": "Да, менеджер подберёт ближайшую доступную дату.",
+                        },
+                        {
+                            "q": "Как проходит оплата?",
+                            "a": "Оплата производится помесячно по условиям выбранного курса.",
+                        },
+                        {
+                            "q": "Можно учиться вечером?",
+                            "a": "Да, у большинства направлений есть вечерние группы.",
+                        },
+                    ],
+                },
             ),
             (
                 LandingSection.SectionType.LEAD_FORM,
-                {"title": "Получить консультацию"},
+                {
+                    "title": "Запишитесь на бесплатную консультацию",
+                },
+            ),
+            (
+                LandingSection.SectionType.CONTACTS,
+                {
+                    "phone": company.phone,
+                    "telegram": company.telegram,
+                    "whatsapp": company.whatsapp,
+                    "address": company.district or "Ош",
+                },
             ),
         ]
         for order, (section_type, section_content) in enumerate(pending_sections):
