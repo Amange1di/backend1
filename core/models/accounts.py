@@ -55,10 +55,13 @@ class User(AbstractUser):
         return f"{self.username} ({self.role})"
 
     def get_managers_count(self) -> int:
-        """Get count of managers created by this course admin"""
+        """Get count of active managers created by this course admin."""
         if self.role != self.Role.COURSE_ADMIN:
             return 0
-        return self.created_users.filter(role=self.Role.MANAGER).count()
+        return self.created_users.filter(
+            role=self.Role.MANAGER,
+            is_active=True,
+        ).count()
 
     def can_create_manager(self) -> bool:
         """Check if this course admin can create another manager"""
