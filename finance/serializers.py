@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Budget, Forecast, PeriodComparison, AccountingReport, MonthlySummary, BudgetAlert
+from .models import Budget, Forecast, PeriodComparison, AccountingReport, MonthlySummary, BudgetAlert, SalaryRecord
 
 
 class BudgetSerializer(serializers.ModelSerializer):
@@ -84,3 +84,47 @@ class MonthlySummarySerializer(serializers.ModelSerializer):
             'total_students', 'total_groups', 'profit_margin', 'generated_at'
         ]
         read_only_fields = ['id', 'profit_margin', 'generated_at']
+
+
+class SalaryRecordSerializer(serializers.ModelSerializer):
+    employee_name = serializers.SerializerMethodField()
+    employee_role = serializers.CharField(source="employee.role", read_only=True)
+    total_amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        read_only=True,
+    )
+
+    class Meta:
+        model = SalaryRecord
+        fields = [
+            "id",
+            "company",
+            "employee",
+            "employee_name",
+            "employee_role",
+            "year",
+            "month",
+            "base_salary",
+            "percent_amount",
+            "bonus_amount",
+            "total_amount",
+            "status",
+            "paid_at",
+            "note",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "company",
+            "employee_name",
+            "employee_role",
+            "total_amount",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_employee_name(self, obj):
+        full_name = f"{obj.employee.first_name} {obj.employee.last_name}".strip()
+        return full_name or obj.employee.username
