@@ -584,7 +584,7 @@ class Command(BaseCommand):
         e2e_course_admin.phone = "+996 700 900 001"
         e2e_course_admin.is_active = True
         e2e_course_admin.must_set_password = False
-        e2e_course_admin.max_managers = 20
+        e2e_course_admin.max_managers = 100
         e2e_course_admin.max_pages = 20
         e2e_course_admin.max_blocks = 20
         e2e_course_admin.set_password(e2e_password)
