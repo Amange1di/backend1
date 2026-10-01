@@ -12,6 +12,7 @@ from .marketplace import CompanyCategory, CompanyCity, Company, JobVacancy, Publ
 from .contracts import Contract, ContractTemplate
 from .promo import PromoBalance, PromoTransaction, PromoCode, PromoRedemption
 from .audit import AuditLog
+from .billing import CompanySubscription, CompanyPlatformPayment
 
 __all__ = [
     "User",
@@ -56,4 +57,6 @@ __all__ = [
     "PromoCode",
     "PromoRedemption",
     "AuditLog",
+    "CompanySubscription",
+    "CompanyPlatformPayment",
 ]
