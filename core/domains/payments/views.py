@@ -172,7 +172,10 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 )
             )
 
-        serializer.save(company=company)
+        serializer.save(
+            company=company,
+            received_by=user,
+        )
 
     def destroy(self, request, *args, **kwargs):
         if request.user.role in (
