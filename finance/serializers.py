@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from core.models import User
-from .models import Budget, Forecast, PeriodComparison, AccountingReport, MonthlySummary, BudgetAlert, SalaryRecord
+from .models import Budget, Forecast, PeriodComparison, AccountingReport, MonthlySummary, BudgetAlert, SalaryPayment, SalaryRecord
 
 
 class BudgetSerializer(serializers.ModelSerializer):
@@ -88,6 +88,41 @@ class MonthlySummarySerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'profit_margin', 'generated_at']
 
 
+class SalaryPaymentSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SalaryPayment
+        fields = [
+            "id",
+            "salary_record",
+            "amount",
+            "paid_at",
+            "payment_type",
+            "note",
+            "created_by",
+            "created_by_name",
+            "created_at",
+        ]
+        read_only_fields = [
+            "id",
+            "salary_record",
+            "created_by",
+            "created_by_name",
+            "created_at",
+        ]
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Сумма выплаты должна быть больше нуля.")
+        return value
+
+    def get_created_by_name(self, obj):
+        if not obj.created_by:
+            return ""
+        return obj.created_by.get_full_name() or obj.created_by.username
+
+
 class SalaryRecordSerializer(serializers.ModelSerializer):
     employee_name = serializers.SerializerMethodField()
     employee_role = serializers.CharField(source="employee.role", read_only=True)
@@ -96,6 +131,17 @@ class SalaryRecordSerializer(serializers.ModelSerializer):
         decimal_places=2,
         read_only=True,
     )
+    paid_amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        read_only=True,
+    )
+    remaining_amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        read_only=True,
+    )
+    payments = SalaryPaymentSerializer(many=True, read_only=True)
 
     class Meta:
         model = SalaryRecord
@@ -111,6 +157,9 @@ class SalaryRecordSerializer(serializers.ModelSerializer):
             "percent_amount",
             "bonus_amount",
             "total_amount",
+            "paid_amount",
+            "remaining_amount",
+            "payments",
             "status",
             "paid_at",
             "note",
@@ -124,6 +173,9 @@ class SalaryRecordSerializer(serializers.ModelSerializer):
             "employee_role",
             "percent_amount",
             "total_amount",
+            "paid_amount",
+            "remaining_amount",
+            "payments",
             "status",
             "paid_at",
             "created_at",
