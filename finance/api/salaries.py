@@ -48,7 +48,20 @@ class SalaryRecordViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(company=self._company())
+        employee = serializer.validated_data["employee"]
+        year = serializer.validated_data["year"]
+        month = serializer.validated_data["month"]
+        percent_amount = Decimal("0")
+        if employee.role == User.Role.TEACHER:
+            percent_amount = self._teacher_percent_for_month(
+                employee,
+                year,
+                month,
+            )
+        serializer.save(
+            company=self._company(),
+            percent_amount=percent_amount,
+        )
 
     def _expense_description(self, record):
         return (
