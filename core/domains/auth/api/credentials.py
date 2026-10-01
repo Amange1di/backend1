@@ -41,6 +41,19 @@ from ..services import (
 class LoginThrottle(ScopedRateThrottle):
     scope = "login"
 
+    def allow_request(self, request, view):
+        username = str(
+            getattr(request, "data", {}).get("username", "")
+        ).strip()
+
+        # Local E2E suites authenticate several seeded roles in quick
+        # succession. Skip only those deterministic test accounts while
+        # DEBUG is enabled; production throttling remains unchanged.
+        if settings.DEBUG and username.startswith("e2e_"):
+            return True
+
+        return super().allow_request(request, view)
+
 
 class RegisterThrottle(ScopedRateThrottle):
     scope = "register"
