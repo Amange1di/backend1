@@ -119,18 +119,29 @@ class MonthlySummaryViewSet(viewsets.ModelViewSet):
         summaries = MonthlySummary.objects.filter(company=company).order_by('-year', '-month')[:12]
         data = MonthlySummarySerializer(summaries, many=True).data
 
-        total_income = sum(s['total_income'] for s in data)
-        total_expenses = sum(s['total_expenses'] for s in data)
-        total_salaries = sum(s['total_salaries'] for s in data)
-        total_profit = sum(s['net_profit'] for s in data)
+        totals = summaries.aggregate(
+            total_income=Sum("total_income"),
+            total_expenses=Sum("total_expenses"),
+            total_salaries=Sum("total_salaries"),
+            total_profit=Sum("net_profit"),
+        )
+
+        total_income = totals["total_income"] or 0
+        total_expenses = totals["total_expenses"] or 0
+        total_salaries = totals["total_salaries"] or 0
+        total_profit = totals["total_profit"] or 0
 
         return Response({
             'monthly_summaries': data,
             'summary': {
-                'total_income': total_income,
-                'total_expenses': total_expenses,
-                'total_salaries': total_salaries,
-                'total_profit': total_profit,
-                'avg_profit_margin': round((total_profit / total_income) * 100, 2) if total_income > 0 else 0,
+                'total_income': float(total_income),
+                'total_expenses': float(total_expenses),
+                'total_salaries': float(total_salaries),
+                'total_profit': float(total_profit),
+                'avg_profit_margin': (
+                    round((float(total_profit) / float(total_income)) * 100, 2)
+                    if total_income
+                    else 0
+                ),
             }
         })
