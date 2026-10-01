@@ -1,7 +1,7 @@
 from calendar import monthrange
 from datetime import date
 
-from django.db.models import Sum
+from django.db.models import F, Sum
 from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -72,7 +72,7 @@ class MonthlySummaryViewSet(viewsets.ModelViewSet):
                 paid_at__gte=first_day,
                 paid_at__lte=last_day,
             ).aggregate(
-                total=Sum("base_salary") + Sum("percent_amount") + Sum("bonus_amount")
+                total=Sum(F("base_salary") + F("percent_amount") + F("bonus_amount"))
             )["total"] or 0
         )
         total_expenses = float(regular_expenses)
