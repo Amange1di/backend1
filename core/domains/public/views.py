@@ -22,7 +22,8 @@ class PublicSubmitThrottle(AnonRateThrottle):
             getattr(request, "data", {}).get("full_name", "")
         ).strip()
 
-        if settings.DEBUG and full_name.startswith("E2E "):
+        host = request.get_host().split(":")[0].lower()
+        if host in {"localhost", "127.0.0.1"} and full_name.startswith("E2E "):
             return True
 
         return super().allow_request(request, view)
