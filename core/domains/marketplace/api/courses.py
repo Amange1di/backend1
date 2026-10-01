@@ -256,6 +256,15 @@ class UrgentCourseView(APIView):
 
     def post(self, request, pk):
         user = request.user
+        if user.role not in (
+            User.Role.COURSE_ADMIN,
+            User.Role.MANAGER,
+        ):
+            return Response(
+                {"detail": "Доступно только для course_admin и manager."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         course = get_object_or_404(
             PublicCourse,
             pk=pk,
@@ -279,21 +288,29 @@ class UrgentCourseView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        if (
-            course.is_urgent
-            and course.urgent_until
-            and course.urgent_until > timezone.now()
-        ):
+        try:
+            days = int(request.data.get("days", 3))
+        except (TypeError, ValueError):
             return Response(
-                {"detail": "Срочный бейдж для этого курса уже активен."},
+                {"detail": "Некорректный срок продвижения."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if days < 3 or days > 30 or days % 3 != 0:
+            return Response(
+                {"detail": "Срок должен быть от 3 до 30 дней с шагом 3 дня."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        blocks = days // 3
+        cost = URGENT_COST * blocks
+
         if not charge_promotion(
             company=user.company,
-            amount=URGENT_COST,
+            amount=cost,
             reason=(
-                f"Срочный бейдж для курса: {course.title}"
+                f"Срочное продвижение курса: "
+                f"{course.title} · {days} дн."
             ),
             transaction_type=(
                 Transaction.Type.WITHDRAWAL
@@ -303,16 +320,17 @@ class UrgentCourseView(APIView):
             return Response(
                 {
                     "detail": (
-                        f"Недостаточно средств. Требуется {URGENT_COST} eC."
+                        f"Недостаточно средств. Требуется {cost} eC."
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        mark_urgent(course, days=3)
-        return Response(
-            PublicCourseSerializer(course).data
-        )
+        mark_urgent(course, days=days)
+        data = PublicCourseSerializer(course).data
+        data["promotion_days"] = days
+        data["promotion_cost"] = cost
+        return Response(data)
 
 class PublicCourseViewSet(
     viewsets.ReadOnlyModelViewSet
