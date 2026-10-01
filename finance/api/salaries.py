@@ -9,18 +9,18 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.models import Expense, Group, User
-from core.permissions import IsCourseAdminOrManagerReadOnly
+from core.permissions import IsCourseAdmin
 from finance.models import SalaryPayment, SalaryRecord
 from finance.serializers import SalaryPaymentSerializer, SalaryRecordSerializer
 
 
 class SalaryRecordViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsCourseAdminOrManagerReadOnly]
+    permission_classes = [IsCourseAdmin]
     serializer_class = SalaryRecordSerializer
 
     def _company(self):
         user = self.request.user
-        if user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+        if user.role == User.Role.COURSE_ADMIN:
             return user.company
         return None
 
