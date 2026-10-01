@@ -7,9 +7,9 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from core.models import Expense, GroupMonth, Payment, User
+from core.models import Expense, Payment, User
 from core.permissions import IsCourseAdminOrManager
-from finance.models import MonthlySummary
+from finance.models import MonthlySummary, SalaryRecord
 from finance.serializers import MonthlySummarySerializer
 
 
@@ -66,12 +66,16 @@ class MonthlySummaryViewSet(viewsets.ModelViewSet):
             ).aggregate(total=Sum('amount'))['total'] or 0
         )
         salaries = (
-            GroupMonth.objects.filter(
-                group__company=company, teacher_salary__isnull=False,
-                completed_at__gte=first_day, completed_at__lte=last_day
-            ).aggregate(total=Sum('teacher_salary'))['total'] or 0
+            SalaryRecord.objects.filter(
+                company=company,
+                status=SalaryRecord.Status.PAID,
+                paid_at__gte=first_day,
+                paid_at__lte=last_day,
+            ).aggregate(
+                total=Sum("base_salary") + Sum("percent_amount") + Sum("bonus_amount")
+            )["total"] or 0
         )
-        total_expenses = float(regular_expenses) + float(salaries)
+        total_expenses = float(regular_expenses)
 
         students = Payment.objects.filter(
             company=company, paid_at__gte=first_day, paid_at__lte=last_day
