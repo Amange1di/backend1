@@ -6,7 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.models import Expense, GroupMonth, Payment, User
-from core.permissions import IsCourseAdminOrManager
+from core.permissions import IsCourseAdmin
 from finance.models import Forecast
 from finance.serializers import ForecastSerializer
 
@@ -16,7 +16,7 @@ class ForecastViewSet(viewsets.ModelViewSet):
     Прогнозирование доходов/расходов.
     CRUD + автоматический прогноз.
     """
-    permission_classes = [IsCourseAdminOrManager]
+    permission_classes = [IsCourseAdmin]
     serializer_class = ForecastSerializer
 
     def get_queryset(self):
@@ -36,12 +36,9 @@ class ForecastViewSet(viewsets.ModelViewSet):
         months_back = int(request.query_params.get('months', 3))
         user = request.user
 
-        if user.role == User.Role.COURSE_ADMIN:
-            company = user.company
-        elif user.role == User.Role.MANAGER:
-            company = user.company
-        else:
+        if user.role != User.Role.COURSE_ADMIN:
             return Response({'detail': 'Нет доступа'}, status=403)
+        company = user.company
 
         if not company:
             return Response({'detail': 'Компания не найдена'}, status=404)
