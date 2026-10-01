@@ -72,7 +72,7 @@ class FirstLoginFlowTests(APITestCase):
         )
         self.assertEqual(
             second.status_code,
-            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_403_FORBIDDEN,
         )
 
     def test_first_login_token_is_restricted_until_password_setup(self):
