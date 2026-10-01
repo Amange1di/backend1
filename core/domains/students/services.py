@@ -11,27 +11,14 @@ def normalize_phone(value: str) -> str:
 def build_student_username(
     student: Student,
 ) -> str:
-    base = (
-        normalize_phone(student.phone)
-        or f"student{student.id}"
-    )
-    company_name = (
-        student.company.name
-        if student.company
-        and student.company.name
-        else ""
-    )
-    company = re.sub(
-        r"[^a-z0-9]+",
-        "",
-        company_name.lower(),
-    )[:24]
-    prefix = company or "eduosh"
+    phone = normalize_phone(student.phone)
+    if phone:
+        if not User.objects.filter(username=phone).exists():
+            return phone
 
-    return (
-        f"{prefix}_student_"
-        f"{base}_{student.id}"
-    )
+        return f"student_{phone}_{student.id}"
+
+    return f"student_{student.id}"
 
 
 def find_existing_student_user_by_phone(
@@ -79,6 +66,9 @@ def sync_student_user(
             return student
 
         user = User(
+            # Student-facing login is always the phone number. The username
+            # remains an internal unique identifier and normally equals the
+            # normalized phone.
             username=build_student_username(
                 student
             ),
