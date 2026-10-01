@@ -42,19 +42,23 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
 
-        if user.role in (
-            User.Role.COURSE_ADMIN,
-            User.Role.MANAGER,
-        ):
+        if user.role == User.Role.COURSE_ADMIN:
             if user.company:
                 return Expense.objects.filter(
                     company=user.company
                 )
 
+        if user.role == User.Role.MANAGER:
+            if user.company:
+                return Expense.objects.filter(
+                    company=user.company
+                ).exclude(category="salary")
+
         return Expense.objects.none()
 
     def perform_create(self, serializer):
-        company = self.request.user.company
+        user = self.request.user
+        company = user.company
         if not company:
             raise PermissionDenied(
                 (
@@ -63,4 +67,24 @@ class ExpenseViewSet(viewsets.ModelViewSet):
                 )
             )
 
+        if (
+            user.role == User.Role.MANAGER
+            and serializer.validated_data.get("category") == "salary"
+        ):
+            raise PermissionDenied(
+                "Менеджер не может создавать расходы по зарплатам."
+            )
+
         serializer.save(company=company)
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        category = serializer.validated_data.get(
+            "category",
+            serializer.instance.category,
+        )
+        if user.role == User.Role.MANAGER and category == "salary":
+            raise PermissionDenied(
+                "Менеджер не может изменять расходы по зарплатам."
+            )
+        serializer.save()
