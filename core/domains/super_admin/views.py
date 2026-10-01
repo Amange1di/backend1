@@ -103,7 +103,6 @@ class SuperAdminStatsView(APIView):
         # Публичные курсы
         public_courses_count = PublicCourse.objects.all()
         if date_from or date_to:
-            from django.utils import timezone
             from datetime import datetime
             if date_from:
                 public_courses_count = public_courses_count.filter(created_at__gte=date_from)
