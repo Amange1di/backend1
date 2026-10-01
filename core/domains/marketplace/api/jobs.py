@@ -180,6 +180,7 @@ class BoostJobView(APIView):
             transaction_type=(
                 Transaction.Type.WITHDRAWAL
             ),
+            user=user,
         ):
             return Response(
                 {
@@ -232,6 +233,7 @@ class UrgentJobView(APIView):
             transaction_type=(
                 Transaction.Type.WITHDRAWAL
             ),
+            user=user,
         ):
             return Response(
                 {
