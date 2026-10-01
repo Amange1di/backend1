@@ -20,10 +20,7 @@ from core.models import (
     UserBalance,
     UserTransaction,
 )
-from core.permissions import (
-    IsCourseAdminOrManager,
-    IsCourseAdminOrManagerReadOnly,
-)
+from core.permissions import IsCourseAdmin
 
 from ..serializers import (
     ExpenseSerializer,
