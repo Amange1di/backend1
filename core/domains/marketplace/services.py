@@ -89,10 +89,17 @@ def promote_item(item, *, days: int):
 
 
 def mark_urgent(item, *, days: int):
+    now = timezone.now()
+    current_until = getattr(item, "urgent_until", None)
+    starts_from = (
+        current_until
+        if current_until and current_until > now
+        else now
+    )
     item.is_urgent = True
     item.urgent_until = (
-        timezone.now()
+        starts_from
         + timezone.timedelta(days=days)
     )
-    item.save()
+    item.save(update_fields=["is_urgent", "urgent_until", "updated_at"])
     return item
