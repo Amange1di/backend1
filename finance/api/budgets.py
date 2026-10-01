@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.models import User
-from core.permissions import IsCourseAdminOrManager
+from core.permissions import IsCourseAdmin
 from finance.models import Budget
 from finance.serializers import BudgetSerializer
 
@@ -13,7 +13,7 @@ class BudgetViewSet(viewsets.ModelViewSet):
     Управление бюджетами компании.
     CRUD + проверка превышения.
     """
-    permission_classes = [IsCourseAdminOrManager]
+    permission_classes = [IsCourseAdmin]
     serializer_class = BudgetSerializer
 
     def get_queryset(self):
