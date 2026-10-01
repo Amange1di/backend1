@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers
 
 from core.models import Company, JobVacancy, PublicCourse
@@ -37,6 +38,9 @@ class CompanySerializer(serializers.ModelSerializer):
 
 
 class PublicCourseSerializer(serializers.ModelSerializer):
+    company = CompanySerializer(read_only=True)
+    is_promoted = serializers.SerializerMethodField()
+    is_urgent = serializers.SerializerMethodField()
     company_name = serializers.CharField(
         source="company.name",
         read_only=True,
@@ -47,6 +51,7 @@ class PublicCourseSerializer(serializers.ModelSerializer):
     )
     landing_page_slug = serializers.SerializerMethodField()
     applications_count = serializers.IntegerField(
+        source="applications",
         read_only=True,
     )
 
@@ -89,6 +94,24 @@ class PublicCourseSerializer(serializers.ModelSerializer):
             "reviews_count",
             "views",
             "applications_count",
+            "is_promoted",
+            "promoted_until",
+            "is_urgent",
+            "urgent_until",
+        )
+
+    def get_is_promoted(self, obj):
+        return bool(
+            obj.is_promoted
+            and obj.promoted_until
+            and obj.promoted_until > timezone.now()
+        )
+
+    def get_is_urgent(self, obj):
+        return bool(
+            obj.is_urgent
+            and obj.urgent_until
+            and obj.urgent_until > timezone.now()
         )
 
     def validate_image(self, value):
@@ -111,6 +134,9 @@ class PublicCourseSerializer(serializers.ModelSerializer):
 
 
 class JobVacancySerializer(serializers.ModelSerializer):
+    company = CompanySerializer(read_only=True)
+    is_promoted = serializers.SerializerMethodField()
+    is_urgent = serializers.SerializerMethodField()
     company_name = serializers.CharField(
         source="company.name",
         read_only=True,
@@ -121,6 +147,7 @@ class JobVacancySerializer(serializers.ModelSerializer):
     )
     landing_page_slug = serializers.SerializerMethodField()
     applications_count = serializers.IntegerField(
+        source="applications",
         read_only=True,
     )
 
@@ -156,6 +183,24 @@ class JobVacancySerializer(serializers.ModelSerializer):
             "company",
             "views",
             "applications_count",
+            "is_promoted",
+            "promoted_until",
+            "is_urgent",
+            "urgent_until",
+        )
+
+    def get_is_promoted(self, obj):
+        return bool(
+            obj.is_promoted
+            and obj.promoted_until
+            and obj.promoted_until > timezone.now()
+        )
+
+    def get_is_urgent(self, obj):
+        return bool(
+            obj.is_urgent
+            and obj.urgent_until
+            and obj.urgent_until > timezone.now()
         )
 
     def get_landing_page_slug(self, obj):
@@ -168,6 +213,9 @@ class JobVacancySerializer(serializers.ModelSerializer):
 
 
 class JobVacancyDetailSerializer(serializers.ModelSerializer):
+    company = CompanySerializer(read_only=True)
+    is_promoted = serializers.SerializerMethodField()
+    is_urgent = serializers.SerializerMethodField()
     company_name = serializers.CharField(
         source="company.name",
         read_only=True,
@@ -221,6 +269,24 @@ class JobVacancyDetailSerializer(serializers.ModelSerializer):
             "company",
             "views",
             "applications_count",
+            "is_promoted",
+            "promoted_until",
+            "is_urgent",
+            "urgent_until",
+        )
+
+    def get_is_promoted(self, obj):
+        return bool(
+            obj.is_promoted
+            and obj.promoted_until
+            and obj.promoted_until > timezone.now()
+        )
+
+    def get_is_urgent(self, obj):
+        return bool(
+            obj.is_urgent
+            and obj.urgent_until
+            and obj.urgent_until > timezone.now()
         )
 
 
