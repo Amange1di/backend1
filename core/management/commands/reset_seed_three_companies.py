@@ -505,11 +505,25 @@ class Command(BaseCommand):
         schedule_days = ["1,3,5", "2,4,6"]
         schedule_times = ["10:00", "14:00", "18:00", "19:00"]
 
+        course_group_counts = {}
+
         for index, course in enumerate(courses, start=1):
             group_start = start_date + timedelta(days=7 + index * 3)
+
+            base_group_name = course.title
+            company_prefix = f"{company.name} — "
+            if base_group_name.startswith(company_prefix):
+                base_group_name = base_group_name[len(company_prefix):]
+            base_group_name = base_group_name.strip()
+
+            course_group_counts[base_group_name] = (
+                course_group_counts.get(base_group_name, 0) + 1
+            )
+            group_number = course_group_counts[base_group_name]
+
             group = Group.objects.create(
                 company=company,
-                name=f"{prefix.upper()}-{index:02d}",
+                name=f"{base_group_name} {group_number}",
                 course=course,
                 teacher=teachers[index - 1],
                 auditorium=auditoriums[(index - 1) % len(auditoriums)],
