@@ -38,13 +38,11 @@ class MarketplaceJobViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = JobVacancy.objects.filter(
-            is_active=True
-        )
+        queryset = JobVacancy.objects.all()
         user = self.request.user
 
         if not user.is_authenticated:
-            return queryset
+            return queryset.filter(is_active=True)
 
         if user.role == User.Role.COURSE_ADMIN:
             return queryset.filter(
@@ -58,7 +56,7 @@ class MarketplaceJobViewSet(viewsets.ModelViewSet):
                 )
             return queryset.none()
 
-        return queryset
+        return queryset.filter(is_active=True)
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -108,7 +106,6 @@ class MyJobsView(APIView):
 
         jobs = JobVacancy.objects.filter(
             company=user.company,
-            is_active=True,
         )
 
         data = []
