@@ -24,7 +24,7 @@ def build_student_username(
     company = re.sub(
         r"[^a-z0-9]+",
         "",
-        company_name,
+        company_name.lower(),
     )[:24]
     prefix = company or "eduosh"
 
@@ -32,6 +32,28 @@ def build_student_username(
         f"{prefix}_student_"
         f"{base}_{student.id}"
     )
+
+
+def find_existing_student_user_by_phone(
+    phone: str,
+):
+    normalized = normalize_phone(phone)
+    if not normalized:
+        return None
+
+    # Phone is a private cross-company identity key. We intentionally resolve
+    # it only on the backend and never expose whether another company already
+    # has this account.
+    candidates = User.objects.filter(
+        role=User.Role.STUDENT,
+        is_active=True,
+    ).only("id", "phone")
+
+    for candidate in candidates.iterator():
+        if normalize_phone(candidate.phone) == normalized:
+            return candidate
+
+    return None
 
 
 def sync_student_user(
@@ -42,6 +64,20 @@ def sync_student_user(
     user = student.user
 
     if not user:
+        existing_user = find_existing_student_user_by_phone(
+            student.phone
+        )
+
+        if existing_user:
+            student.user = existing_user
+            student.save(
+                update_fields=["user"]
+            )
+            # Do not mutate the shared account from a company-side student
+            # record. This prevents one course admin from changing another
+            # company's view of the same person's global account.
+            return student
+
         user = User(
             username=build_student_username(
                 student
@@ -72,6 +108,16 @@ def sync_student_user(
 
         return student
 
+    # If this Student is the account's original/primary company profile,
+    # keep the account in sync. Shared profiles from other companies remain
+    # company-local and never overwrite global identity fields.
+    if (
+        user.company_id
+        and student.company_id
+        and user.company_id != student.company_id
+    ):
+        return student
+
     changed_fields = []
 
     field_values = {
@@ -79,7 +125,6 @@ def sync_student_user(
         "last_name": student.last_name,
         "phone": student.phone,
         "telegram": student.telegram,
-        "company": student.company,
     }
 
     for field, value in field_values.items():
