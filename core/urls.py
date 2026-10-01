@@ -5,6 +5,7 @@ from .domains.sync.views import SyncExportView, SyncImportView
 urlpatterns = [
     path("", include("core.domains.balances.urls")),
     path("", include("core.domains.public.urls")),
+    path("", include("core.domains.promo_codes.urls")),
     path("", include("core.domains.telegram.urls")),
     path("", include("core.domains.super_admin.urls")),
     path("", include("core.domains.auth.urls")),
