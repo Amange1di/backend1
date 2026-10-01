@@ -1,4 +1,6 @@
 from rest_framework import serializers
+
+from core.models import User
 from .models import Budget, Forecast, PeriodComparison, AccountingReport, MonthlySummary, BudgetAlert, SalaryRecord
 
 
@@ -143,7 +145,7 @@ class SalaryRecordSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"employee": "Сотрудник должен принадлежать вашей компании."}
                 )
-            if employee.role not in (employee.Role.TEACHER, employee.Role.MANAGER):
+            if employee.role not in (User.Role.TEACHER, User.Role.MANAGER):
                 raise serializers.ValidationError(
                     {"employee": "Зарплата доступна только преподавателям и менеджерам."}
                 )
@@ -154,6 +156,30 @@ class SalaryRecordSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {field: "Сумма не может быть отрицательной."}
                 )
+
+        if request and employee:
+            company = request.user.company
+            year = attrs.get("year") or getattr(self.instance, "year", None)
+            month = attrs.get("month") or getattr(self.instance, "month", None)
+
+            if company and year and month:
+                duplicate_qs = SalaryRecord.objects.filter(
+                    company=company,
+                    employee=employee,
+                    year=year,
+                    month=month,
+                )
+                if self.instance:
+                    duplicate_qs = duplicate_qs.exclude(pk=self.instance.pk)
+
+                if duplicate_qs.exists():
+                    raise serializers.ValidationError(
+                        {
+                            "non_field_errors": [
+                                "Начисление этому сотруднику за выбранный месяц уже существует."
+                            ]
+                        }
+                    )
 
         return attrs
 
