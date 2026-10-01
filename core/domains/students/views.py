@@ -511,6 +511,13 @@ class StudentViewSet(viewsets.ModelViewSet):
         index = {name: headers.index(name) for name in expected}
         parsed_rows = []
         errors = []
+        phones_seen = set()
+        existing_phones = set(
+            Student.objects.filter(
+                company=user.company,
+                archived_at__isnull=True,
+            ).values_list("phone", flat=True)
+        )
 
         for excel_row, values in enumerate(rows[1:], start=2):
             if not values or all(value in (None, "") for value in values):
@@ -536,6 +543,24 @@ class StudentViewSet(viewsets.ModelViewSet):
                 errors.append(
                     {"row": excel_row, "field": "phone", "message": "Укажите телефон."}
                 )
+            elif phone in phones_seen:
+                errors.append(
+                    {
+                        "row": excel_row,
+                        "field": "phone",
+                        "message": "Такой телефон уже есть выше в Excel.",
+                    }
+                )
+            elif phone in existing_phones:
+                errors.append(
+                    {
+                        "row": excel_row,
+                        "field": "phone",
+                        "message": "Студент с таким телефоном уже есть в компании.",
+                    }
+                )
+
+            phones_seen.add(phone)
 
             parsed_rows.append(
                 {
