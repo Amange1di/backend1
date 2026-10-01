@@ -554,11 +554,376 @@ class Command(BaseCommand):
         promo_balance.balance = 50000
         promo_balance.save(update_fields=["balance"])
 
+        # Dedicated E2E company and accounts.
+        # These credentials are intentionally deterministic for local automated tests.
+        e2e_password = "E2ETest123!"
+
+        e2e_super_admin, _ = User.objects.get_or_create(
+            username="e2e_super_admin",
+            defaults={"role": User.Role.SUPER_ADMIN},
+        )
+        e2e_super_admin.role = User.Role.SUPER_ADMIN
+        e2e_super_admin.first_name = "E2E"
+        e2e_super_admin.last_name = "Super Admin"
+        e2e_super_admin.email = "e2e.superadmin@test.local"
+        e2e_super_admin.is_active = True
+        e2e_super_admin.is_staff = True
+        e2e_super_admin.is_superuser = True
+        e2e_super_admin.must_set_password = False
+        e2e_super_admin.set_password(e2e_password)
+        e2e_super_admin.save()
+
+        e2e_course_admin, _ = User.objects.get_or_create(
+            username="e2e_course_admin",
+            defaults={"role": User.Role.COURSE_ADMIN},
+        )
+        e2e_course_admin.role = User.Role.COURSE_ADMIN
+        e2e_course_admin.first_name = "E2E"
+        e2e_course_admin.last_name = "Course Admin"
+        e2e_course_admin.email = "e2e.courseadmin@test.local"
+        e2e_course_admin.phone = "+996 700 900 001"
+        e2e_course_admin.is_active = True
+        e2e_course_admin.must_set_password = False
+        e2e_course_admin.max_managers = 20
+        e2e_course_admin.max_pages = 20
+        e2e_course_admin.max_blocks = 20
+        e2e_course_admin.set_password(e2e_password)
+        e2e_course_admin.save()
+
+        e2e_company, _ = Company.objects.update_or_create(
+            slug="e2e-test-academy",
+            defaults={
+                "name": "E2E Test Academy",
+                "description": "Dedicated company for Playwright end-to-end tests.",
+                "category": CompanyCategory.IT,
+                "city": CompanyCity.OSH,
+                "district": "E2E District",
+                "phone": "+996 700 900 000",
+                "telegram": "@e2e_test_academy",
+                "instagram": "@e2e_test_academy",
+                "owner": e2e_course_admin,
+                "is_active": True,
+                "rating": Decimal("5.00"),
+                "reviews_count": 1,
+            },
+        )
+        e2e_course_admin.company = e2e_company
+        e2e_course_admin.save(update_fields=["company"])
+
+        e2e_admin, _ = User.objects.get_or_create(
+            username="e2e_admin",
+            defaults={"role": User.Role.ADMIN},
+        )
+        e2e_admin.role = User.Role.ADMIN
+        e2e_admin.first_name = "E2E"
+        e2e_admin.last_name = "Admin"
+        e2e_admin.email = "e2e.admin@test.local"
+        e2e_admin.phone = "+996 700 900 002"
+        e2e_admin.company = e2e_company
+        e2e_admin.is_active = True
+        e2e_admin.must_set_password = False
+        e2e_admin.set_password(e2e_password)
+        e2e_admin.save()
+
+        e2e_manager, _ = User.objects.get_or_create(
+            username="e2e_manager",
+            defaults={"role": User.Role.MANAGER},
+        )
+        e2e_manager.role = User.Role.MANAGER
+        e2e_manager.first_name = "E2E"
+        e2e_manager.last_name = "Manager"
+        e2e_manager.email = "e2e.manager@test.local"
+        e2e_manager.phone = "+996 700 900 003"
+        e2e_manager.company = e2e_company
+        e2e_manager.created_by = e2e_course_admin
+        e2e_manager.is_active = True
+        e2e_manager.must_set_password = False
+        e2e_manager.set_password(e2e_password)
+        e2e_manager.save()
+
+        e2e_teacher, _ = User.objects.get_or_create(
+            username="e2e_teacher",
+            defaults={"role": User.Role.TEACHER},
+        )
+        e2e_teacher.role = User.Role.TEACHER
+        e2e_teacher.first_name = "E2E"
+        e2e_teacher.last_name = "Teacher"
+        e2e_teacher.email = "e2e.teacher@test.local"
+        e2e_teacher.phone = "+996 700 900 004"
+        e2e_teacher.company = e2e_company
+        e2e_teacher.created_by = e2e_course_admin
+        e2e_teacher.salary_rate = Decimal("40000.00")
+        e2e_teacher.working_hours = "09:00–18:00"
+        e2e_teacher.is_active = True
+        e2e_teacher.must_set_password = False
+        e2e_teacher.set_password(e2e_password)
+        e2e_teacher.save()
+
+        e2e_student_user, _ = User.objects.get_or_create(
+            username="e2e_student",
+            defaults={"role": User.Role.STUDENT},
+        )
+        e2e_student_user.role = User.Role.STUDENT
+        e2e_student_user.first_name = "E2E"
+        e2e_student_user.last_name = "Student"
+        e2e_student_user.email = "e2e.student@test.local"
+        e2e_student_user.phone = "+996 700 900 005"
+        e2e_student_user.company = e2e_company
+        e2e_student_user.is_active = True
+        e2e_student_user.must_set_password = False
+        e2e_student_user.set_password(e2e_password)
+        e2e_student_user.save()
+
+        e2e_course, _ = Course.objects.get_or_create(
+            title="E2E Frontend Course",
+            defaults={
+                "price": Decimal("15000.00"),
+                "duration_weeks": 12,
+                "lesson_duration_minutes": 90,
+                "description": "Playwright E2E course.",
+                "schedule": "Дүйшөмбү / Шаршемби / Жума",
+            },
+        )
+        e2e_course.price = Decimal("15000.00")
+        e2e_course.duration_weeks = 12
+        e2e_course.lesson_duration_minutes = 90
+        e2e_course.description = "Playwright E2E course."
+        e2e_course.schedule = "Дүйшөмбү / Шаршемби / Жума"
+        e2e_course.save()
+        e2e_course.admins.add(e2e_course_admin)
+        e2e_teacher.teaching_courses.add(e2e_course)
+
+        e2e_auditorium, _ = Auditorium.objects.update_or_create(
+            company=e2e_company,
+            name="E2E Room",
+            defaults={"number": "E2E-101"},
+        )
+
+        e2e_group, _ = Group.objects.get_or_create(
+            company=e2e_company,
+            name="E2E-Group-01",
+            defaults={
+                "course": e2e_course,
+                "teacher": e2e_teacher,
+                "auditorium": e2e_auditorium,
+                "status": Group.Status.ACTIVE,
+                "schedule_days": "1,3,5",
+                "schedule_time": "10:00",
+                "lessons_count": 24,
+                "lessons_per_month": 8,
+                "total_months": 3,
+                "start_date": today - timedelta(days=7),
+                "end_date": today + timedelta(days=77),
+                "teacher_percent": Decimal("30.00"),
+            },
+        )
+        e2e_group.course = e2e_course
+        e2e_group.teacher = e2e_teacher
+        e2e_group.auditorium = e2e_auditorium
+        e2e_group.status = Group.Status.ACTIVE
+        e2e_group.schedule_days = "1,3,5"
+        e2e_group.schedule_time = "10:00"
+        e2e_group.archived_at = None
+        e2e_group.save()
+
+        e2e_student, _ = Student.objects.update_or_create(
+            company=e2e_company,
+            phone="+996 700 900 005",
+            defaults={
+                "user": e2e_student_user,
+                "first_name": "E2E",
+                "last_name": "Student",
+                "telegram": "@e2e_student",
+                "primary_course": e2e_course,
+                "can_login": True,
+                "notes": "Dedicated Playwright student.",
+                "archived_at": None,
+            },
+        )
+        e2e_group.students.add(e2e_student)
+
+        Attendance.objects.update_or_create(
+            group=e2e_group,
+            student=e2e_student,
+            date=today,
+            defaults={"status": Attendance.Status.PRESENT},
+        )
+
+        Payment.objects.update_or_create(
+            student=e2e_student,
+            company=e2e_company,
+            paid_at=today,
+            defaults={
+                "group": e2e_group,
+                "amount": Decimal("15000.00"),
+                "status": Payment.Status.PAID,
+                "due_date": today + timedelta(days=30),
+                "archived_at": None,
+            },
+        )
+
+        Expense.objects.update_or_create(
+            company=e2e_company,
+            description="E2E test expense",
+            date=today,
+            defaults={
+                "category": "testing",
+                "amount": Decimal("1000.00"),
+            },
+        )
+
+        Task.objects.update_or_create(
+            company=e2e_company,
+            title="E2E manager task",
+            defaults={
+                "description": "Task used by Playwright tests.",
+                "assigned_to": e2e_manager,
+                "created_by": e2e_course_admin,
+                "due_date": today + timedelta(days=2),
+                "status": Task.Status.PENDING,
+                "priority": Task.Priority.MEDIUM,
+                "repeat_type": Task.RepeatType.NONE,
+            },
+        )
+
+        e2e_lead, _ = TrialLead.objects.update_or_create(
+            company=e2e_company,
+            phone="+996 700 900 006",
+            defaults={
+                "full_name": "E2E Trial Lead",
+                "age": 20,
+                "course_interest": e2e_course.title,
+                "trial_attended": False,
+                "status": TrialLead.Status.NEW,
+                "trial_date": today + timedelta(days=1),
+                "source": "Playwright",
+                "comment": "Dedicated E2E lead.",
+                "converted_to_student": False,
+                "group_assigned": e2e_group,
+                "payment_status": TrialLead.PaymentStatus.NOT_PAID,
+            },
+        )
+        LeadAssignment.objects.update_or_create(
+            lead=e2e_lead,
+            defaults={"manager": e2e_manager},
+        )
+
+        e2e_homework, _ = HomeworkTask.objects.update_or_create(
+            group=e2e_group,
+            title="E2E Homework",
+            defaults={
+                "teacher": e2e_teacher,
+                "company": e2e_company,
+                "lesson_number": 1,
+                "description": "Homework used by Playwright tests.",
+                "task_type": HomeworkTask.TaskType.HOMEWORK,
+                "deadline": now + timedelta(days=7),
+                "is_published": True,
+                "allow_late": True,
+            },
+        )
+        HomeworkSubmission.objects.update_or_create(
+            task=e2e_homework,
+            student=e2e_student,
+            defaults={
+                "answer_text": "E2E homework answer.",
+                "status": HomeworkSubmission.Status.PENDING,
+                "grade": None,
+                "teacher_comment": "",
+            },
+        )
+
+        PublicCourse.objects.update_or_create(
+            company=e2e_company,
+            slug="e2e-frontend-course",
+            defaults={
+                "title": "E2E Marketplace Course",
+                "price": Decimal("15000.00"),
+                "duration_weeks": 12,
+                "lesson_duration_minutes": 90,
+                "description": "Marketplace course used by Playwright tests.",
+                "category": CompanyCategory.IT,
+                "city": CompanyCity.OSH,
+                "schedule": "10:00",
+                "requirements": "E2E only",
+                "curriculum": [{"title": "E2E Module", "lessons": 2}],
+                "rating": Decimal("5.00"),
+                "reviews_count": 1,
+                "is_active": True,
+                "views": 1,
+                "applications_count": 0,
+            },
+        )
+
+        JobVacancy.objects.update_or_create(
+            company=e2e_company,
+            title="E2E Frontend Developer",
+            defaults={
+                "description": "E2E vacancy used by Playwright tests.",
+                "category": CompanyCategory.IT,
+                "city": CompanyCity.OSH,
+                "district": "E2E District",
+                "salary_min": 30000,
+                "salary_max": 50000,
+                "schedule": "Толук күн",
+                "requirements": "E2E only",
+                "responsibilities": "Run automated tests.",
+                "is_active": True,
+                "views": 1,
+                "applications": 0,
+            },
+        )
+
+        for month_number in range(1, 4):
+            GroupMonth.objects.update_or_create(
+                group=e2e_group,
+                month_number=month_number,
+                defaults={
+                    "teacher_salary": Decimal("12000.00"),
+                    "status": (
+                        GroupMonth.Status.COMPLETED
+                        if month_number == 1
+                        else GroupMonth.Status.PENDING
+                    ),
+                    "completed_at": now if month_number == 1 else None,
+                },
+            )
+
+        Contract.objects.update_or_create(
+            contract_number="E2E-CONTRACT-001",
+            defaults={
+                "company": e2e_company,
+                "student": e2e_student,
+                "group": e2e_group,
+                "status": Contract.Status.SIGNED,
+                "amount": Decimal("15000.00"),
+                "start_date": today,
+                "end_date": today + timedelta(days=90),
+                "terms": "Dedicated E2E contract.",
+                "created_by": e2e_course_admin,
+                "signed_at": now,
+            },
+        )
+
+        e2e_balance, _ = CompanyBalance.objects.get_or_create(
+            company=e2e_company
+        )
+        e2e_balance.balance = 10000
+        e2e_balance.save(update_fields=["balance"])
+
         self.stdout.write(self.style.SUCCESS("Demo database seeded successfully."))
         self.stdout.write("")
         self.stdout.write("Demo login:")
         self.stdout.write("  username: demo_admin")
         self.stdout.write("  password: Demo1234!")
+        self.stdout.write("")
+        self.stdout.write("E2E Test Academy logins:")
+        self.stdout.write("  e2e_super_admin / E2ETest123!")
+        self.stdout.write("  e2e_admin / E2ETest123!")
+        self.stdout.write("  e2e_course_admin / E2ETest123!")
+        self.stdout.write("  e2e_manager / E2ETest123!")
+        self.stdout.write("  e2e_teacher / E2ETest123!")
+        self.stdout.write("  e2e_student / E2ETest123!")
         self.stdout.write("")
         self.stdout.write(
             f"Created/updated: {len(courses)} courses, {len(groups)} groups, "
