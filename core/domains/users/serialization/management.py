@@ -41,6 +41,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             "phone",
             "address",
             "telegram",
+            "salary_rate",
             "company",
             "company_id",
             "max_managers",
@@ -135,6 +136,9 @@ class RegisterSerializer(serializers.ModelSerializer):
             telegram=validated_data.get(
                 "telegram",
                 "",
+            ),
+            salary_rate=validated_data.get(
+                "salary_rate"
             ),
             company=company,
             max_managers=(
