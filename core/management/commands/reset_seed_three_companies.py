@@ -28,6 +28,9 @@ from core.models import (
     LandingSection,
     LeadAssignment,
     Payment,
+    PromoBalance,
+    PromoCode,
+    PromoRedemption,
     PublicCourse,
     Student,
     Task,
@@ -315,6 +318,7 @@ class Command(BaseCommand):
                 course_admin=course_admin,
                 platform_admin=platform_admin,
                 start_date=start_date,
+                today=today,
             )
             self._create_finance_history(
                 company=company,
@@ -328,6 +332,13 @@ class Command(BaseCommand):
                 start_date=start_date,
                 today=today,
             )
+
+        self._create_platform_promos(
+            platform_admin=platform_admin,
+            companies=created_companies,
+            today=today,
+            year=year,
+        )
 
         self.stdout.write(self.style.SUCCESS("Database reset and seeded successfully."))
         self.stdout.write("")
@@ -977,8 +988,9 @@ class Command(BaseCommand):
         course_admin,
         platform_admin,
         start_date,
+        today,
     ):
-        page = LandingPage.objects.create(
+        active_page = LandingPage.objects.create(
             title=f"{company.name} — Главная",
             slug=f"{company.slug}-home",
             company=company,
@@ -989,11 +1001,11 @@ class Command(BaseCommand):
             moderated_by=platform_admin,
             published_at=self._at_date(start_date, 12),
         )
-        LandingPage.objects.filter(pk=page.pk).update(
+        LandingPage.objects.filter(pk=active_page.pk).update(
             created_at=self._at_date(start_date, 9)
         )
 
-        sections = [
+        active_sections = [
             (
                 LandingSection.SectionType.HERO,
                 {
@@ -1024,6 +1036,17 @@ class Command(BaseCommand):
                 },
             ),
             (
+                LandingSection.SectionType.BENEFITS,
+                {
+                    "title": "Почему выбирают нас",
+                    "items": [
+                        "Практическое обучение",
+                        "Сильные преподаватели",
+                        "Поддержка студентов",
+                    ],
+                },
+            ),
+            (
                 LandingSection.SectionType.LEAD_FORM,
                 {"title": "Записаться на консультацию"},
             ),
@@ -1036,13 +1059,174 @@ class Command(BaseCommand):
                 },
             ),
         ]
-        for order, (section_type, section_content) in enumerate(sections):
+        for order, (section_type, section_content) in enumerate(active_sections):
             LandingSection.objects.create(
-                page=page,
+                page=active_page,
                 section_type=section_type,
                 order=order,
                 content=section_content,
             )
+
+        # Every company has its own current moderation item.
+        submitted_date = max(start_date, today - timedelta(days=2))
+        pending_page = LandingPage.objects.create(
+            title=f"{company.name} — Осенняя кампания",
+            slug=f"{company.slug}-autumn-{today.year}",
+            company=company,
+            owner=course_admin,
+            status=LandingPage.Status.PENDING,
+            submitted_at=self._at_date(submitted_date, 14),
+        )
+        LandingPage.objects.filter(pk=pending_page.pk).update(
+            created_at=self._at_date(submitted_date, 13)
+        )
+
+        pending_sections = [
+            (
+                LandingSection.SectionType.HERO,
+                {
+                    "title": f"Новый набор — {company.name}",
+                    "subtitle": "Осенний набор в новые группы",
+                    "buttonText": "Оставить заявку",
+                },
+            ),
+            (
+                LandingSection.SectionType.COURSE_GRID,
+                {"title": "Популярные направления"},
+            ),
+            (
+                LandingSection.SectionType.PRICING,
+                {"title": "Стоимость обучения"},
+            ),
+            (
+                LandingSection.SectionType.TESTIMONIALS,
+                {"title": "Отзывы студентов"},
+            ),
+            (
+                LandingSection.SectionType.FAQ,
+                {"title": "Частые вопросы"},
+            ),
+            (
+                LandingSection.SectionType.LEAD_FORM,
+                {"title": "Получить консультацию"},
+            ),
+        ]
+        for order, (section_type, section_content) in enumerate(pending_sections):
+            LandingSection.objects.create(
+                page=pending_page,
+                section_type=section_type,
+                order=order,
+                content=section_content,
+            )
+
+    def _create_platform_promos(
+        self,
+        *,
+        platform_admin,
+        companies,
+        today,
+        year,
+    ):
+        month_names = {
+            1: "JAN",
+            2: "FEB",
+            3: "MAR",
+            4: "APR",
+            5: "MAY",
+            6: "JUN",
+            7: "JUL",
+            8: "AUG",
+            9: "SEP",
+            10: "OCT",
+            11: "NOV",
+            12: "DEC",
+        }
+
+        # Monthly promo campaigns from June through the current month.
+        for month in range(6, today.month + 1):
+            month_start = date(year, month, 1)
+            if month == 12:
+                next_month = date(year + 1, 1, 1)
+            else:
+                next_month = date(year, month + 1, 1)
+
+            expiry = timezone.make_aware(
+                datetime.combine(next_month - timedelta(days=1), time(23, 59))
+            )
+            is_current = month == today.month
+            promo = PromoCode.objects.create(
+                code=f"{month_names[month]}{year}",
+                reward_type=PromoCode.RewardType.COINS,
+                reward_value=500 + (month - 6) * 100,
+                max_usages=50,
+                current_usages=0,
+                expiry_date=expiry,
+                is_active=is_current,
+                created_by=platform_admin,
+            )
+            balance = PromoBalance.objects.create(
+                promo_code=promo,
+                balance=0,
+            )
+            balance.add_coins(promo.reward_value * promo.max_usages)
+
+            # Historical months include realistic redemptions.
+            if not is_current:
+                for company in companies[: min(len(companies), 2)]:
+                    owner = company.owner
+                    if owner and promo.activate(owner):
+                        PromoRedemption.objects.get_or_create(
+                            promo_code=promo,
+                            company=company,
+                            defaults={"user": owner},
+                        )
+
+        holiday_promos = [
+            {
+                "code": f"NOORUZ{year}",
+                "reward": 1200,
+                "expires": date(year, 3, 31),
+                "active": False,
+            },
+            {
+                "code": f"BACKTOSCHOOL{year}",
+                "reward": 1500,
+                "expires": date(year, 9, 15),
+                "active": False,
+            },
+            {
+                "code": f"AUTUMN{year}",
+                "reward": 1000,
+                "expires": date(year, 10, 31),
+                "active": today <= date(year, 10, 31),
+            },
+            {
+                "code": f"NEWYEAR{year + 1}",
+                "reward": 2000,
+                "expires": date(year + 1, 1, 10),
+                "active": today.month >= 12,
+            },
+        ]
+
+        for item in holiday_promos:
+            expiry = timezone.make_aware(
+                datetime.combine(item["expires"], time(23, 59))
+            )
+            promo = PromoCode.objects.create(
+                code=item["code"],
+                reward_type=PromoCode.RewardType.COINS,
+                reward_value=item["reward"],
+                max_usages=100,
+                current_usages=0,
+                expiry_date=expiry,
+                is_active=item["active"],
+                created_by=platform_admin,
+            )
+            balance = PromoBalance.objects.create(
+                promo_code=promo,
+                balance=0,
+            )
+            balance.add_coins(promo.reward_value * promo.max_usages)
 
     def _create_platform_billing(
         self,
