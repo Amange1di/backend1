@@ -276,6 +276,7 @@ class Command(BaseCommand):
                 start_date=start_date,
                 today=today,
             )
+            self._create_group_months(groups=groups, start_date=start_date, today=today)
             self._create_expenses(company=company, start_date=start_date, today=today)
             self._create_tasks(
                 company=company,
@@ -299,7 +300,6 @@ class Command(BaseCommand):
                 teachers=teachers,
                 today=today,
             )
-            self._create_group_months(groups=groups, start_date=start_date, today=today)
             self._create_finance_reporting(
                 company=company,
                 start_date=start_date,
@@ -406,6 +406,8 @@ class Command(BaseCommand):
                 last_name=last_name,
                 phone=f"+996 555 {company_index}{index}0 10{index}",
                 telegram=f"@{prefix}_manager_{index}",
+                salary_rate=Decimal(str(35000 + index * 5000)),
+                working_hours="09:00–18:00",
                 company=company,
                 created_by=course_admin,
                 is_active=True,
@@ -716,26 +718,111 @@ class Command(BaseCommand):
                 )
 
     def _create_expenses(self, *, company, start_date, today):
-        monthly_specs = [
-            ("Аренда офиса", "rent", Decimal("65000.00")),
-            ("Интернет жана коммуналдык", "utilities", Decimal("14000.00")),
-            ("Маркетинг жана реклама", "marketing", Decimal("22000.00")),
-            ("Окуу материалдары", "materials", Decimal("9000.00")),
-        ]
+        from calendar import monthrange
+        from django.db.models import Sum
 
-        for month_index, month_start in enumerate(
-            self._month_starts(start_date, today)
-        ):
-            for item_index, (description, category, amount) in enumerate(
-                monthly_specs
-            ):
-                expense_date = month_start + timedelta(days=item_index * 4)
-                if expense_date > today:
+        months = self._month_starts(start_date, today)
+
+        for month_index, month_start in enumerate(months):
+            month_end = date(
+                month_start.year,
+                month_start.month,
+                monthrange(month_start.year, month_start.month)[1],
+            )
+            period_end = min(month_end, today)
+
+            monthly_income = (
+                Payment.objects.filter(
+                    company=company,
+                    status=Payment.Status.PAID,
+                    paid_at__gte=month_start,
+                    paid_at__lte=period_end,
+                ).aggregate(total=Sum("amount"))["total"]
+                or Decimal("0")
+            )
+
+            if monthly_income <= 0:
+                continue
+
+            # В реальной учебной компании расходы обычно меняются вместе с
+            # выручкой. Для demo держим их примерно в диапазоне 48–56%.
+            expense_ratio = Decimal(
+                str(0.48 + ((month_index + company.id) % 5) * 0.02)
+            )
+            target_total_expenses = (
+                monthly_income * expense_ratio
+            ).quantize(Decimal("0.01"))
+
+            teacher_salaries = (
+                GroupMonth.objects.filter(
+                    group__company=company,
+                    teacher_salary__isnull=False,
+                    completed_at__date__gte=month_start,
+                    completed_at__date__lte=period_end,
+                ).aggregate(total=Sum("teacher_salary"))["total"]
+                or Decimal("0")
+            )
+
+            managers = User.objects.filter(
+                company=company,
+                role=User.Role.MANAGER,
+                is_active=True,
+                date_joined__date__lte=period_end,
+            ).order_by("id")
+
+            manager_salary_total = Decimal("0")
+            salary_date = min(month_start + timedelta(days=24), period_end)
+            for manager in managers:
+                salary = manager.salary_rate or Decimal("0")
+                if salary <= 0:
                     continue
+                manager_salary_total += salary
+                Expense.objects.create(
+                    company=company,
+                    description=(
+                        f"Зарплата менеджера "
+                        f"{manager.first_name} {manager.last_name} — "
+                        f"{month_start:%m.%Y}"
+                    ),
+                    amount=salary,
+                    category="salary",
+                    date=salary_date,
+                )
+
+            fixed_salary_costs = teacher_salaries + manager_salary_total
+            remaining = max(
+                target_total_expenses - fixed_salary_costs,
+                Decimal("0"),
+            )
+
+            categories = [
+                ("Аренда офиса", "rent", Decimal("0.42")),
+                ("Коммунальные и интернет", "utilities", Decimal("0.10")),
+                ("Маркетинг и реклама", "marketing", Decimal("0.20")),
+                ("Учебные материалы", "materials", Decimal("0.09")),
+                ("Оборудование и сервисы", "equipment", Decimal("0.08")),
+                ("Налоги и обязательные платежи", "tax", Decimal("0.11")),
+            ]
+
+            distributed = Decimal("0")
+            for item_index, (description, category, share) in enumerate(categories):
+                if item_index == len(categories) - 1:
+                    amount = remaining - distributed
+                else:
+                    amount = (remaining * share).quantize(Decimal("0.01"))
+                    distributed += amount
+
+                if amount <= 0:
+                    continue
+
+                expense_date = min(
+                    month_start + timedelta(days=2 + item_index * 4),
+                    period_end,
+                )
                 Expense.objects.create(
                     company=company,
                     description=f"{description} — {month_start:%m.%Y}",
-                    amount=amount + month_index * 1000,
+                    amount=amount,
                     category=category,
                     date=expense_date,
                 )
