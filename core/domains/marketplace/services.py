@@ -48,6 +48,7 @@ def charge_promotion(
     amount,
     reason,
     transaction_type,
+    user=None,
 ):
     if amount <= 0:
         return False
@@ -69,6 +70,7 @@ def charge_promotion(
         balance.save(update_fields=["balance", "last_update"])
         Transaction.objects.create(
             company=company,
+            user=user,
             amount=-amount,
             reason=reason,
             transaction_type=transaction_type,
