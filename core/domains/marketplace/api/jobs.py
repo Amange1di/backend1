@@ -83,6 +83,28 @@ class MarketplaceJobViewSet(viewsets.ModelViewSet):
 
         serializer.save(company=company)
 
+    def perform_update(self, serializer):
+        user = self.request.user
+        job = self.get_object()
+
+        if (
+            user.role == User.Role.COURSE_ADMIN
+            and job.company.owner != user
+        ):
+            raise PermissionDenied(
+                "Not allowed for this job."
+            )
+
+        if (
+            user.role == User.Role.MANAGER
+            and job.company != user.company
+        ):
+            raise PermissionDenied(
+                "Not allowed for this job."
+            )
+
+        serializer.save()
+
 class MyJobsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -123,7 +145,11 @@ class MyJobsView(APIView):
                 "applications_count",
                 0,
             )
-            job_data["status"] = "approved"
+            job_data["status"] = (
+                "approved"
+                if job.is_active
+                else "draft"
+            )
             data.append(job_data)
 
         return Response(data)
@@ -310,7 +336,24 @@ class PublicJobViewSet(
         return JobVacancySerializer
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = (
+            super()
+            .get_queryset()
+            .annotate(
+                promotion_rank=models.Case(
+                    models.When(
+                        promoted_until__gt=timezone.now(),
+                        then=models.Value(1),
+                    ),
+                    default=models.Value(0),
+                    output_field=models.IntegerField(),
+                )
+            )
+            .order_by(
+                "-promotion_rank",
+                "-created_at",
+            )
+        )
 
         category = self.request.query_params.get(
             "category"
