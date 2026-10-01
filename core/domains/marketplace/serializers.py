@@ -51,7 +51,6 @@ class PublicCourseSerializer(serializers.ModelSerializer):
     )
     landing_page_slug = serializers.SerializerMethodField()
     applications_count = serializers.IntegerField(
-        source="applications",
         read_only=True,
     )
 
@@ -233,6 +232,7 @@ class JobVacancyDetailSerializer(serializers.ModelSerializer):
         read_only=True,
     )
     applications_count = serializers.IntegerField(
+        source="applications",
         read_only=True,
     )
 
