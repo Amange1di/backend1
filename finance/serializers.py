@@ -120,10 +120,42 @@ class SalaryRecordSerializer(serializers.ModelSerializer):
             "company",
             "employee_name",
             "employee_role",
+            "percent_amount",
             "total_amount",
+            "status",
+            "paid_at",
             "created_at",
             "updated_at",
         ]
+
+    def validate_month(self, value):
+        if not 1 <= value <= 12:
+            raise serializers.ValidationError("Month must be between 1 and 12.")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        employee = attrs.get("employee") or getattr(self.instance, "employee", None)
+
+        if request and employee:
+            company = request.user.company
+            if not company or employee.company_id != company.id:
+                raise serializers.ValidationError(
+                    {"employee": "Сотрудник должен принадлежать вашей компании."}
+                )
+            if employee.role not in (employee.Role.TEACHER, employee.Role.MANAGER):
+                raise serializers.ValidationError(
+                    {"employee": "Зарплата доступна только преподавателям и менеджерам."}
+                )
+
+        for field in ("base_salary", "bonus_amount"):
+            value = attrs.get(field)
+            if value is not None and value < 0:
+                raise serializers.ValidationError(
+                    {field: "Сумма не может быть отрицательной."}
+                )
+
+        return attrs
 
     def get_employee_name(self, obj):
         full_name = f"{obj.employee.first_name} {obj.employee.last_name}".strip()
