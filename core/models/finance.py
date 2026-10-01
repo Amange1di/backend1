@@ -117,7 +117,7 @@ class CompanyBalance(models.Model):
         company_str = self.company.name if self.company else str(self.id)
         return f"{company_str} - {self.balance} eC"
     
-    def add_coins(self, amount: int, reason: str):
+    def add_coins(self, amount: int, reason: str, user=None):
         """Atomically add coins and write the ledger entry."""
         if amount <= 0:
             raise ValueError("Amount must be positive.")
@@ -132,6 +132,7 @@ class CompanyBalance(models.Model):
             locked.save(update_fields=["balance", "last_update"])
             Transaction.objects.create(
                 company_id=locked.company_id,
+                user=user,
                 amount=amount,
                 reason=reason,
                 transaction_type=Transaction.Type.DEPOSIT,
