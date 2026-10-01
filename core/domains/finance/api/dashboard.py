@@ -70,12 +70,7 @@ class FinanceDashboardView(APIView):
             date__gte=first_of_month, date__lte=end_of_month
         ).aggregate(total=Sum('amount'))['total'] or 0
 
-        monthly_salaries = GroupMonth.objects.filter(
-            group__company=company, teacher_salary__isnull=False,
-            completed_at__gte=first_of_month, completed_at__lte=end_of_month
-        ).aggregate(total=Sum('teacher_salary'))['total'] or 0
-
-        monthly_total_expenses = float(monthly_expenses) + float(monthly_salaries)
+        monthly_total_expenses = float(monthly_expenses)
 
         yearly_income = Payment.objects.filter(
             company=company, status='paid',
@@ -87,12 +82,7 @@ class FinanceDashboardView(APIView):
             date__gte=start_of_year, date__lte=end_of_month
         ).aggregate(total=Sum('amount'))['total'] or 0
 
-        yearly_salaries = GroupMonth.objects.filter(
-            group__company=company, teacher_salary__isnull=False,
-            completed_at__gte=start_of_year, completed_at__lte=end_of_month
-        ).aggregate(total=Sum('teacher_salary'))['total'] or 0
-
-        yearly_total_expenses = float(yearly_expenses) + float(yearly_salaries)
+        yearly_total_expenses = float(yearly_expenses)
 
         total_debt = Payment.objects.filter(
             company=company, status='debt'
