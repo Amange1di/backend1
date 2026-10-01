@@ -1,6 +1,7 @@
 from .budget import Budget, BudgetAlert, BudgetCategory
 from .forecast import Forecast, ForecastType, PeriodComparison
 from .reports import AccountingReport, MonthlySummary, ReportType
+from .salary import SalaryRecord
 
 __all__ = [
     "AccountingReport",
@@ -12,4 +13,5 @@ __all__ = [
     "MonthlySummary",
     "PeriodComparison",
     "ReportType",
+    "SalaryRecord",
 ]
