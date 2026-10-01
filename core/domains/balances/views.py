@@ -101,6 +101,17 @@ class UserBalanceHistoryView(APIView):
                         transaction.timestamp
                         .isoformat()
                     ),
+                    "actor": (
+                        transaction.user.get_full_name()
+                        or transaction.user.username
+                        if transaction.user
+                        else None
+                    ),
+                    "actor_role": (
+                        transaction.user.role
+                        if transaction.user
+                        else None
+                    ),
                     "balance_after": balance,
                 }
             )
