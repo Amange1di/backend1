@@ -779,45 +779,18 @@ class Command(BaseCommand):
                 monthly_income * expense_ratio
             ).quantize(Decimal("0.01"))
 
-            teacher_salaries = (
-                GroupMonth.objects.filter(
-                    group__company=company,
-                    teacher_salary__isnull=False,
-                    completed_at__date__gte=month_start,
-                    completed_at__date__lte=period_end,
-                ).aggregate(total=Sum("teacher_salary"))["total"]
+            salary_expenses = (
+                Expense.objects.filter(
+                    company=company,
+                    category="salary",
+                    date__gte=month_start,
+                    date__lte=period_end,
+                ).aggregate(total=Sum("amount"))["total"]
                 or Decimal("0")
             )
 
-            managers = User.objects.filter(
-                company=company,
-                role=User.Role.MANAGER,
-                is_active=True,
-                date_joined__date__lte=period_end,
-            ).order_by("id")
-
-            manager_salary_total = Decimal("0")
-            salary_date = min(month_start + timedelta(days=24), period_end)
-            for manager in managers:
-                salary = manager.salary_rate or Decimal("0")
-                if salary <= 0:
-                    continue
-                manager_salary_total += salary
-                Expense.objects.create(
-                    company=company,
-                    description=(
-                        f"Зарплата менеджера "
-                        f"{manager.first_name} {manager.last_name} — "
-                        f"{month_start:%m.%Y}"
-                    ),
-                    amount=salary,
-                    category="salary",
-                    date=salary_date,
-                )
-
-            fixed_salary_costs = teacher_salaries + manager_salary_total
             remaining = max(
-                target_total_expenses - fixed_salary_costs,
+                target_total_expenses - salary_expenses,
                 Decimal("0"),
             )
 
@@ -1100,7 +1073,7 @@ class Command(BaseCommand):
                     paid_at = next_month - timedelta(days=5)
                     status = SalaryRecord.Status.PAID
 
-                SalaryRecord.objects.create(
+                record = SalaryRecord.objects.create(
                     company=company,
                     employee=employee,
                     year=month_start.year,
@@ -1116,6 +1089,19 @@ class Command(BaseCommand):
                         else "Фиксированная зарплата менеджера"
                     ),
                 )
+
+                if status == SalaryRecord.Status.PAID and paid_at:
+                    Expense.objects.create(
+                        company=company,
+                        description=(
+                            f"Зарплата сотрудника #{record.id}: "
+                            f"{employee.get_full_name() or employee.username} — "
+                            f"{month_start:%m.%Y}"
+                        ),
+                        amount=record.total_amount,
+                        category="salary",
+                        date=paid_at,
+                    )
 
     def _create_finance_reporting(self, *, company, start_date, today):
         from calendar import monthrange
@@ -1149,16 +1135,16 @@ class Command(BaseCommand):
                 or Decimal("0")
             )
             salaries = (
-                GroupMonth.objects.filter(
-                    group__company=company,
-                    teacher_salary__isnull=False,
-                    completed_at__date__gte=month_start,
-                    completed_at__date__lte=period_end,
-                ).aggregate(total=Sum("teacher_salary"))["total"]
+                Expense.objects.filter(
+                    company=company,
+                    category="salary",
+                    date__gte=month_start,
+                    date__lte=period_end,
+                ).aggregate(total=Sum("amount"))["total"]
                 or Decimal("0")
             )
 
-            total_expenses = regular_expenses + salaries
+            total_expenses = regular_expenses
             students_count = (
                 Payment.objects.filter(
                     company=company,
