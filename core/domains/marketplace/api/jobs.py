@@ -1,5 +1,6 @@
 from django.db import models
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -171,6 +172,16 @@ class BoostJobView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        if (
+            job.is_promoted
+            and job.promoted_until
+            and job.promoted_until > timezone.now()
+        ):
+            return Response(
+                {"detail": "Эта вакансия уже находится в ТОП."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         if not charge_promotion(
             company=user.company,
             amount=BOOST_COST,
@@ -222,6 +233,16 @@ class UrgentJobView(APIView):
             return Response(
                 {"detail": "Недостаточно прав."},
                 status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if (
+            job.is_urgent
+            and job.urgent_until
+            and job.urgent_until > timezone.now()
+        ):
+            return Response(
+                {"detail": "Срочный бейдж для этой вакансии уже активен."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         if not charge_promotion(
