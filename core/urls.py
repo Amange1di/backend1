@@ -20,6 +20,7 @@ urlpatterns = [
     path("", include("core.domains.courses.urls")),
     path("", include("core.domains.landing.urls")),
     path("", include("core.domains.marketplace.urls")),
+    path("", include("core.domains.applications.urls")),
     path("", include("core.domains.trials.urls")),
     path("", include("core.domains.tasks.urls")),
     path("", include("core.domains.homework.urls")),
