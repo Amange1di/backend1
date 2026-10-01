@@ -138,8 +138,16 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             "phone",
             "address",
             "telegram",
+            "salary_rate",
             "password",
         )
+
+    def validate_salary_rate(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Ставка не может быть отрицательной."
+            )
+        return value
 
     def validate_password(self, value):
         if not value:
