@@ -264,6 +264,7 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
             company_balance.add_coins(
                 promo_code.reward_value,
                 ledger_reason,
+                user=user,
             )
 
             promo_code.current_usages += 1
