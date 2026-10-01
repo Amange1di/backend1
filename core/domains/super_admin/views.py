@@ -22,22 +22,33 @@ from core.models import (
     TrialLead,
     User,
 )
-from core.permissions import IsAdmin
+from core.permissions import IsAdmin, IsCourseAdmin
 
 
 class DashboardView(APIView):
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdmin | IsCourseAdmin]
 
     def get(self, request):
-        total_students = Student.objects.count()
+        students = Student.objects.all()
+        payments = Payment.objects.all()
+
+        if request.user.role == User.Role.COURSE_ADMIN:
+            if not request.user.company_id:
+                students = students.none()
+                payments = payments.none()
+            else:
+                students = students.filter(company_id=request.user.company_id)
+                payments = payments.filter(company_id=request.user.company_id)
+
+        total_students = students.count()
         total_income = (
-            Payment.objects.filter(status=Payment.Status.PAID).aggregate(
+            payments.filter(status=Payment.Status.PAID).aggregate(
                 total=Sum("amount")
             )["total"]
             or 0
         )
         total_debt = (
-            Payment.objects.filter(status=Payment.Status.DEBT).aggregate(
+            payments.filter(status=Payment.Status.DEBT).aggregate(
                 total=Sum("amount")
             )["total"]
             or 0
