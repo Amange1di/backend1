@@ -46,12 +46,12 @@ class Auditorium(models.Model):
         return self.name or self.number or "Auditorium"
 
 class Student(models.Model):
-    user = models.OneToOneField(
+    user = models.ForeignKey(
         "User",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="student_profile",
+        related_name="student_profiles",
     )
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100, blank=True)
