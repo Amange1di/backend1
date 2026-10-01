@@ -5,6 +5,7 @@ from rest_framework import serializers
 from core.models import User
 from core.domains.users.passwords import validate_strong_password
 from core.domains.auth.first_login import verify_and_consume_first_login_password
+from core.domains.students.services import normalize_phone
 
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
@@ -13,20 +14,46 @@ class LoginSerializer(serializers.Serializer):
     )
 
     def validate(self, attrs):
-        username = (attrs.get("username") or "").strip()
+        login_value = (attrs.get("username") or "").strip()
         password = attrs.get("password") or ""
 
+        # Students always sign in with their phone number. Formatting does not
+        # matter: +996 700 123 456, 996700123456, etc. resolve to the same user.
+        normalized_phone = normalize_phone(login_value)
+        student_candidate = None
+        if normalized_phone:
+            for candidate in User.objects.filter(
+                role=User.Role.STUDENT,
+                is_active=True,
+            ).only(
+                "id",
+                "username",
+                "phone",
+                "password",
+                "must_set_password",
+            ).iterator():
+                if normalize_phone(candidate.phone) == normalized_phone:
+                    student_candidate = candidate
+                    break
+
+        auth_username = (
+            student_candidate.username
+            if student_candidate
+            else login_value
+        )
+
         user = authenticate(
-            username=username,
+            username=auth_username,
             password=password,
         )
         first_login = False
 
         if not user:
-            candidate = User.objects.filter(
-                username__iexact=username,
+            candidate = student_candidate or User.objects.filter(
+                username__iexact=login_value,
                 is_active=True,
             ).first()
+
             if (
                 candidate
                 and candidate.must_set_password
