@@ -413,17 +413,35 @@ class MeView(APIView):
             request.user.role
             == User.Role.STUDENT
         ):
+            profiles = request.user.student_profiles.filter(
+                archived_at__isnull=True
+            ).select_related("company").order_by("created_at")
+
+            primary_profile = None
+            if request.user.company_id:
+                primary_profile = profiles.filter(
+                    company_id=request.user.company_id
+                ).first()
+
+            primary_profile = primary_profile or profiles.first()
+
             data["student_id"] = (
-                request.user.student_profile.id
-                if (
-                    hasattr(
-                        request.user,
-                        "student_profile",
-                    )
-                    and request.user.student_profile
-                )
+                primary_profile.id
+                if primary_profile
                 else None
             )
+            data["student_profiles"] = [
+                {
+                    "id": profile.id,
+                    "company_id": profile.company_id,
+                    "company_name": (
+                        profile.company.name
+                        if profile.company
+                        else ""
+                    ),
+                }
+                for profile in profiles
+            ]
 
         return Response(
             {
