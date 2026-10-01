@@ -1,12 +1,16 @@
-from django.db import models
+from io import BytesIO
+
+from django.db import models, transaction
 from django.utils import timezone
-from rest_framework import viewsets
+from openpyxl import Workbook, load_workbook
+from rest_framework import status, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
+from django.http import HttpResponse
 
-from core.models import Student, User
+from core.models import Group, Student, User
 from core.audit import write_audit
 from core.permissions import (
     IsCourseAdminOrManagerOrStudentReadOnly,
@@ -342,6 +346,275 @@ class StudentViewSet(viewsets.ModelViewSet):
         )
 
         return Response(status=204)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="import-template",
+    )
+    def import_template(self, request):
+        if request.user.role not in (
+            User.Role.COURSE_ADMIN,
+            User.Role.MANAGER,
+        ):
+            raise PermissionDenied(
+                "Only course admins and managers can import students."
+            )
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Students"
+
+        headers = [
+            "first_name",
+            "last_name",
+            "phone",
+            "telegram",
+            "notes",
+        ]
+        sheet.append(headers)
+        sheet.append(
+            [
+                "Аман",
+                "Майрамбек уулу",
+                "+996700000000",
+                "@aman",
+                "Комментарий",
+            ]
+        )
+
+        sheet.freeze_panes = "A2"
+        widths = {
+            "A": 22,
+            "B": 24,
+            "C": 20,
+            "D": 20,
+            "E": 36,
+        }
+        for column, width in widths.items():
+            sheet.column_dimensions[column].width = width
+
+        buffer = BytesIO()
+        workbook.save(buffer)
+        buffer.seek(0)
+
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+        )
+        response[
+            "Content-Disposition"
+        ] = 'attachment; filename="students_import_template.xlsx"'
+        return response
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="bulk-import",
+    )
+    def bulk_import(self, request):
+        user = request.user
+        if user.role not in (
+            User.Role.COURSE_ADMIN,
+            User.Role.MANAGER,
+        ):
+            raise PermissionDenied(
+                "Only course admins and managers can import students."
+            )
+
+        if not user.company:
+            return Response(
+                {"detail": "Компания не найдена."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        upload = request.FILES.get("file")
+        if not upload:
+            return Response(
+                {"detail": "Добавьте Excel-файл."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not upload.name.lower().endswith(".xlsx"):
+            return Response(
+                {"detail": "Поддерживается только .xlsx файл."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        group = None
+        group_id = request.data.get("group_id")
+        if group_id:
+            try:
+                group = Group.objects.get(
+                    id=group_id,
+                    archived_at__isnull=True,
+                    company=user.company,
+                )
+            except (Group.DoesNotExist, ValueError, TypeError):
+                return Response(
+                    {"detail": "Выбранная группа не найдена."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        try:
+            workbook = load_workbook(
+                upload,
+                read_only=True,
+                data_only=True,
+            )
+        except Exception:
+            return Response(
+                {"detail": "Не удалось прочитать Excel-файл."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        sheet = workbook.active
+        rows = list(sheet.iter_rows(values_only=True))
+        if not rows:
+            return Response(
+                {"detail": "Excel-файл пустой."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        headers = [
+            str(value).strip() if value is not None else ""
+            for value in rows[0]
+        ]
+        expected = {
+            "first_name",
+            "last_name",
+            "phone",
+            "telegram",
+            "notes",
+        }
+        missing = sorted(expected - set(headers))
+        if missing:
+            return Response(
+                {
+                    "detail": (
+                        "В шаблоне отсутствуют колонки: "
+                        + ", ".join(missing)
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if len(rows) - 1 > 1000:
+            return Response(
+                {"detail": "За один импорт можно добавить максимум 1000 студентов."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        index = {name: headers.index(name) for name in expected}
+        parsed_rows = []
+        errors = []
+
+        for excel_row, values in enumerate(rows[1:], start=2):
+            if not values or all(value in (None, "") for value in values):
+                continue
+
+            first_name = str(
+                values[index["first_name"]] or ""
+            ).strip()
+            last_name = str(
+                values[index["last_name"]] or ""
+            ).strip()
+            phone = str(values[index["phone"]] or "").strip()
+            telegram = str(
+                values[index["telegram"]] or ""
+            ).strip()
+            notes = str(values[index["notes"]] or "").strip()
+
+            if not first_name:
+                errors.append(
+                    {"row": excel_row, "field": "first_name", "message": "Укажите имя."}
+                )
+            if not phone:
+                errors.append(
+                    {"row": excel_row, "field": "phone", "message": "Укажите телефон."}
+                )
+
+            parsed_rows.append(
+                {
+                    "row": excel_row,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "phone": phone,
+                    "telegram": telegram,
+                    "notes": notes,
+                }
+            )
+
+        if not parsed_rows:
+            return Response(
+                {"detail": "В файле нет студентов для импорта."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if errors:
+            return Response(
+                {
+                    "detail": "Исправьте ошибки в Excel-файле.",
+                    "errors": errors[:100],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        created_students = []
+        with transaction.atomic():
+            for item in parsed_rows:
+                serializer = StudentSerializer(
+                    data={
+                        "first_name": item["first_name"],
+                        "last_name": item["last_name"],
+                        "phone": item["phone"],
+                        "telegram": item["telegram"],
+                        "notes": item["notes"],
+                        "group_ids": [group.id] if group else [],
+                        "primary_course": (
+                            group.course_id
+                            if group and group.course_id
+                            else None
+                        ),
+                    },
+                    context={"request": request},
+                )
+                serializer.is_valid(raise_exception=True)
+
+                if group:
+                    self._validate_group_access(
+                        user=user,
+                        groups=[group],
+                    )
+
+                save_kwargs = {"company": user.company}
+                if group and group.course:
+                    save_kwargs["primary_course"] = group.course
+
+                student = serializer.save(**save_kwargs)
+                sync_student_user(
+                    student,
+                    created_by=user,
+                )
+                created_students.append(student)
+
+        return Response(
+            {
+                "created": len(created_students),
+                "group": (
+                    {
+                        "id": group.id,
+                        "name": group.name,
+                    }
+                    if group
+                    else None
+                ),
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(
         detail=True,
