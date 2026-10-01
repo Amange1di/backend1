@@ -5,6 +5,11 @@ from core.models import Course, User
 
 
 class CourseSerializer(serializers.ModelSerializer):
+    duration_weeks = serializers.IntegerField(
+        required=False,
+        default=0,
+        min_value=0,
+    )
     admins = serializers.PrimaryKeyRelatedField(
         many=True,
         required=False,
@@ -20,6 +25,7 @@ class CourseSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "price",
+            "duration_weeks",
             "lesson_duration_minutes",
             "description",
             "schedule",
