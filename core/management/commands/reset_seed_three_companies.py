@@ -1781,7 +1781,7 @@ class Command(BaseCommand):
     def _create_finance_history(self, *, company, start_date, today):
         balance = CompanyBalance.objects.create(
             company=company,
-            balance=25000,
+            balance=0,
         )
 
         for index, month_start in enumerate(
