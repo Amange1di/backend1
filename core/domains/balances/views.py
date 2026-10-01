@@ -130,9 +130,40 @@ class UserBalanceMeView(APIView):
     ]
 
     def get(self, request):
+        user = request.user
+
+        if user.role in (
+            User.Role.COURSE_ADMIN,
+            User.Role.MANAGER,
+        ):
+            company_id = (
+                user.company_id
+                or getattr(
+                    getattr(user, "created_by", None),
+                    "company_id",
+                    None,
+                )
+            )
+
+            if not company_id:
+                return Response(
+                    {"balance": 0}
+                )
+
+            company_balance, _ = (
+                CompanyBalance.objects.get_or_create(
+                    company_id=company_id
+                )
+            )
+            return Response(
+                {
+                    "balance": company_balance.balance
+                }
+            )
+
         user_balance, _ = (
             UserBalance.objects.get_or_create(
-                user=request.user
+                user=user
             )
         )
         return Response(
