@@ -2,6 +2,7 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from django.conf import settings
+from django.contrib.auth.hashers import make_password
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
@@ -48,6 +49,20 @@ class Command(BaseCommand):
         "history from June, August and September through today."
     )
 
+    def _create_demo_user(self, *, password, **kwargs):
+        """
+        Create demo users quickly by reusing one already-computed password hash
+        per distinct password. This avoids running expensive bcrypt hashing
+        hundreds of times during seed generation.
+        """
+        if password not in self._password_hash_cache:
+            self._password_hash_cache[password] = make_password(password)
+
+        return User.objects.create(
+            password=self._password_hash_cache[password],
+            **kwargs,
+        )
+
     def add_arguments(self, parser):
         parser.add_argument(
             "--yes",
@@ -76,6 +91,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.WARNING("Flushing database..."))
         call_command("flush", interactive=False, verbosity=0)
 
+        self._password_hash_cache = {}
         today = timezone.localdate()
         year = today.year
 
@@ -164,7 +180,7 @@ class Command(BaseCommand):
             },
         ]
 
-        platform_admin = User.objects.create_user(
+        platform_admin = self._create_demo_user(
             username="demo_admin",
             password="DemoAdmin123!",
             role=User.Role.ADMIN,
@@ -183,7 +199,7 @@ class Command(BaseCommand):
             start_date = min(spec["start"], today)
             start_dt = self._at_date(start_date, 9)
 
-            course_admin = User.objects.create_user(
+            course_admin = self._create_demo_user(
                 username=f'{spec["key"]}_admin',
                 password="Demo1234!",
                 role=User.Role.COURSE_ADMIN,
@@ -398,7 +414,7 @@ class Command(BaseCommand):
         ]
         result = []
         for index, (first_name, last_name) in enumerate(names, start=1):
-            user = User.objects.create_user(
+            user = self._create_demo_user(
                 username=f"{prefix}_manager_{index}",
                 password="Demo1234!",
                 role=User.Role.MANAGER,
@@ -455,7 +471,7 @@ class Command(BaseCommand):
             courses.append(course)
 
             first_name, last_name = teacher_names[(index - 1) % len(teacher_names)]
-            teacher = User.objects.create_user(
+            teacher = self._create_demo_user(
                 username=f"{prefix}_teacher_{index}",
                 password="Demo1234!",
                 role=User.Role.TEACHER,
@@ -605,7 +621,7 @@ class Command(BaseCommand):
                 if join_date > today:
                     join_date = today
 
-                user = User.objects.create_user(
+                user = self._create_demo_user(
                     username=f"{prefix}_student_{student_number:04d}",
                     password="Demo1234!",
                     role=User.Role.STUDENT,
