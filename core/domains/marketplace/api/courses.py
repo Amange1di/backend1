@@ -167,7 +167,11 @@ class MyCoursesView(APIView):
             course_data["applications"] = (
                 course.applications_count
             )
-            course_data["status"] = "approved"
+            course_data["status"] = (
+                "approved"
+                if course.is_active
+                else "draft"
+            )
             data.append(course_data)
 
         return Response(data)
@@ -350,7 +354,24 @@ class PublicCourseViewSet(
     lookup_field = "slug"
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = (
+            super()
+            .get_queryset()
+            .annotate(
+                promotion_rank=models.Case(
+                    models.When(
+                        promoted_until__gt=timezone.now(),
+                        then=models.Value(1),
+                    ),
+                    default=models.Value(0),
+                    output_field=models.IntegerField(),
+                )
+            )
+            .order_by(
+                "-promotion_rank",
+                "-created_at",
+            )
+        )
 
         category = self.request.query_params.get(
             "category"
