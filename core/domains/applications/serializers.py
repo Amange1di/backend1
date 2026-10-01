@@ -7,14 +7,61 @@ from core.models import (
 )
 
 
+class CompanyApplicationMixin:
+    application_type = ""
+
+    def _resolve_company(self, attrs):
+        raw_company = self.initial_data.get("company_name")
+        if not raw_company:
+            return attrs
+
+        company = None
+        value = str(raw_company).strip()
+
+        if value.isdigit():
+            company = Company.objects.filter(pk=int(value)).first()
+
+        if company is None:
+            company = Company.objects.filter(name__iexact=value).first()
+
+        if company is None:
+            raise serializers.ValidationError(
+                {"company_name": "Компания не найдена."}
+            )
+
+        attrs["company"] = company
+        return attrs
+
+    def validate(self, attrs):
+        return self._resolve_company(attrs)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["type"] = self.application_type
+        data["company_name"] = (
+            instance.company.name
+            if instance.company
+            else ""
+        )
+        return data
+
+
 class TeacherApplicationSerializer(
-    serializers.ModelSerializer
+    CompanyApplicationMixin,
+    serializers.ModelSerializer,
 ):
+    application_type = "teacher"
+
     company_id = serializers.PrimaryKeyRelatedField(
         source="company",
         queryset=Company.objects.all(),
         required=False,
         allow_null=True,
+    )
+    company_name = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
     )
 
     class Meta:
@@ -33,11 +80,13 @@ class TeacherApplicationSerializer(
             "format",
             "company",
             "company_id",
+            "company_name",
             "status",
             "created_at",
             "updated_at",
         )
         read_only_fields = (
+            "company",
             "status",
             "created_at",
             "updated_at",
@@ -45,13 +94,21 @@ class TeacherApplicationSerializer(
 
 
 class StudentApplicationSerializer(
-    serializers.ModelSerializer
+    CompanyApplicationMixin,
+    serializers.ModelSerializer,
 ):
+    application_type = "student"
+
     company_id = serializers.PrimaryKeyRelatedField(
         source="company",
         queryset=Company.objects.all(),
         required=False,
         allow_null=True,
+    )
+    company_name = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
     )
 
     class Meta:
@@ -70,11 +127,13 @@ class StudentApplicationSerializer(
             "source",
             "company",
             "company_id",
+            "company_name",
             "status",
             "created_at",
             "updated_at",
         )
         read_only_fields = (
+            "company",
             "status",
             "created_at",
             "updated_at",
