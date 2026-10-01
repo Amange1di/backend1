@@ -11,6 +11,19 @@ from ..services import ensure_student_access_allowed
 
 
 class StudentProfileView(APIView):
+    @staticmethod
+    def _get_student_profile(user):
+        profiles = user.student_profiles.filter(
+            archived_at__isnull=True
+        ).order_by("created_at")
+        if user.company_id:
+            profile = profiles.filter(
+                company_id=user.company_id
+            ).first()
+            if profile:
+                return profile
+        return profiles.first()
+
     def get(self, request):
         if (
             request.user.role
@@ -23,10 +36,8 @@ class StudentProfileView(APIView):
                 )
             )
 
-        student = getattr(
-            request.user,
-            "student_profile",
-            None,
+        student = self._get_student_profile(
+            request.user
         )
         if not student:
             return Response(
@@ -73,10 +84,8 @@ class StudentProfileView(APIView):
                 )
             )
 
-        student = getattr(
-            request.user,
-            "student_profile",
-            None,
+        student = self._get_student_profile(
+            request.user
         )
         if not student:
             return Response(
