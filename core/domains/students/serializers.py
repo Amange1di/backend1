@@ -7,7 +7,7 @@ from core.models import (
     User,
 )
 
-from .services import sync_student_user
+from .services import normalize_phone, sync_student_user
 
 
 class StudentSerializer(serializers.ModelSerializer):
@@ -62,11 +62,52 @@ class StudentSerializer(serializers.ModelSerializer):
         )
 
     def get_one_time_password(self, obj):
+        request = self.context.get("request")
+        if (
+            request
+            and request.user.is_authenticated
+            and request.user.role in (
+                User.Role.COURSE_ADMIN,
+                User.Role.MANAGER,
+            )
+        ):
+            # Do not let company staff infer whether this phone already had
+            # a platform account in another company.
+            return None
+
         return getattr(
             obj,
             "_one_time_password",
             None,
         )
+
+    def validate_phone(self, value):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return value
+
+        company = request.user.company
+        if not company:
+            return value
+
+        normalized = normalize_phone(value)
+        if not normalized:
+            return value
+
+        queryset = Student.objects.filter(
+            company=company,
+            archived_at__isnull=True,
+        )
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+
+        for phone in queryset.values_list("phone", flat=True).iterator():
+            if normalize_phone(phone) == normalized:
+                raise serializers.ValidationError(
+                    "Студент с таким телефоном уже есть в вашей компании."
+                )
+
+        return value
 
     def create(self, validated_data):
         group_ids = validated_data.pop(
