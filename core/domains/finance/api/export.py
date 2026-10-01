@@ -129,7 +129,9 @@ class FinanceExportView(APIView):
                 cell.alignment = header_alignment
                 cell.border = thin_border
 
-            expense_category_labels = dict(Expense.Category.choices)
+            expense_category_labels = dict(
+                Expense._meta.get_field("category").choices
+            )
 
             for row_idx, expense in enumerate(expenses, 2):
                 ws2.cell(row=row_idx, column=1, value=expense.id).border = thin_border
@@ -175,7 +177,9 @@ class FinanceExportView(APIView):
             writer.writerow(["=== РАСХОДЫ ==="])
             writer.writerow(["ID", "Описание", "Сумма", "Категория", "Дата"])
 
-            expense_category_labels = dict(Expense.Category.choices)
+            expense_category_labels = dict(
+                Expense._meta.get_field("category").choices
+            )
             for expense in expenses:
                 writer.writerow([
                     expense.id,
