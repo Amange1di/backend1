@@ -14,7 +14,7 @@ from core.models import (
 )
 from core.audit import write_audit
 
-from .serializers import PromoCodeSerializer
+from .serializers import PromoCodeSerializer, PromoRedemptionSerializer
 
 
 class PromoCodeViewSet(viewsets.ModelViewSet):
@@ -73,6 +73,40 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
 
         serializer.save(
             created_by=self.request.user
+        )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="history",
+    )
+    def history(self, request):
+        user = request.user
+
+        if user.role not in (
+            User.Role.COURSE_ADMIN,
+            User.Role.MANAGER,
+        ):
+            raise PermissionDenied(
+                "Only course admins and managers can view promo history."
+            )
+
+        company = getattr(user, "company", None)
+        if not company:
+            return Response([])
+
+        redemptions = (
+            PromoRedemption.objects
+            .filter(company=company)
+            .select_related("promo_code", "user")
+            .order_by("-activated_at")
+        )
+
+        return Response(
+            PromoRedemptionSerializer(
+                redemptions,
+                many=True,
+            ).data
         )
 
     @action(
