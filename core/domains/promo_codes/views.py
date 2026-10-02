@@ -66,8 +66,7 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
         ):
             raise PermissionDenied(
                 (
-                    "Только админ может "
-                    "создавать промокоды."
+                    "promo_create_admin_only"
                 )
             )
 
@@ -88,7 +87,7 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
             User.Role.MANAGER,
         ):
             raise PermissionDenied(
-                "Only course admins and managers can view promo history."
+                "staff_only"
             )
 
         company = getattr(user, "company", None)
@@ -123,13 +122,13 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
             User.Role.MANAGER,
         ):
             raise PermissionDenied(
-                "Only admins, course admins and managers can activate promo codes."
+                "promo_activate_staff_only"
             )
 
         code = (request.data.get("code", "") or "").strip()
         if not code:
             return Response(
-                {"detail": "Promo code is required."},
+                {"detail": "promo_code_required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -143,7 +142,7 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
         )
         if not company:
             return Response(
-                {"detail": "Компания не найдена."},
+                {"detail": "company_not_found"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -157,7 +156,7 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
                 )
             except PromoCode.DoesNotExist:
                 return Response(
-                    {"detail": "Promo code not found."},
+                    {"detail": "promo_code_not_found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
@@ -181,8 +180,7 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
                     return Response(
                         {
                             "detail": (
-                                "Вы можете активировать только промокоды "
-                                "созданные супер-админом."
+                                "promo_super_admin_only"
                             )
                         },
                         status=status.HTTP_403_FORBIDDEN,
@@ -190,7 +188,7 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
 
             if not promo_code.is_active:
                 return Response(
-                    {"detail": "Promo code is inactive."},
+                    {"detail": "promo_code_inactive"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -199,13 +197,13 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
                 and promo_code.expiry_date < timezone.now()
             ):
                 return Response(
-                    {"detail": "Cannot activate expired promo code."},
+                    {"detail": "promo_code_expired"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             if promo_code.current_usages >= promo_code.max_usages:
                 return Response(
-                    {"detail": "Promo code usage limit reached."},
+                    {"detail": "promo_code_limit_reached"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -213,7 +211,7 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
                 return Response(
                     {
                         "detail": (
-                            "This promo reward type is not enabled yet."
+                            "promo_reward_type_unsupported"
                         )
                     },
                     status=status.HTTP_400_BAD_REQUEST,
@@ -229,13 +227,13 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
                 )
             except PromoBalance.DoesNotExist:
                 return Response(
-                    {"detail": "Promo code has no funded balance."},
+                    {"detail": "promo_balance_missing"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             if promo_balance.balance < promo_code.reward_value:
                 return Response(
-                    {"detail": "Promo code balance is insufficient."},
+                    {"detail": "promo_balance_insufficient"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -248,7 +246,7 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
                     )
             except IntegrityError:
                 return Response(
-                    {"detail": "Promo code already used by this company."},
+                    {"detail": "promo_already_used"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
