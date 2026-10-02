@@ -260,6 +260,10 @@ def ensure_group_schedule_available(
         "course",
         instance.course if instance else None,
     )
+    lessons_per_month = serializer.validated_data.get(
+        "lessons_per_month",
+        instance.lessons_per_month if instance else None,
+    )
 
     if not auditorium:
         raise PermissionDenied("auditorium_required")
@@ -287,6 +291,19 @@ def ensure_group_schedule_available(
     days_set = parse_schedule_days(schedule_days)
     if not days_set:
         raise PermissionDenied("schedule_days_invalid")
+
+    if lessons_per_month:
+        required_weekly_days = max(
+            1,
+            min(7, (int(lessons_per_month) + 3) // 4),
+        )
+        if len(days_set) != required_weekly_days:
+            raise PermissionDenied({
+                "detail": "lesson_days_count_mismatch",
+                "required_weekly_days": required_weekly_days,
+                "selected_weekly_days": len(days_set),
+                "lessons_per_month": lessons_per_month,
+            })
 
     teacher_working_days = parse_schedule_days(
         getattr(teacher, "working_days", "") or ""
