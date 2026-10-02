@@ -123,7 +123,7 @@ class StudentViewSet(viewsets.ModelViewSet):
 
                 if not allowed:
                     raise PermissionDenied(
-                        "Not allowed for this group."
+                        "group_access_denied"
                     )
 
             elif (
@@ -131,7 +131,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                 and group.company != user.company
             ):
                 raise PermissionDenied(
-                    "Not allowed for this group."
+                    "group_access_denied"
                 )
 
     @staticmethod
@@ -358,7 +358,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             User.Role.MANAGER,
         ):
             raise PermissionDenied(
-                "Only course admins and managers can import students."
+                "staff_only"
             )
 
         workbook = Workbook()
@@ -422,25 +422,25 @@ class StudentViewSet(viewsets.ModelViewSet):
             User.Role.MANAGER,
         ):
             raise PermissionDenied(
-                "Only course admins and managers can import students."
+                "staff_only"
             )
 
         if not user.company:
             return Response(
-                {"detail": "Компания не найдена."},
+                {"detail": "company_not_found"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         upload = request.FILES.get("file")
         if not upload:
             return Response(
-                {"detail": "Добавьте Excel-файл."},
+                {"detail": "excel_file_required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         if not upload.name.lower().endswith(".xlsx"):
             return Response(
-                {"detail": "Поддерживается только .xlsx файл."},
+                {"detail": "excel_xlsx_only"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -455,7 +455,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                 )
             except (Group.DoesNotExist, ValueError, TypeError):
                 return Response(
-                    {"detail": "Выбранная группа не найдена."},
+                    {"detail": "group_not_found"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -467,7 +467,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             )
         except Exception:
             return Response(
-                {"detail": "Не удалось прочитать Excel-файл."},
+                {"detail": "excel_read_failed"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -475,7 +475,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         rows = list(sheet.iter_rows(values_only=True))
         if not rows:
             return Response(
-                {"detail": "Excel-файл пустой."},
+                {"detail": "excel_empty"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -494,17 +494,15 @@ class StudentViewSet(viewsets.ModelViewSet):
         if missing:
             return Response(
                 {
-                    "detail": (
-                        "В шаблоне отсутствуют колонки: "
-                        + ", ".join(missing)
-                    )
+                    "detail": "excel_missing_columns",
+                    "missing_columns": missing
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         if len(rows) - 1 > 1000:
             return Response(
-                {"detail": "За один импорт можно добавить максимум 1000 студентов."},
+                {"detail": "student_import_limit_exceeded", "max": 1000},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -537,18 +535,18 @@ class StudentViewSet(viewsets.ModelViewSet):
 
             if not first_name:
                 errors.append(
-                    {"row": excel_row, "field": "first_name", "message": "Укажите имя."}
+                    {"row": excel_row, "field": "first_name", "error_key": "first_name_required"}
                 )
             if not phone:
                 errors.append(
-                    {"row": excel_row, "field": "phone", "message": "Укажите телефон."}
+                    {"row": excel_row, "field": "phone", "error_key": "phone_required"}
                 )
             elif phone in phones_seen:
                 errors.append(
                     {
                         "row": excel_row,
                         "field": "phone",
-                        "message": "Такой телефон уже есть выше в Excel.",
+                        "error_key": "duplicate_phone_in_file",
                     }
                 )
             elif phone in existing_phones:
@@ -556,7 +554,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                     {
                         "row": excel_row,
                         "field": "phone",
-                        "message": "Студент с таким телефоном уже есть в компании.",
+                        "error_key": "student_phone_exists",
                     }
                 )
 
@@ -575,14 +573,14 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         if not parsed_rows:
             return Response(
-                {"detail": "В файле нет студентов для импорта."},
+                {"detail": "student_import_no_rows"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         if errors:
             return Response(
                 {
-                    "detail": "Исправьте ошибки в Excel-файле.",
+                    "detail": "excel_validation_failed",
                     "errors": errors[:100],
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -657,8 +655,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         ):
             raise PermissionDenied(
                 (
-                    "Only course admins and managers can reset "
-                    "student passwords."
+                    "staff_only"
                 )
             )
 
@@ -669,7 +666,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             != request.user.company
         ):
             raise PermissionDenied(
-                "Not allowed for this student."
+                "student_access_denied"
             )
 
         if not student.user:
@@ -691,7 +688,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         return Response(
             {
                 "detail": (
-                    "Student password was reset."
+                    "student_password_reset"
                 ),
                 "must_set_password": True,
                 "login": student.phone,
@@ -737,27 +734,25 @@ class StudentViewSet(viewsets.ModelViewSet):
         ):
             raise PermissionDenied(
                 (
-                    "Only course admins and managers "
-                    "can transfer students."
+                    "staff_only"
                 )
             )
 
         if student.company != new_group.company:
             raise PermissionDenied(
                 (
-                    "Student and new group must "
-                    "belong to the same company."
+                    "student_group_company_mismatch"
                 )
             )
 
         if student.company != user.company:
             raise PermissionDenied(
-                "Not allowed for this student."
+                "student_access_denied"
             )
 
         if new_group.company != user.company:
             raise PermissionDenied(
-                "Not allowed for this group."
+                "group_access_denied"
             )
 
         student.groups.clear()
@@ -794,8 +789,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             {
                 "status": "ok",
                 "detail": (
-                    "Student transferred to group "
-                    f"«{new_group.name}»."
+                    "student_transferred"
                 ),
             }
         )
