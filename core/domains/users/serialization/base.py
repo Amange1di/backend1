@@ -145,7 +145,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     def validate_salary_rate(self, value):
         if value is not None and value < 0:
             raise serializers.ValidationError(
-                "Ставка не может быть отрицательной."
+                "salary_rate_negative"
             )
         return value
 
