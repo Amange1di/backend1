@@ -8,7 +8,7 @@ class ContractSerializer(serializers.ModelSerializer):
     student_name = serializers.SerializerMethodField()
     group_name = serializers.SerializerMethodField()
     company_name = serializers.CharField(source="company.name", read_only=True)
-    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    status_display = serializers.CharField(source="status", read_only=True)
 
     class Meta:
         model = Contract
