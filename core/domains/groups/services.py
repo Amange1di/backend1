@@ -108,6 +108,25 @@ def parse_schedule_days(value: str) -> set[int]:
     return result
 
 
+def parse_working_hours(value: str):
+    if not value:
+        return None
+
+    match = re.match(
+        r"^\s*(\d{1,2}[:.]\d{2})\s*[-–—]\s*(\d{1,2}[:.]\d{2})\s*$",
+        value,
+    )
+    if not match:
+        return None
+
+    start = parse_time_to_minutes(match.group(1))
+    end = parse_time_to_minutes(match.group(2))
+    if start is None or end is None or end <= start:
+        return None
+
+    return start, end
+
+
 def parse_time_to_minutes(value: str):
     if not value:
         return None
@@ -269,7 +288,32 @@ def ensure_group_schedule_available(
     if not days_set:
         raise PermissionDenied("schedule_days_invalid")
 
+    teacher_working_days = parse_schedule_days(
+        getattr(teacher, "working_days", "") or ""
+    )
+    if teacher_working_days and not days_set.issubset(teacher_working_days):
+        raise PermissionDenied({
+            "detail": "teacher_unavailable_day",
+            "teacher": str(teacher),
+            "requested_days": sorted(days_set),
+            "working_days": sorted(teacher_working_days),
+        })
+
     end_minutes = start_minutes + duration
+
+    teacher_hours = parse_working_hours(
+        getattr(teacher, "working_hours", "") or ""
+    )
+    if teacher_hours:
+        work_start, work_end = teacher_hours
+        if start_minutes < work_start or end_minutes > work_end:
+            raise PermissionDenied({
+                "detail": "teacher_outside_working_hours",
+                "teacher": str(teacher),
+                "requested_start": schedule_time,
+                "lesson_duration_minutes": duration,
+                "working_hours": teacher.working_hours,
+            })
     queryset = (
         Group.objects
         .filter(archived_at__isnull=True)
