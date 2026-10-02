@@ -36,7 +36,7 @@ def _ensure_staff(user):
         User.Role.MANAGER,
     ):
         raise PermissionDenied(
-            "Доступно только для администратора курса и менеджера."
+            "staff_only"
         )
 
 
@@ -133,14 +133,14 @@ class MarketplaceApplicationDetailView(APIView):
         _ensure_staff(request.user)
         company = _user_company(request.user)
         if not company:
-            raise PermissionDenied("Компания не найдена.")
+            raise PermissionDenied("company_not_found")
 
         requested_type = request.data.get("type")
         new_status = request.data.get("status")
 
         if new_status not in ApplicationStatus.values:
             return Response(
-                {"status": "Некорректный статус заявки."},
+                {"status": "invalid_application_status"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -168,7 +168,7 @@ class MarketplaceApplicationDetailView(APIView):
 
         if application is None or serializer_class is None:
             return Response(
-                {"detail": "Заявка не найдена."},
+                {"detail": "application_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
