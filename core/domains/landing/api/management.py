@@ -76,7 +76,7 @@ class LandingPageViewSet(viewsets.ModelViewSet):
 
         if user.role != User.Role.COURSE_ADMIN:
             raise PermissionDenied(
-                "Only course admins can create landing pages."
+                "course_admin_only"
             )
 
         if not user.can_create_landing_page():
@@ -100,7 +100,7 @@ class LandingPageViewSet(viewsets.ModelViewSet):
         if user.role == User.Role.COURSE_ADMIN:
             if page.company != user.company:
                 raise PermissionDenied(
-                    "Not allowed for this landing page."
+                    "landing_access_denied"
                 )
             serializer.save()
             return
@@ -112,7 +112,7 @@ class LandingPageViewSet(viewsets.ModelViewSet):
             serializer.save()
             return
 
-        raise PermissionDenied("Not allowed.")
+        raise PermissionDenied("access_denied")
 
     def destroy(self, request, *args, **kwargs):
         page = self.get_object()
@@ -123,7 +123,7 @@ class LandingPageViewSet(viewsets.ModelViewSet):
             and page.company != user.company
         ):
             raise PermissionDenied(
-                "Not allowed for this landing page."
+                "landing_access_denied"
             )
 
         if (
@@ -135,7 +135,7 @@ class LandingPageViewSet(viewsets.ModelViewSet):
             and not user.is_superuser
         ):
             raise PermissionDenied(
-                "Not allowed to delete this landing page."
+                "landing_delete_forbidden"
             )
 
         return super().destroy(
@@ -159,16 +159,14 @@ class LandingPageViewSet(viewsets.ModelViewSet):
         ):
             raise PermissionDenied(
                 (
-                    "Only the owning course admin can "
-                    "submit this landing page."
+                    "landing_submit_owner_only"
                 )
             )
 
         if page.status == LandingPage.Status.PENDING:
             raise PermissionDenied(
                 (
-                    "This landing page is already "
-                    "pending moderation."
+                    "landing_already_pending"
                 )
             )
 
@@ -206,14 +204,13 @@ class LandingPageViewSet(viewsets.ModelViewSet):
             and not user.is_superuser
         ):
             raise PermissionDenied(
-                "Only admins can approve landing pages."
+                "admin_only"
             )
 
         if page.status != LandingPage.Status.PENDING:
             raise PermissionDenied(
                 (
-                    "Only pending landing pages "
-                    "can be approved."
+                    "landing_approve_pending_only"
                 )
             )
 
@@ -258,14 +255,13 @@ class LandingPageViewSet(viewsets.ModelViewSet):
             and not user.is_superuser
         ):
             raise PermissionDenied(
-                "Only admins can reject landing pages."
+                "admin_only"
             )
 
         if page.status != LandingPage.Status.PENDING:
             raise PermissionDenied(
                 (
-                    "Only pending landing pages "
-                    "can be rejected."
+                    "landing_reject_pending_only"
                 )
             )
 
@@ -277,7 +273,7 @@ class LandingPageViewSet(viewsets.ModelViewSet):
             return Response(
                 {
                     "detail": (
-                        "Moderation comment is required."
+                        "moderation_comment_required"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -344,8 +340,7 @@ class LandingHeaderLinkViewSet(
         if user.role != User.Role.COURSE_ADMIN:
             raise PermissionDenied(
                 (
-                    "Only course admins can manage "
-                    "landing header links."
+                    "landing_header_course_admin_only"
                 )
             )
 
@@ -361,8 +356,7 @@ class LandingHeaderLinkViewSet(
         ):
             raise PermissionDenied(
                 (
-                    "Only the owning course admin can "
-                    "update this header link."
+                    "landing_header_owner_only"
                 )
             )
 
@@ -379,8 +373,7 @@ class LandingHeaderLinkViewSet(
         ):
             raise PermissionDenied(
                 (
-                    "Only the owning course admin can "
-                    "delete this header link."
+                    "landing_header_owner_only"
                 )
             )
 
