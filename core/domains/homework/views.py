@@ -90,7 +90,7 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
         user = request.user
         if user.role != User.Role.TEACHER:
             raise PermissionDenied(
-                "Only teachers can create homework tasks."
+                "teacher_only"
             )
 
         serializer = self.get_serializer(data=request.data)
@@ -99,7 +99,7 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
 
         if not group or group.teacher_id != user.id:
             raise PermissionDenied(
-                "Homework can only be created for your own groups."
+                "homework_own_groups_only"
             )
 
         instance = serializer.save(
@@ -123,7 +123,7 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
         if user.role == User.Role.TEACHER:
             if instance.teacher_id != user.id:
                 raise PermissionDenied(
-                    "Not allowed for this homework task."
+                    "homework_access_denied"
                 )
             group = serializer.validated_data.get(
                 "group",
@@ -131,7 +131,7 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
             )
             if group.teacher_id != user.id:
                 raise PermissionDenied(
-                    "Homework can only belong to your own groups."
+                    "homework_own_groups_only"
                 )
             updated = serializer.save()
             self._save_attachments(updated, replace=True)
@@ -140,13 +140,13 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
         if user.role == User.Role.COURSE_ADMIN:
             if instance.company != user.company:
                 raise PermissionDenied(
-                    "Not allowed for this homework task."
+                    "homework_access_denied"
                 )
             updated = serializer.save()
             self._save_attachments(updated, replace=True)
             return
 
-        raise PermissionDenied("Not allowed.")
+        raise PermissionDenied("access_denied")
 
     def destroy(self, request, *args, **kwargs):
         user = request.user
@@ -173,7 +173,7 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
             )
 
         raise PermissionDenied(
-            "Not allowed to delete this homework task."
+            "homework_delete_forbidden"
         )
 
     def _save_attachments(
@@ -260,7 +260,7 @@ class HomeworkSubmissionViewSet(viewsets.ModelViewSet):
 
         if user.role != User.Role.STUDENT:
             raise PermissionDenied(
-                "Only students can submit homework."
+                "student_only"
             )
 
         student = getattr(
@@ -270,7 +270,7 @@ class HomeworkSubmissionViewSet(viewsets.ModelViewSet):
         )
         if not student:
             raise PermissionDenied(
-                "Student profile not found."
+                "student_profile_not_found"
             )
 
         task_id = request.data.get("task")
@@ -281,12 +281,12 @@ class HomeworkSubmissionViewSet(viewsets.ModelViewSet):
 
         if not student_can_access_task(task, student):
             raise PermissionDenied(
-                "You can submit homework only for your own groups."
+                "homework_submit_own_groups_only"
             )
 
         if is_submission_locked(task):
             raise PermissionDenied(
-                "Submission deadline has passed."
+                "homework_deadline_passed"
             )
 
         if HomeworkSubmission.objects.filter(
@@ -294,7 +294,7 @@ class HomeworkSubmissionViewSet(viewsets.ModelViewSet):
             student=student,
         ).exists():
             raise PermissionDenied(
-                "Submission already exists for this task."
+                "homework_submission_exists"
             )
 
         serializer = self.get_serializer(
@@ -319,7 +319,7 @@ class HomeworkSubmissionViewSet(viewsets.ModelViewSet):
         if user.role == User.Role.STUDENT:
             if instance.student.user_id != user.id:
                 raise PermissionDenied(
-                    "Not allowed for this submission."
+                    "homework_submission_access_denied"
                 )
 
             allowed_fields = {
@@ -333,12 +333,12 @@ class HomeworkSubmissionViewSet(viewsets.ModelViewSet):
                 allowed_fields
             ):
                 raise PermissionDenied(
-                    "Students can only update submission content."
+                    "homework_student_update_restricted"
                 )
 
             if is_submission_locked(instance.task):
                 raise PermissionDenied(
-                    "Submission deadline has passed."
+                    "homework_deadline_passed"
                 )
 
             serializer.save(
@@ -349,7 +349,7 @@ class HomeworkSubmissionViewSet(viewsets.ModelViewSet):
         if user.role == User.Role.TEACHER:
             if instance.task.teacher_id != user.id:
                 raise PermissionDenied(
-                    "Not allowed for this submission."
+                    "homework_submission_access_denied"
                 )
 
             allowed_fields = {
@@ -364,13 +364,13 @@ class HomeworkSubmissionViewSet(viewsets.ModelViewSet):
                 allowed_fields
             ):
                 raise PermissionDenied(
-                    "Teachers can only review homework submissions."
+                    "homework_teacher_review_only"
                 )
 
             serializer.save()
             return
 
-        raise PermissionDenied("Not allowed.")
+        raise PermissionDenied("access_denied")
 
     def destroy(self, request, *args, **kwargs):
         user = request.user
@@ -397,5 +397,5 @@ class HomeworkSubmissionViewSet(viewsets.ModelViewSet):
             )
 
         raise PermissionDenied(
-            "Not allowed to delete this submission."
+            "homework_submission_delete_forbidden"
         )
