@@ -71,7 +71,7 @@ class TaskViewSet(viewsets.ModelViewSet):
             != resolve_user_company_id(user)
         ):
             raise PermissionDenied(
-                "Manager must belong to the same company."
+                "manager_company_mismatch"
             )
 
         tasks = build_task_instances(
@@ -125,18 +125,18 @@ class TaskViewSet(viewsets.ModelViewSet):
                 != resolve_user_company_id(user)
             ):
                 raise PermissionDenied(
-                    "Manager must belong to the same company."
+                    "manager_company_mismatch"
                 )
 
             serializer.save()
             return
 
-        raise PermissionDenied("Not allowed.")
+        raise PermissionDenied("access_denied")
 
     def destroy(self, request, *args, **kwargs):
         if request.user.role != User.Role.COURSE_ADMIN:
             raise PermissionDenied(
-                "Only course admins can delete tasks."
+                "course_admin_only"
             )
         return super().destroy(
             request,
@@ -153,7 +153,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         user = request.user
         if user.role != User.Role.MANAGER:
             raise PermissionDenied(
-                "Only managers can mark tasks as seen."
+                "manager_only"
             )
 
         data = request.data
