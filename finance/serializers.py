@@ -6,21 +6,61 @@ from .models import Budget, Forecast, PeriodComparison, AccountingReport, Monthl
 
 class BudgetSerializer(serializers.ModelSerializer):
     spent = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
-    remaining = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
-    utilization_rate = serializers.DecimalField(max_digits=8, decimal_places=2, read_only=True)
-    is_over_budget = serializers.SerializerMethodField()
+    previous_month_spent = serializers.SerializerMethodField()
+    month_change_percent = serializers.SerializerMethodField()
 
     class Meta:
         model = Budget
         fields = [
             'id', 'company', 'category', 'amount', 'period_start',
-            'period_end', 'is_active', 'spent', 'remaining',
-            'utilization_rate', 'is_over_budget', 'created_at', 'updated_at'
+            'period_end', 'is_active', 'spent', 'previous_month_spent',
+            'month_change_percent', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'spent', 'remaining', 'utilization_rate', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'spent', 'previous_month_spent',
+            'month_change_percent', 'created_at', 'updated_at'
+        ]
 
-    def get_is_over_budget(self, obj):
-        return obj.check_over_budget()
+    def get_previous_month_spent(self, obj):
+        from calendar import monthrange
+        from datetime import date
+        from django.db.models import Sum
+        from core.models import Expense
+
+        current_start = obj.period_start.replace(day=1)
+        if current_start.month == 1:
+            previous_start = date(current_start.year - 1, 12, 1)
+        else:
+            previous_start = date(
+                current_start.year,
+                current_start.month - 1,
+                1,
+            )
+
+        previous_end = date(
+            previous_start.year,
+            previous_start.month,
+            monthrange(previous_start.year, previous_start.month)[1],
+        )
+
+        return (
+            Expense.objects.filter(
+                company=obj.company,
+                category=obj.category,
+                date__gte=previous_start,
+                date__lte=previous_end,
+            ).aggregate(total=Sum("amount"))["total"]
+            or 0
+        )
+
+    def get_month_change_percent(self, obj):
+        previous = self.get_previous_month_spent(obj)
+        current = obj.spent
+
+        if not previous:
+            return None if current else 0
+
+        return round(((current - previous) / previous) * 100, 2)
 
 
 class BudgetAlertSerializer(serializers.ModelSerializer):
