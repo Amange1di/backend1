@@ -10,6 +10,8 @@ from core.models import (
     UserBalance,
 )
 
+from core.domains.marketplace.services import COIN_VALUE_KGS
+
 
 class UserBalanceHistoryView(APIView):
     permission_classes = [
@@ -179,5 +181,56 @@ class UserBalanceMeView(APIView):
         return Response(
             {
                 "balance": user_balance.balance
+            }
+        )
+
+
+class CompanyMarketplaceCoinsMeView(APIView):
+    """Company-only Marketplace Coins balance and conversion metadata."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        if user.role not in (
+            User.Role.COURSE_ADMIN,
+            User.Role.MANAGER,
+        ):
+            return Response(
+                {"detail": "company_coins_only"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        company_id = (
+            user.company_id
+            or getattr(
+                getattr(user, "created_by", None),
+                "company_id",
+                None,
+            )
+        )
+
+        if not company_id:
+            return Response(
+                {"detail": "company_not_found"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        balance, _ = CompanyBalance.objects.get_or_create(
+            company_id=company_id
+        )
+
+        return Response(
+            {
+                "balance": balance.balance,
+                "unit": "Coins",
+                "coin_value_kgs": COIN_VALUE_KGS,
+                "balance_value_kgs": round(
+                    balance.balance * COIN_VALUE_KGS,
+                    2,
+                ),
+                "scope": "marketplace_promotion",
+                "allowed_for": ["course", "job"],
             }
         )
