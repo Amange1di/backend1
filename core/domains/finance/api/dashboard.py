@@ -43,11 +43,11 @@ class FinanceDashboardView(APIView):
 
         user = request.user
         if user.role != User.Role.COURSE_ADMIN:
-            return Response({'detail': 'Нет доступа'}, status=403)
+            return Response({'detail': 'access_denied'}, status=403)
         company = user.company
 
         if not company:
-            return Response({'detail': 'Компания не найдена'}, status=404)
+            return Response({'detail': 'company_not_found'}, status=404)
 
         now = timezone.now().date()
         first_of_month = date(now.year, now.month, 1)
