@@ -49,12 +49,11 @@ class GenerateTelegramBindCodeView(APIView):
                 "expires_at": (
                     bind_code.expires_at.isoformat()
                 ),
-                "message": (
-                    "Код действителен 10 минут. "
-                    "Используйте в Telegram: "
-                    f"/start {user.username} "
-                    f"{bind_code.code}"
-                ),
+                "message_key": "telegram_bind_code_created",
+                "message_params": {
+                    "minutes": 10,
+                    "command": f"/start {user.username} {bind_code.code}",
+                },
             }
         )
 
@@ -77,10 +76,7 @@ class GetTelegramBindCodeView(APIView):
             return Response(
                 {
                     "code": None,
-                    "message": (
-                        "Нет активного кода. "
-                        "Сгенерируйте новый."
-                    ),
+                    "message_key": "telegram_bind_code_missing",
                 }
             )
 
@@ -108,7 +104,7 @@ class BroadcastView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Компания не найдена."
+                        "company_not_found"
                     )
                 },
                 status=400,
@@ -130,7 +126,7 @@ class BroadcastView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Текст сообщения обязателен."
+                        "broadcast_text_required"
                     )
                 },
                 status=400,
@@ -162,8 +158,7 @@ class BroadcastView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Текст сообщения не может "
-                        "превышать 4000 символов."
+                        "broadcast_text_too_long"
                     )
                 },
                 status=400,
@@ -239,7 +234,7 @@ class BroadcastView(APIView):
                 return Response(
                     {
                         "detail": (
-                            "Группа не найдена."
+                            "group_not_found"
                         )
                     },
                     status=404,
@@ -265,7 +260,7 @@ class BroadcastView(APIView):
             return Response(
                 {
                     "detail": (
-                        f"Неверный target: {target}"
+                        "invalid_broadcast_target"
                     )
                 },
                 status=400,
@@ -275,8 +270,7 @@ class BroadcastView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Нет получателей с "
-                        "привязанным Telegram."
+                        "broadcast_no_recipients"
                     )
                 },
                 status=400,
@@ -295,18 +289,10 @@ class BroadcastView(APIView):
             nonlocal sent_count, failed_count
 
             if not BOT_TOKEN:
-                raise Exception(
-                    (
-                        "TELEGRAM_BOT_TOKEN "
-                        "не настроен"
-                    )
-                )
+                raise RuntimeError("telegram_bot_not_configured")
 
             application = _get_application()
-            full_text = (
-                "📢 <b>Массовая рассылка</b>"
-                f"\n\n{text}"
-            )
+            full_text = text
 
             for recipient in recipients:
                 try:
@@ -342,8 +328,9 @@ class BroadcastView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Ошибка отправки: "
-                        f"{str(exc)}"
+                        str(exc)
+                        if str(exc) == "telegram_bot_not_configured"
+                        else "broadcast_send_failed"
                     )
                 },
                 status=500,
