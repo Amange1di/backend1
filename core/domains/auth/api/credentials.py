@@ -68,7 +68,7 @@ class RegisterView(APIView):
     def post(self, request):
         if request.user.role != User.Role.COURSE_ADMIN:
             raise PermissionDenied(
-                "Only course admins can create users."
+                "course_admin_only"
             )
         if (
             request.user.is_authenticated
@@ -78,8 +78,7 @@ class RegisterView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Admins can only create "
-                        "course admins."
+                        "admin_create_course_admin_only"
                     )
                 },
                 status=status.HTTP_403_FORBIDDEN,
@@ -93,7 +92,7 @@ class RegisterView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Teachers cannot create users."
+                        "teacher_create_user_forbidden"
                     )
                 },
                 status=status.HTTP_403_FORBIDDEN,
@@ -107,7 +106,7 @@ class RegisterView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Managers cannot create users."
+                        "manager_create_user_forbidden"
                     )
                 },
                 status=status.HTTP_403_FORBIDDEN,
@@ -121,7 +120,7 @@ class RegisterView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Students cannot create users."
+                        "student_create_user_forbidden"
                     )
                 },
                 status=status.HTTP_403_FORBIDDEN,
@@ -151,8 +150,7 @@ class RegisterView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Managers can only be created "
-                        "by course admins."
+                        "manager_create_course_admin_only"
                     )
                 },
                 status=status.HTTP_403_FORBIDDEN,
@@ -170,8 +168,7 @@ class RegisterView(APIView):
                 return Response(
                     {
                         "detail": (
-                            "Course admins can only create "
-                            "teachers or managers."
+                            "course_admin_role_create_restricted"
                         )
                     },
                     status=status.HTTP_403_FORBIDDEN,
@@ -179,7 +176,7 @@ class RegisterView(APIView):
 
             if not request.user.company_id:
                 return Response(
-                    {"detail": "Company is required."},
+                    {"detail": "company_required"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -309,7 +306,7 @@ class FirstLoginSetPasswordView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Password setup is not required."
+                        "password_setup_not_required"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -385,7 +382,7 @@ class LogoutView(APIView):
         response = Response(
             {
                 "detail": (
-                    "Successfully logged out."
+                    "logout_success"
                 )
             }
         )
