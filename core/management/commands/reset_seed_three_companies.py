@@ -222,17 +222,24 @@ class Command(BaseCommand):
         )
 
         created_companies = []
+        admin_names = [
+            ("Эрмек", "Токтосунов"),
+            ("Айпери", "Жумабаева"),
+            ("Данияр", "Абдыкадыров"),
+            ("Мээрим", "Сапарова"),
+        ]
 
         for company_index, spec in enumerate(company_specs, start=1):
             start_date = min(spec["start"], today)
             start_dt = self._at_date(start_date, 9)
 
+            admin_first_name, admin_last_name = admin_names[company_index - 1]
             course_admin = self._create_seed_user(
                 username=f'{spec["key"]}_admin',
                 password="Company2026!",
                 role=User.Role.COURSE_ADMIN,
-                first_name=spec["name"].split()[0],
-                last_name="Администратор",
+                first_name=admin_first_name,
+                last_name=admin_last_name,
                 email=f'{spec["key"]}.admin@eduosh.kg',
                 phone=f"+996 700 {company_index}00 001",
                 is_active=True,
@@ -253,7 +260,7 @@ class Command(BaseCommand):
                 phone=spec["phone"],
                 telegram=spec["telegram"],
                 whatsapp=spec["phone"],
-                website=f'https://{spec["slug"]}.example.local',
+                website="",
                 instagram=spec["instagram"],
                 facebook="",
                 owner=course_admin,
