@@ -344,13 +344,11 @@ def ensure_resource_available(
 
         if resource == "auditorium":
             raise PermissionDenied(
-                "Auditorium is busy at this time."
+                "auditorium_busy"
             )
 
-        raise PermissionDenied(
-            (
-                f"Преподаватель «{target}» уже "
-                f"занят в это время в группе "
-                f"«{group.name}»."
-            )
-        )
+        raise PermissionDenied({
+            "detail": "teacher_busy",
+            "teacher": str(target),
+            "group": group.name,
+        })
