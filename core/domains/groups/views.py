@@ -16,7 +16,7 @@ from .serializers import GroupSerializer
 from .lifecycle import GroupLifecycleMixin
 from .services import (
     compute_group_end_date,
-    ensure_resource_available,
+    ensure_group_schedule_available,
 )
 
 
@@ -195,13 +195,8 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
             "end_date"
         ] = end_date
 
-        ensure_resource_available(
+        ensure_group_schedule_available(
             serializer=serializer,
-            resource="auditorium",
-        )
-        ensure_resource_available(
-            serializer=serializer,
-            resource="teacher",
         )
 
         teacher = serializer.validated_data.get(
@@ -371,17 +366,6 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
             ):
                 teacher_changed = True
 
-        ensure_resource_available(
-            serializer=serializer,
-            instance=instance,
-            resource="auditorium",
-        )
-        ensure_resource_available(
-            serializer=serializer,
-            instance=instance,
-            resource="teacher",
-        )
-
         start_date = serializer.validated_data.get(
             "start_date",
             instance.start_date,
@@ -423,6 +407,15 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
             start_date,
             schedule_days,
             lessons_count,
+        )
+
+        serializer.validated_data[
+            "end_date"
+        ] = end_date
+
+        ensure_group_schedule_available(
+            serializer=serializer,
+            instance=instance,
         )
 
         save_kwargs = {
