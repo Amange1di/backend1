@@ -50,35 +50,22 @@ class GroupMonthSerializer(serializers.ModelSerializer):
 
     def get_month_label(self, obj):
         group = obj.group
-        start_date = getattr(
-            group,
-            "start_date",
-            None,
-        )
+        start_date = getattr(group, "start_date", None)
         if not start_date:
-            return f"Месяц {obj.month_number}"
+            return {
+                "key": "month_number",
+                "month_number": obj.month_number,
+                "year": None,
+            }
 
         month_date = start_date + relativedelta(
             months=obj.month_number - 1
         )
-        months_russian = [
-            "Январь",
-            "Февраль",
-            "Март",
-            "Апрель",
-            "Май",
-            "Июнь",
-            "Июль",
-            "Август",
-            "Сентябрь",
-            "Октябрь",
-            "Ноябрь",
-            "Декабрь",
-        ]
-        return (
-            f"{months_russian[month_date.month - 1]} "
-            f"{month_date.year}"
-        )
+        return {
+            "key": f"month_{month_date.month:02d}",
+            "month_number": month_date.month,
+            "year": month_date.year,
+        }
 
     def get_teacher_name(self, obj):
         group = obj.group
