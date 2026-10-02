@@ -296,7 +296,7 @@ class Command(BaseCommand):
             auditoriums = self._create_auditoriums(
                 company=company,
                 prefix=spec["key"],
-                count=min(4, len(courses)),
+                count=max(6, len(courses)),
                 start_date=start_date,
             )
 
@@ -644,14 +644,21 @@ class Command(BaseCommand):
             "1,4",
             "2,5",
             "0,2",
+            "1,3",
+            "3,5",
+            "0,4",
+            "2,4",
         ]
         schedule_times = [
-            "09:00",
+            "08:00",
+            "09:30",
             "11:00",
-            "13:00",
-            "15:00",
+            "12:30",
+            "14:00",
+            "15:30",
             "17:00",
-            "19:00",
+            "18:30",
+            "20:00",
         ]
         month_starts = self._month_starts(start_date, today)
 
