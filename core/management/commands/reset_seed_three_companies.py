@@ -734,9 +734,6 @@ class Command(BaseCommand):
                 lesson_duration = course.lesson_duration_minutes or 90
 
                 for local_index in range(groups_count):
-                    teacher = course_teachers[
-                        (month_index + local_index) % len(course_teachers)
-                    ]
                     day_offset = [1, 10, 20][local_index]
                     group_start = month_start + timedelta(days=day_offset - 1)
                     if group_start > today:
@@ -759,38 +756,53 @@ class Command(BaseCommand):
                         + local_index
                     )
 
-                    for room_offset in range(len(auditoriums)):
-                        auditorium = auditoriums[
-                            (seed_offset + room_offset) % len(auditoriums)
+                    for teacher_offset in range(len(course_teachers)):
+                        teacher = course_teachers[
+                            (seed_offset + teacher_offset)
+                            % len(course_teachers)
                         ]
-                        for pattern_offset in range(len(schedule_patterns)):
-                            schedule_days = schedule_patterns[
-                                (seed_offset + pattern_offset)
-                                % len(schedule_patterns)
+
+                        for room_offset in range(len(auditoriums)):
+                            auditorium = auditoriums[
+                                (seed_offset + room_offset)
+                                % len(auditoriums)
                             ]
-                            for time_offset in range(len(schedule_times)):
-                                schedule_time = schedule_times[
-                                    (seed_offset + time_offset)
-                                    % len(schedule_times)
+
+                            for pattern_offset in range(len(schedule_patterns)):
+                                schedule_days = schedule_patterns[
+                                    (seed_offset + pattern_offset)
+                                    % len(schedule_patterns)
                                 ]
 
-                                if slot_is_free(
-                                    teacher=teacher,
-                                    auditorium=auditorium,
-                                    schedule_days=schedule_days,
-                                    schedule_time=schedule_time,
-                                    group_start=group_start,
-                                    group_end=group_end,
-                                    lesson_duration=lesson_duration,
-                                ):
-                                    slot = (
-                                        auditorium,
-                                        schedule_days,
-                                        schedule_time,
-                                    )
+                                for time_offset in range(len(schedule_times)):
+                                    schedule_time = schedule_times[
+                                        (seed_offset + time_offset)
+                                        % len(schedule_times)
+                                    ]
+
+                                    if slot_is_free(
+                                        teacher=teacher,
+                                        auditorium=auditorium,
+                                        schedule_days=schedule_days,
+                                        schedule_time=schedule_time,
+                                        group_start=group_start,
+                                        group_end=group_end,
+                                        lesson_duration=lesson_duration,
+                                    ):
+                                        slot = (
+                                            teacher,
+                                            auditorium,
+                                            schedule_days,
+                                            schedule_time,
+                                        )
+                                        break
+
+                                if slot:
                                     break
+
                             if slot:
                                 break
+
                         if slot:
                             break
 
@@ -801,7 +813,12 @@ class Command(BaseCommand):
                             f"starting {group_start}."
                         )
 
-                    auditorium, selected_days, selected_time = slot
+                    (
+                        teacher,
+                        auditorium,
+                        selected_days,
+                        selected_time,
+                    ) = slot
 
                     sequence = (
                         Group.objects.filter(
