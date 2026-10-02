@@ -51,10 +51,10 @@ class FinanceExportView(APIView):
         elif user.role == User.Role.MANAGER:
             company = user.company
         else:
-            return Response({'detail': 'Нет доступа'}, status=403)
+            return Response({'detail': 'access_denied'}, status=403)
 
         if not company:
-            return Response({'detail': 'Компания не найдена'}, status=404)
+            return Response({'detail': 'company_not_found'}, status=404)
 
         now = timezone.now().date()
         first_of_month = date(now.year, now.month, 1)
@@ -192,4 +192,4 @@ class FinanceExportView(APIView):
             return response
 
         else:
-            return Response({'detail': f'Формат "{export_format}" не поддерживается. Используйте: json, xlsx, csv'}, status=400)
+            return Response({'detail': 'unsupported_export_format', 'format': export_format, 'supported_formats': ['json', 'xlsx', 'csv']}, status=400)
