@@ -481,6 +481,7 @@ class Command(BaseCommand):
                 telegram=f"@{prefix}_manager_{index}",
                 salary_rate=Decimal(str(35000 + index * 5000)),
                 working_hours="09:00–18:00",
+                working_days="0,1,2,3,4,5",
                 company=company,
                 created_by=course_admin,
                 is_active=True,
@@ -583,7 +584,8 @@ class Command(BaseCommand):
                         Decimal("32000.00")
                         + Decimal(teacher_number * 2500)
                     ),
-                    working_hours="09:00–21:00",
+                    working_hours="08:00–21:30",
+                    working_days="0,1,2,3,4,5",
                     company=company,
                     created_by=course_admin,
                     is_active=True,
