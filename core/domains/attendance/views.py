@@ -69,8 +69,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         ):
             raise PermissionDenied(
                 (
-                    "Course admins cannot "
-                    "mark attendance."
+                    "attendance_mark_staff_forbidden"
                 )
             )
 
@@ -82,7 +81,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             and group.teacher_id != user.id
         ):
             raise PermissionDenied(
-                "Not allowed for this group."
+                "group_access_denied"
             )
 
         serializer.save()
@@ -104,12 +103,12 @@ class AttendanceMarkView(APIView):
     def _ensure_access(user, group):
         if user.role == User.Role.MANAGER:
             raise permissions.PermissionDenied(
-                "Not allowed for managers."
+                "manager_access_denied"
             )
 
         if user.role == User.Role.STUDENT:
             raise permissions.PermissionDenied(
-                "Not allowed for students."
+                "student_access_denied"
             )
 
         if (
@@ -132,7 +131,7 @@ class AttendanceMarkView(APIView):
 
             if not allowed:
                 raise permissions.PermissionDenied(
-                    "Not allowed for this course."
+                    "course_access_denied"
                 )
 
         if (
@@ -140,7 +139,7 @@ class AttendanceMarkView(APIView):
             and group.teacher_id != user.id
         ):
             raise permissions.PermissionDenied(
-                "Not allowed for this group."
+                "group_access_denied"
             )
 
     def get(self, request):
@@ -155,7 +154,7 @@ class AttendanceMarkView(APIView):
             return Response(
                 {
                     "detail": (
-                        "group and date are required."
+                        "attendance_group_date_required"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -166,7 +165,7 @@ class AttendanceMarkView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Invalid date format. Use YYYY-MM-DD."
+                        "invalid_date_format"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -228,8 +227,7 @@ class AttendanceMarkView(APIView):
         ):
             raise permissions.PermissionDenied(
                 (
-                    "Course admins cannot "
-                    "mark attendance."
+                    "attendance_mark_staff_forbidden"
                 )
             )
 
@@ -244,7 +242,7 @@ class AttendanceMarkView(APIView):
             return Response(
                 {
                     "detail": (
-                        "group and date are required."
+                        "attendance_group_date_required"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -255,7 +253,7 @@ class AttendanceMarkView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Invalid date format. Use YYYY-MM-DD."
+                        "invalid_date_format"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
