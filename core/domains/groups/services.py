@@ -1,4 +1,6 @@
 import re
+
+from django.db import models
 from datetime import date, timedelta
 
 from rest_framework.exceptions import PermissionDenied
@@ -196,7 +198,155 @@ def compute_group_end_date(
     return current
 
 
+GROUP_SCHEDULE_BREAK_MINUTES = 15
+
+
+def ensure_group_schedule_available(
+    *,
+    serializer,
+    instance=None,
+):
+    """
+    Hard backend validation for a group's timetable.
+
+    Both the selected auditorium and teacher must be free for every selected
+    weekday across the group's active date range. A 15-minute turnover/break
+    is enforced around each lesson.
+    """
+    auditorium = serializer.validated_data.get(
+        "auditorium",
+        instance.auditorium if instance else None,
+    )
+    teacher = serializer.validated_data.get(
+        "teacher",
+        instance.teacher if instance else None,
+    )
+    schedule_time = serializer.validated_data.get(
+        "schedule_time",
+        instance.schedule_time if instance else "",
+    )
+    schedule_days = serializer.validated_data.get(
+        "schedule_days",
+        instance.schedule_days if instance else "",
+    )
+    start_date = serializer.validated_data.get(
+        "start_date",
+        instance.start_date if instance else None,
+    )
+    end_date = serializer.validated_data.get(
+        "end_date",
+        instance.end_date if instance else None,
+    )
+    course = serializer.validated_data.get(
+        "course",
+        instance.course if instance else None,
+    )
+
+    if not auditorium:
+        raise PermissionDenied("auditorium_required")
+    if not teacher:
+        raise PermissionDenied("teacher_required")
+    if not schedule_time:
+        raise PermissionDenied("schedule_time_required")
+    if not schedule_days:
+        raise PermissionDenied("schedule_days_required")
+    if not start_date:
+        raise PermissionDenied("start_date_required")
+    if not end_date:
+        raise PermissionDenied("end_date_required")
+    if not course:
+        raise PermissionDenied("course_required")
+
+    duration = course.lesson_duration_minutes or 0
+    if duration <= 0:
+        raise PermissionDenied("lesson_duration_required")
+
+    start_minutes = parse_time_to_minutes(schedule_time)
+    if start_minutes is None:
+        raise PermissionDenied("schedule_time_invalid")
+
+    days_set = parse_schedule_days(schedule_days)
+    if not days_set:
+        raise PermissionDenied("schedule_days_invalid")
+
+    end_minutes = start_minutes + duration
+    queryset = (
+        Group.objects
+        .filter(archived_at__isnull=True)
+        .select_related("course", "teacher", "auditorium")
+        .filter(
+            models.Q(auditorium=auditorium)
+            | models.Q(teacher=teacher)
+        )
+    )
+
+    if instance:
+        queryset = queryset.exclude(pk=instance.pk)
+
+    for group in queryset:
+        if not group.schedule_time or not group.schedule_days:
+            continue
+
+        if not ranges_overlap(
+            start_date,
+            end_date,
+            group.start_date,
+            group.end_date,
+        ):
+            continue
+
+        other_days = parse_schedule_days(group.schedule_days)
+        common_days = days_set.intersection(other_days)
+        if not common_days:
+            continue
+
+        other_start = parse_time_to_minutes(group.schedule_time)
+        if other_start is None:
+            continue
+
+        other_duration = (
+            group.course.lesson_duration_minutes
+            if group.course
+            else 0
+        ) or 0
+        if other_duration <= 0:
+            continue
+
+        other_end = other_start + other_duration
+
+        # Treat the 15-minute turnover as part of the occupied slot.
+        overlaps_time = (
+            start_minutes < other_end + GROUP_SCHEDULE_BREAK_MINUTES
+            and other_start < end_minutes + GROUP_SCHEDULE_BREAK_MINUTES
+        )
+        if not overlaps_time:
+            continue
+
+        conflict = {
+            "group_id": group.id,
+            "group": group.name,
+            "schedule_time": group.schedule_time,
+            "schedule_days": group.schedule_days,
+            "overlap_days": sorted(common_days),
+        }
+
+        if group.auditorium_id == auditorium.id:
+            raise PermissionDenied({
+                "detail": "auditorium_busy",
+                "auditorium": str(auditorium),
+                **conflict,
+            })
+
+        if group.teacher_id == teacher.id:
+            raise PermissionDenied({
+                "detail": "teacher_busy",
+                "teacher": str(teacher),
+                **conflict,
+            })
+
+
 def ensure_resource_available(
+
     *,
     serializer,
     instance=None,
