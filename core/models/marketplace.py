@@ -8,13 +8,12 @@ from .applications import ApplicationStatus
 
 
 class CompanyCategory(models.TextChoices):
-    LANGUAGES = "languages", "Languages"
-    IT = "it", "IT & Technology"
-    CRAFTS = "crafts", "Crafts & Handmade"
-    SPORTS = "sports", "Sports & Fitness"
-    MUSIC = "music", "Music & Arts"
-    BUSINESS = "business", "Business & Finance"
-    OTHER = "other", "Other"
+    BASIC = "basic", "Основные"
+    CONTENT = "content", "Контент"
+    MEDIA = "media", "Медиа"
+    FORMS = "forms", "Формы"
+    DATA = "data", "Данные"
+    INTERACTIVE = "interactive", "Интерактив"
 
 class CompanyCity(models.TextChoices):
     BISHKEK = "Бишкек", "Бишкек"
