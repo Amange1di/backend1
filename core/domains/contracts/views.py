@@ -37,16 +37,16 @@ class ContractViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
             raise PermissionDenied(
-                "Only course admins and managers can create contracts."
+                "staff_only"
             )
 
         student = serializer.validated_data.get("student")
         if student.company != user.company:
-            raise PermissionDenied("Student must belong to the same company.")
+            raise PermissionDenied("student_company_mismatch")
 
         group = serializer.validated_data.get("group")
         if group and group.company != user.company:
-            raise PermissionDenied("Group must belong to the same company.")
+            raise PermissionDenied("group_company_mismatch")
 
         contract = serializer.save(company=user.company, created_by=user)
         try:
@@ -61,19 +61,19 @@ class ContractViewSet(viewsets.ModelViewSet):
         user = self.request.user
         instance = self.get_object()
         if instance.company != user.company:
-            raise PermissionDenied("Not allowed for this contract.")
+            raise PermissionDenied("contract_access_denied")
         if instance.status != Contract.Status.DRAFT:
-            raise PermissionDenied("Only draft contracts can be edited.")
+            raise PermissionDenied("contract_not_editable")
         serializer.save()
 
     @action(detail=True, methods=["post"])
     def send(self, request, pk=None):
         contract = self.get_object()
         if contract.company != request.user.company:
-            raise PermissionDenied("Not allowed for this contract.")
+            raise PermissionDenied("contract_access_denied")
         if contract.status != Contract.Status.DRAFT:
             return Response(
-                {"detail": "Договор уже отправлен."},
+                {"detail": "contract_already_sent"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -91,10 +91,10 @@ class ContractViewSet(viewsets.ModelViewSet):
         student = getattr(request.user, "student_profile", None)
 
         if not student or contract.student.id != student.id:
-            raise PermissionDenied("Вы не можете подписать этот договор.")
+            raise PermissionDenied("contract_sign_forbidden")
         if contract.status != Contract.Status.SENT:
             return Response(
-                {"detail": "Можно подписать только отправленный договор."},
+                {"detail": "contract_not_sent"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -116,7 +116,7 @@ class ContractViewSet(viewsets.ModelViewSet):
 
         if not student_id or not group_id:
             return Response(
-                {"detail": "student_id и group_id обязательны."},
+                {"detail": "student_and_group_required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -130,7 +130,7 @@ class ContractViewSet(viewsets.ModelViewSet):
                 company=request.user.company,
             )
         except (Student.DoesNotExist, Group.DoesNotExist):
-            raise PermissionDenied("Студент или группа не найдены.")
+            raise PermissionDenied("student_or_group_not_found")
 
         course = group.course
         amount = course.price if course else 0
@@ -179,7 +179,7 @@ class ContractViewSet(viewsets.ModelViewSet):
     def download_pdf(self, request, pk=None):
         contract = self.get_object()
         if contract.company != request.user.company:
-            raise PermissionDenied("Not allowed for this contract.")
+            raise PermissionDenied("contract_access_denied")
 
         try:
             pdf_file = generate_contract_pdf(
@@ -194,13 +194,13 @@ class ContractViewSet(viewsets.ModelViewSet):
                 contract.contract_number,
             )
             return Response(
-                {"detail": f"Ошибка генерации PDF: {exc}"},
+                {"detail": "pdf_generation_failed"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
         if pdf_file is None:
             return Response(
-                {"detail": "PDF generation is not available."},
+                {"detail": "pdf_generation_unavailable"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -232,7 +232,7 @@ class ContractTemplateViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
             raise PermissionDenied(
-                "Only course admins and managers can create contract templates."
+                "staff_only"
             )
 
         if serializer.validated_data.get("is_default"):
@@ -247,7 +247,7 @@ class ContractTemplateViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
 
         if instance.company != user.company:
-            raise PermissionDenied("Not allowed for this template.")
+            raise PermissionDenied("template_access_denied")
 
         if serializer.validated_data.get("is_default"):
             ContractTemplate.objects.filter(
@@ -263,13 +263,13 @@ class StudentContractsView(APIView):
     def get(self, request):
         if request.user.role != User.Role.STUDENT:
             raise PermissionDenied(
-                "Only students can access their contracts."
+                "student_only"
             )
 
         student = getattr(request.user, "student_profile", None)
         if not student:
             return Response(
-                {"detail": "Student profile not found."},
+                {"detail": "student_profile_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
