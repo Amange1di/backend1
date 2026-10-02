@@ -178,7 +178,7 @@ class SalaryRecordViewSet(viewsets.ModelViewSet):
         company = self._company()
         if not company:
             return Response(
-                {"detail": "Компания не найдена."},
+                {"detail": "company_not_found"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -187,13 +187,13 @@ class SalaryRecordViewSet(viewsets.ModelViewSet):
             month = int(request.data.get("month", timezone.localdate().month))
         except (TypeError, ValueError):
             return Response(
-                {"detail": "Некорректный год или месяц."},
+                {"detail": "invalid_year_month"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         if not 1 <= month <= 12:
             return Response(
-                {"detail": "Месяц должен быть от 1 до 12."},
+                {"detail": "month_out_of_range"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -267,13 +267,13 @@ class SalaryRecordViewSet(viewsets.ModelViewSet):
             amount = Decimal(str(request.data.get("amount", "")))
         except (InvalidOperation, TypeError, ValueError):
             return Response(
-                {"detail": "Некорректная сумма выплаты."},
+                {"detail": "invalid_payment_amount"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         if amount <= 0:
             return Response(
-                {"detail": "Сумма выплаты должна быть больше нуля."},
+                {"detail": "payment_amount_positive"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -281,10 +281,8 @@ class SalaryRecordViewSet(viewsets.ModelViewSet):
         if amount > remaining:
             return Response(
                 {
-                    "detail": (
-                        f"Сумма выплаты превышает остаток. "
-                        f"Осталось выплатить: {remaining}."
-                    )
+                    "detail": "payment_exceeds_remaining",
+                    "remaining": str(remaining)
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -295,7 +293,7 @@ class SalaryRecordViewSet(viewsets.ModelViewSet):
                 paid_at = date.fromisoformat(str(paid_at_raw))
             except ValueError:
                 return Response(
-                    {"detail": "Некорректная дата выплаты."},
+                    {"detail": "invalid_payment_date"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         else:
@@ -308,7 +306,7 @@ class SalaryRecordViewSet(viewsets.ModelViewSet):
         valid_types = {choice[0] for choice in SalaryPayment.PaymentType.choices}
         if payment_type not in valid_types:
             return Response(
-                {"detail": "Некорректный тип выплаты."},
+                {"detail": "invalid_payment_type"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -351,7 +349,7 @@ class SalaryRecordViewSet(viewsets.ModelViewSet):
             payment = record.payments.get(pk=payment_id)
         except SalaryPayment.DoesNotExist:
             return Response(
-                {"detail": "Выплата не найдена."},
+                {"detail": "salary_payment_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
