@@ -83,7 +83,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
         ):
             if not course:
                 raise PermissionDenied(
-                    "Not allowed for this course."
+                    "course_access_denied"
                 )
 
             allowed = course.admins.filter(
@@ -97,7 +97,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
 
             if not allowed:
                 raise PermissionDenied(
-                    "Not allowed for this course."
+                    "course_access_denied"
                 )
 
             teacher = serializer.validated_data.get(
@@ -109,8 +109,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
             ):
                 raise PermissionDenied(
                     (
-                        "Teacher must belong to "
-                        "the same company."
+                        "teacher_company_mismatch"
                     )
                 )
 
@@ -122,8 +121,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
             ):
                 raise PermissionDenied(
                     (
-                        "Teacher is not assigned "
-                        "to this course."
+                        "teacher_not_assigned_to_course"
                     )
                 )
 
@@ -137,8 +135,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
             ):
                 raise PermissionDenied(
                     (
-                        "Auditorium must belong "
-                        "to the same company."
+                        "auditorium_company_mismatch"
                     )
                 )
 
@@ -150,8 +147,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
                 if student.company != user.company:
                     raise PermissionDenied(
                         (
-                            "Student must belong "
-                            "to the same company."
+                            "student_company_mismatch"
                         )
                     )
 
@@ -182,7 +178,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
         )
         if not schedule_days:
             raise PermissionDenied(
-                "Укажите дни занятий."
+                "schedule_days_required"
             )
 
         end_date = compute_group_end_date(
@@ -282,8 +278,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
             ):
                 raise PermissionDenied(
                     (
-                        "Managers cannot change "
-                        "group login access."
+                        "manager_group_login_access_forbidden"
                     )
                 )
 
@@ -303,7 +298,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
 
                 if not allowed:
                     raise PermissionDenied(
-                        "Not allowed for this course."
+                        "course_access_denied"
                     )
 
             selected_teacher = (
@@ -319,8 +314,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
             ):
                 raise PermissionDenied(
                     (
-                        "Teacher must belong to "
-                        "the same company."
+                        "teacher_company_mismatch"
                     )
                 )
 
@@ -337,8 +331,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
             ):
                 raise PermissionDenied(
                     (
-                        "Teacher is not assigned "
-                        "to this course."
+                        "teacher_not_assigned_to_course"
                     )
                 )
 
@@ -352,8 +345,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
             ):
                 raise PermissionDenied(
                     (
-                        "Auditorium must belong "
-                        "to the same company."
+                        "auditorium_company_mismatch"
                     )
                 )
 
@@ -365,8 +357,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
                 if student.company != user.company:
                     raise PermissionDenied(
                         (
-                            "Student must belong "
-                            "to the same company."
+                            "student_company_mismatch"
                         )
                     )
 
@@ -482,7 +473,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         if request.user.role == User.Role.MANAGER:
             raise PermissionDenied(
-                "Managers cannot archive groups."
+                "manager_group_archive_forbidden"
             )
 
         group = self.get_object()
@@ -518,8 +509,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
         ):
             raise PermissionDenied(
                 (
-                    "Только курс-админ или менеджер "
-                    "может повторить отправку."
+                    "group_resubmit_staff_only"
                 )
             )
 
@@ -529,8 +519,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
             return Response(
                 {
                     "detail": (
-                        "Можно повторить отправку только "
-                        "для отклонённых групп."
+                        "group_resubmit_rejected_only"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -540,8 +529,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
             return Response(
                 {
                     "detail": (
-                        "У группы должен быть "
-                        "назначен учитель."
+                        "group_teacher_required"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -555,7 +543,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
         return Response(
             {
                 "detail": (
-                    "Запрос повторно отправлен учителю."
+                    "group_resubmitted_to_teacher"
                 ),
                 "status": group.status,
             }
