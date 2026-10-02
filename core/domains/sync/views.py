@@ -151,7 +151,7 @@ class SyncExportView(APIView):
     def get(self, request):
         if not _check_sync_secret(request):
             return Response(
-                {"detail": "Invalid sync secret."},
+                {"detail": "sync_secret_invalid"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -160,7 +160,7 @@ class SyncExportView(APIView):
             or request.user.role == "super_admin"
         ):
             return Response(
-                {"detail": "Only admins can export data."},
+                {"detail": "sync_export_admin_only"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -181,7 +181,7 @@ class SyncExportView(APIView):
         except Exception as e:
             logger.exception("Sync export failed")
             return Response(
-                {"detail": "Export failed."},
+                {"detail": "sync_export_failed"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -199,7 +199,7 @@ class SyncImportView(APIView):
     def post(self, request):
         if not _check_sync_secret(request):
             return Response(
-                {"detail": "Invalid sync secret."},
+                {"detail": "sync_secret_invalid"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -208,7 +208,7 @@ class SyncImportView(APIView):
             or request.user.role == "super_admin"
         ):
             return Response(
-                {"detail": "Only super admins can import data."},
+                {"detail": "sync_import_super_admin_only"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -216,12 +216,12 @@ class SyncImportView(APIView):
         max_bytes = getattr(settings, "SYNC_MAX_BYTES", 10 * 1024 * 1024)
         if len(raw_data) > max_bytes:
             return Response(
-                {"detail": "Sync payload is too large."},
+                {"detail": "sync_payload_too_large"},
                 status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             )
         if not raw_data:
             return Response(
-                {"detail": "No data provided."},
+                {"detail": "sync_data_required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -229,14 +229,14 @@ class SyncImportView(APIView):
             data = json.loads(raw_data)
             if not isinstance(data, list):
                 return Response(
-                    {"detail": "Expected a JSON array."},
+                    {"detail": "sync_json_array_required"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             max_objects = getattr(settings, "SYNC_MAX_OBJECTS", 50000)
             if len(data) > max_objects:
                 return Response(
-                    {"detail": "Too many objects in sync payload."},
+                    {"detail": "sync_too_many_objects"},
                     status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 )
 
@@ -247,18 +247,18 @@ class SyncImportView(APIView):
             for item in data:
                 if not isinstance(item, dict):
                     return Response(
-                        {"detail": "Invalid sync object."},
+                        {"detail": "sync_object_invalid"},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
                 model_label = str(item.get("model", "")).lower()
                 if model_label not in allowed_models:
                     return Response(
-                        {"detail": "Sync payload contains a disallowed model."},
+                        {"detail": "sync_model_disallowed"},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
         except json.JSONDecodeError:
             return Response(
-                {"detail": "Invalid JSON."},
+                {"detail": "invalid_json"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -282,6 +282,6 @@ class SyncImportView(APIView):
         except Exception as e:
             logger.exception("Sync import failed")
             return Response(
-                {"detail": "Import failed."},
+                {"detail": "sync_import_failed"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
