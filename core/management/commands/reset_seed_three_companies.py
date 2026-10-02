@@ -532,12 +532,26 @@ class Command(BaseCommand):
             first_name, last_name = teacher_names[
                 (teacher_offset + index - 1) % len(teacher_names)
             ]
+            teacher_colors = [
+                "#45B2EF",
+                "#22C55E",
+                "#F59E0B",
+                "#A855F7",
+                "#EF4444",
+                "#14B8A6",
+                "#F97316",
+                "#6366F1",
+            ]
             teacher = self._create_seed_user(
                 username=f"{prefix}_teacher_{index}",
                 password="Company2026!",
                 role=User.Role.TEACHER,
                 first_name=first_name,
                 last_name=last_name,
+                color=teacher_colors[
+                    (index + sum(ord(char) for char in prefix))
+                    % len(teacher_colors)
+                ],
                 phone=f"+996 777 {index:03d} {len(courses):03d}",
                 telegram=f"@{prefix}_teacher_{index}",
                 salary_rate=Decimal("32000.00") + index * 3500,
