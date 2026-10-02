@@ -89,6 +89,12 @@ def parse_schedule_days(value: str) -> set[int]:
     result: set[int] = set()
 
     for token in tokens:
+        if token.isdigit():
+            numeric_day = int(token)
+            if 0 <= numeric_day <= 6:
+                result.add(numeric_day)
+                continue
+
         for index, keys in mapping:
             if any(
                 token.startswith(key)
