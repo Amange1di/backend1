@@ -204,6 +204,10 @@ class TeacherCreateSerializer(serializers.Serializer):
         required=False,
         allow_blank=True,
     )
+    working_days = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
     color = serializers.CharField(
         required=False,
         allow_blank=True,
@@ -334,6 +338,10 @@ class TeacherCreateSerializer(serializers.Serializer):
                 "working_hours",
                 "",
             ),
+            working_days=validated_data.get(
+                "working_days",
+                "",
+            ),
             color=validated_data.get(
                 "color",
                 "#45B2EF",
@@ -383,6 +391,7 @@ class TeacherUpdateSerializer(serializers.ModelSerializer):
             "telegram",
             "salary_rate",
             "working_hours",
+            "working_days",
             "color",
             "password",
             "course_ids",
