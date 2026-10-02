@@ -595,9 +595,86 @@ class Command(BaseCommand):
         today,
     ):
         result = []
-        schedule_days = ["1,3,5", "2,4,6", "1,4,6", "2,5"]
-        schedule_times = ["09:00", "11:00", "14:00", "16:00", "18:00", "19:30"]
+        # 0 = Monday ... 6 = Sunday. Keep several patterns so rooms and
+        # teachers can be scheduled without collisions.
+        schedule_patterns = [
+            "0,2,4",
+            "1,3,5",
+            "0,3,5",
+            "1,4",
+            "2,5",
+            "0,2",
+        ]
+        schedule_times = [
+            "09:00",
+            "11:00",
+            "13:00",
+            "15:00",
+            "17:00",
+            "19:00",
+        ]
         month_starts = self._month_starts(start_date, today)
+
+        def parse_days(value):
+            return {int(item) for item in value.split(",") if item.strip()}
+
+        def time_to_minutes(value):
+            hours, minutes = value.split(":")
+            return int(hours) * 60 + int(minutes)
+
+        def overlaps_dates(start_a, end_a, start_b, end_b):
+            return start_a <= end_b and start_b <= end_a
+
+        def slot_is_free(
+            *,
+            teacher,
+            auditorium,
+            schedule_days,
+            schedule_time,
+            group_start,
+            group_end,
+            lesson_duration,
+        ):
+            target_days = parse_days(schedule_days)
+            target_start = time_to_minutes(schedule_time)
+            target_end = target_start + lesson_duration
+
+            for existing in result:
+                if not overlaps_dates(
+                    group_start,
+                    group_end,
+                    existing.start_date,
+                    existing.end_date,
+                ):
+                    continue
+
+                existing_days = parse_days(existing.schedule_days or "")
+                if not target_days.intersection(existing_days):
+                    continue
+
+                existing_start = time_to_minutes(existing.schedule_time)
+                existing_duration = (
+                    existing.course.lesson_duration_minutes
+                    if existing.course
+                    else 90
+                ) or 90
+                existing_end = existing_start + existing_duration
+
+                times_overlap = (
+                    target_start < existing_end
+                    and existing_start < target_end
+                )
+                if not times_overlap:
+                    continue
+
+                # A room and a teacher can only have one lesson at a time.
+                if (
+                    existing.auditorium_id == auditorium.id
+                    or existing.teacher_id == teacher.id
+                ):
+                    return False
+
+            return True
 
         for month_index, month_start in enumerate(month_starts):
             for course_index, course in enumerate(courses):
@@ -611,6 +688,9 @@ class Command(BaseCommand):
                     base_group_name = base_group_name[len(company_prefix):]
                 base_group_name = base_group_name.strip()
 
+                teacher = teachers[course_index % len(teachers)]
+                lesson_duration = course.lesson_duration_minutes or 90
+
                 for local_index in range(groups_count):
                     day_offset = [1, 10, 20][local_index]
                     group_start = month_start + timedelta(days=day_offset - 1)
@@ -621,7 +701,62 @@ class Command(BaseCommand):
                         2,
                         min(6, int(round(course.duration_weeks / 4))),
                     )
-                    group_end = group_start + relativedelta(months=duration_months)
+                    group_end = group_start + relativedelta(
+                        months=duration_months
+                    )
+
+                    # Try every room/day/time combination until a truly free
+                    # slot is found. This prevents impossible seed schedules.
+                    slot = None
+                    seed_offset = (
+                        course_index
+                        + month_index
+                        + local_index
+                    )
+
+                    for room_offset in range(len(auditoriums)):
+                        auditorium = auditoriums[
+                            (seed_offset + room_offset) % len(auditoriums)
+                        ]
+                        for pattern_offset in range(len(schedule_patterns)):
+                            schedule_days = schedule_patterns[
+                                (seed_offset + pattern_offset)
+                                % len(schedule_patterns)
+                            ]
+                            for time_offset in range(len(schedule_times)):
+                                schedule_time = schedule_times[
+                                    (seed_offset + time_offset)
+                                    % len(schedule_times)
+                                ]
+
+                                if slot_is_free(
+                                    teacher=teacher,
+                                    auditorium=auditorium,
+                                    schedule_days=schedule_days,
+                                    schedule_time=schedule_time,
+                                    group_start=group_start,
+                                    group_end=group_end,
+                                    lesson_duration=lesson_duration,
+                                ):
+                                    slot = (
+                                        auditorium,
+                                        schedule_days,
+                                        schedule_time,
+                                    )
+                                    break
+                            if slot:
+                                break
+                        if slot:
+                            break
+
+                    if not slot:
+                        raise CommandError(
+                            "Could not allocate a conflict-free schedule "
+                            f"for {company.name}: {base_group_name} "
+                            f"starting {group_start}."
+                        )
+
+                    auditorium, selected_days, selected_time = slot
 
                     sequence = (
                         Group.objects.filter(
@@ -630,6 +765,7 @@ class Command(BaseCommand):
                         ).count()
                         + 1
                     )
+
                     group = Group.objects.create(
                         company=company,
                         name=(
@@ -637,19 +773,11 @@ class Command(BaseCommand):
                             f"{group_start:%y%m}-{sequence:02d}"
                         ),
                         course=course,
-                        teacher=teachers[course_index % len(teachers)],
-                        auditorium=auditoriums[
-                            (course_index + local_index + month_index)
-                            % len(auditoriums)
-                        ],
+                        teacher=teacher,
+                        auditorium=auditorium,
                         status=Group.Status.ACTIVE,
-                        schedule_days=schedule_days[
-                            (course_index + local_index) % len(schedule_days)
-                        ],
-                        schedule_time=schedule_times[
-                            (course_index + month_index + local_index)
-                            % len(schedule_times)
-                        ],
+                        schedule_days=selected_days,
+                        schedule_time=selected_time,
                         lessons_count=duration_months * 12,
                         lessons_per_month=12,
                         total_months=duration_months,
@@ -663,6 +791,7 @@ class Command(BaseCommand):
                         created_at=self._at_date(group_start, 9)
                     )
                     result.append(group)
+
         return result
 
     def _create_students(
