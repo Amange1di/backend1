@@ -208,7 +208,7 @@ class Command(BaseCommand):
             },
         ]
 
-        platform_admin =        platform_admin = self._create_seed_user(
+        platform_admin = self._create_seed_user(
             username="platform_admin",
             password="Platform2026!",
             role=User.Role.ADMIN,
@@ -483,7 +483,7 @@ class Command(BaseCommand):
             result.append(user)
         return result
 
-    def _create_courses_and_teachers(    def _create_courses_and_teachers(
+    def _create_courses_and_teachers(
         self,
         *,
         course_admin,
@@ -787,7 +787,7 @@ class Command(BaseCommand):
 
         return result
 
-    def _create_attendance(    def _create_attendance(self, *, groups, start_date, today):
+    def _create_attendance(self, *, groups, start_date, today):
         statuses = [
             Attendance.Status.PRESENT,
             Attendance.Status.PRESENT,
