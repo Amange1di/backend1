@@ -291,6 +291,7 @@ class Command(BaseCommand):
             )
             courses = course_data["courses"]
             teachers = course_data["teachers"]
+            teachers_by_course = course_data["teachers_by_course"]
 
             auditoriums = self._create_auditoriums(
                 company=company,
@@ -304,6 +305,7 @@ class Command(BaseCommand):
                 prefix=spec["key"],
                 courses=courses,
                 teachers=teachers,
+                teachers_by_course=teachers_by_course,
                 auditoriums=auditoriums,
                 start_date=start_date,
                 today=today,
@@ -501,6 +503,7 @@ class Command(BaseCommand):
     ):
         courses = []
         teachers = []
+        teachers_by_course = {}
         teacher_names = [
             ("Эрмек", "Садыков"), ("Алина", "Жумабаева"), ("Бекзат", "Осмонов"),
             ("Айпери", "Маматова"), ("Данияр", "Абдыкадыров"), ("Назгүл", "Токтогулова"),
@@ -510,6 +513,16 @@ class Command(BaseCommand):
             ("Мадина", "Сапарова"), ("Эрбол", "Калыбеков"), ("Асел", "Омуралиева"),
             ("Азизбек", "Шарипов"), ("Дилноза", "Рахматова"), ("Шахзод", "Каримов"),
             ("Малика", "Юлдашева"), ("Иван", "Петров"), ("Анна", "Смирнова"),
+        ]
+        teacher_colors = [
+            "#45B2EF",
+            "#22C55E",
+            "#F59E0B",
+            "#A855F7",
+            "#EF4444",
+            "#14B8A6",
+            "#F97316",
+            "#6366F1",
         ]
 
         for index, course_spec in enumerate(course_specs, start=1):
@@ -524,50 +537,76 @@ class Command(BaseCommand):
             )
             course.admins.add(course_admin)
             Course.objects.filter(pk=course.pk).update(
-                created_at=self._at_date(start_date + timedelta(days=index * 2), 11)
+                created_at=self._at_date(
+                    start_date + timedelta(days=index * 2),
+                    11,
+                )
             )
             courses.append(course)
 
-            teacher_offset = sum(ord(char) for char in prefix) % len(teacher_names)
-            first_name, last_name = teacher_names[
-                (teacher_offset + index - 1) % len(teacher_names)
-            ]
-            teacher_colors = [
-                "#45B2EF",
-                "#22C55E",
-                "#F59E0B",
-                "#A855F7",
-                "#EF4444",
-                "#14B8A6",
-                "#F97316",
-                "#6366F1",
-            ]
-            teacher = self._create_seed_user(
-                username=f"{prefix}_teacher_{index}",
-                password="Company2026!",
-                role=User.Role.TEACHER,
-                first_name=first_name,
-                last_name=last_name,
-                color=teacher_colors[
-                    (index + sum(ord(char) for char in prefix))
-                    % len(teacher_colors)
-                ],
-                phone=f"+996 777 {index:03d} {len(courses):03d}",
-                telegram=f"@{prefix}_teacher_{index}",
-                salary_rate=Decimal("32000.00") + index * 3500,
-                working_hours="09:00–18:00",
-                company=company,
-                created_by=course_admin,
-                is_active=True,
-                must_set_password=False,
-            )
-            teacher.teaching_courses.add(course)
-            User.objects.filter(pk=teacher.pk).update(
-                date_joined=self._at_date(start_date + timedelta(days=index * 2), 10)
-            )
-            teachers.append(teacher)
+            # Two teachers per course gives the seeded business enough real
+            # capacity for several parallel monthly groups without impossible
+            # teacher or room collisions.
+            course_teachers = []
+            for teacher_variant in range(2):
+                teacher_global_index = (
+                    (index - 1) * 2
+                    + teacher_variant
+                )
+                teacher_offset = (
+                    sum(ord(char) for char in prefix)
+                    + teacher_global_index
+                ) % len(teacher_names)
+                first_name, last_name = teacher_names[teacher_offset]
 
-        return {"courses": courses, "teachers": teachers}
+                teacher_number = teacher_global_index + 1
+                teacher = self._create_seed_user(
+                    username=f"{prefix}_teacher_{teacher_number}",
+                    password="Company2026!",
+                    role=User.Role.TEACHER,
+                    first_name=first_name,
+                    last_name=last_name,
+                    color=teacher_colors[
+                        (
+                            teacher_number
+                            + sum(ord(char) for char in prefix)
+                        )
+                        % len(teacher_colors)
+                    ],
+                    phone=(
+                        f"+996 777 "
+                        f"{teacher_number:03d} "
+                        f"{index:03d}"
+                    ),
+                    telegram=f"@{prefix}_teacher_{teacher_number}",
+                    salary_rate=(
+                        Decimal("32000.00")
+                        + Decimal(teacher_number * 2500)
+                    ),
+                    working_hours="09:00–21:00",
+                    company=company,
+                    created_by=course_admin,
+                    is_active=True,
+                    must_set_password=False,
+                )
+                teacher.teaching_courses.add(course)
+                User.objects.filter(pk=teacher.pk).update(
+                    date_joined=self._at_date(
+                        start_date
+                        + timedelta(days=index * 2 + teacher_variant),
+                        10,
+                    )
+                )
+                teachers.append(teacher)
+                course_teachers.append(teacher)
+
+            teachers_by_course[course.id] = course_teachers
+
+        return {
+            "courses": courses,
+            "teachers": teachers,
+            "teachers_by_course": teachers_by_course,
+        }
 
     def _create_auditoriums(self, *, company, prefix, count, start_date):
         result = []
@@ -590,6 +629,7 @@ class Command(BaseCommand):
         prefix,
         courses,
         teachers,
+        teachers_by_course,
         auditoriums,
         start_date,
         today,
@@ -688,10 +728,15 @@ class Command(BaseCommand):
                     base_group_name = base_group_name[len(company_prefix):]
                 base_group_name = base_group_name.strip()
 
-                teacher = teachers[course_index % len(teachers)]
+                course_teachers = teachers_by_course.get(course.id) or [
+                    teachers[course_index % len(teachers)]
+                ]
                 lesson_duration = course.lesson_duration_minutes or 90
 
                 for local_index in range(groups_count):
+                    teacher = course_teachers[
+                        (month_index + local_index) % len(course_teachers)
+                    ]
                     day_offset = [1, 10, 20][local_index]
                     group_start = month_start + timedelta(days=day_offset - 1)
                     if group_start > today:
