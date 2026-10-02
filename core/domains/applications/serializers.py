@@ -51,6 +51,10 @@ class TeacherApplicationSerializer(
     serializers.ModelSerializer,
 ):
     application_type = "teacher"
+    email = serializers.EmailField(
+        required=False,
+        allow_blank=True,
+    )
 
     company_id = serializers.PrimaryKeyRelatedField(
         source="company",
@@ -98,6 +102,10 @@ class StudentApplicationSerializer(
     serializers.ModelSerializer,
 ):
     application_type = "student"
+    email = serializers.EmailField(
+        required=False,
+        allow_blank=True,
+    )
 
     company_id = serializers.PrimaryKeyRelatedField(
         source="company",
