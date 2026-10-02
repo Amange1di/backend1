@@ -1,8 +1,17 @@
 from django.urls import path
 
-from .views import UserBalanceHistoryView, UserBalanceMeView
+from .views import (
+    CompanyMarketplaceCoinsMeView,
+    UserBalanceHistoryView,
+    UserBalanceMeView,
+)
 
 urlpatterns = [
+    path(
+        "marketplace/coins/me/",
+        CompanyMarketplaceCoinsMeView.as_view(),
+        name="marketplace-coins-me",
+    ),
     path(
         "user/balance/me/",
         UserBalanceMeView.as_view(),
