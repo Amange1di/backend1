@@ -651,13 +651,11 @@ class Command(BaseCommand):
         ]
         schedule_times = [
             "08:00",
-            "09:30",
-            "11:00",
-            "12:30",
+            "10:00",
+            "12:00",
             "14:00",
-            "15:30",
-            "17:00",
-            "18:30",
+            "16:00",
+            "18:00",
             "20:00",
         ]
         month_starts = self._month_starts(start_date, today)
@@ -684,6 +682,10 @@ class Command(BaseCommand):
         ):
             target_days = parse_days(schedule_days)
             target_start = time_to_minutes(schedule_time)
+            # Keep a short turnover/break between lessons. A room or teacher
+            # must not start the next lesson at the exact minute the previous
+            # one ends.
+            break_minutes = 15
             target_end = target_start + lesson_duration
 
             for existing in result:
@@ -708,8 +710,8 @@ class Command(BaseCommand):
                 existing_end = existing_start + existing_duration
 
                 times_overlap = (
-                    target_start < existing_end
-                    and existing_start < target_end
+                    target_start < existing_end + break_minutes
+                    and existing_start < target_end + break_minutes
                 )
                 if not times_overlap:
                     continue
