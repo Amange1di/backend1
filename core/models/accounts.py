@@ -18,6 +18,7 @@ class User(AbstractUser):
     telegram = models.CharField(max_length=100, blank=True)
     salary_rate = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     working_hours = models.CharField(max_length=255, blank=True)
+    working_days = models.CharField(max_length=64, blank=True)
     color = models.CharField(max_length=7, default="#45B2EF")
     company = models.ForeignKey(
         "Company",
