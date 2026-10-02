@@ -93,7 +93,7 @@ class MarketplaceCourseViewSet(viewsets.ModelViewSet):
             User.Role.MANAGER,
         ):
             raise PermissionDenied(
-                "Only course admins and managers can create courses."
+                "staff_only"
             )
 
         company = user.company
@@ -106,7 +106,7 @@ class MarketplaceCourseViewSet(viewsets.ModelViewSet):
 
         if not company:
             raise PermissionDenied(
-                "No company found. Create a company first."
+                "company_not_found"
             )
 
         serializer.save(company=company)
@@ -120,7 +120,7 @@ class MarketplaceCourseViewSet(viewsets.ModelViewSet):
             and course.company.owner != user
         ):
             raise PermissionDenied(
-                "Not allowed for this course."
+                "course_access_denied"
             )
 
         if (
@@ -128,7 +128,7 @@ class MarketplaceCourseViewSet(viewsets.ModelViewSet):
             and course.company != user.company
         ):
             raise PermissionDenied(
-                "Not allowed for this course."
+                "course_access_denied"
             )
 
         serializer.save()
@@ -145,7 +145,7 @@ class MyCoursesView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Доступно только для course_admin и manager."
+                        "staff_only"
                     )
                 },
                 status=status.HTTP_403_FORBIDDEN,
@@ -188,7 +188,7 @@ class BoostCourseView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Доступно только для course_admin и manager."
+                        "staff_only"
                     )
                 },
                 status=status.HTTP_403_FORBIDDEN,
@@ -204,7 +204,7 @@ class BoostCourseView(APIView):
             and course.company.owner != user
         ):
             return Response(
-                {"detail": "Недостаточно прав."},
+                {"detail": "access_denied"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -213,7 +213,7 @@ class BoostCourseView(APIView):
             and course.company != user.company
         ):
             return Response(
-                {"detail": "Недостаточно прав."},
+                {"detail": "access_denied"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -223,7 +223,7 @@ class BoostCourseView(APIView):
             and course.promoted_until > timezone.now()
         ):
             return Response(
-                {"detail": "Этот курс уже находится в ТОП."},
+                {"detail": "course_already_promoted"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -241,7 +241,7 @@ class BoostCourseView(APIView):
             return Response(
                 {
                     "detail": (
-                        f"Недостаточно средств. Требуется {BOOST_COST} eC."
+                        "insufficient_balance"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -262,7 +262,7 @@ class UrgentCourseView(APIView):
             User.Role.MANAGER,
         ):
             return Response(
-                {"detail": "Доступно только для course_admin и manager."},
+                {"detail": "staff_only"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -276,7 +276,7 @@ class UrgentCourseView(APIView):
             and course.company.owner != user
         ):
             return Response(
-                {"detail": "Недостаточно прав."},
+                {"detail": "access_denied"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -285,7 +285,7 @@ class UrgentCourseView(APIView):
             and course.company != user.company
         ):
             return Response(
-                {"detail": "Недостаточно прав."},
+                {"detail": "access_denied"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -293,13 +293,13 @@ class UrgentCourseView(APIView):
             days = int(request.data.get("days", 3))
         except (TypeError, ValueError):
             return Response(
-                {"detail": "Некорректный срок продвижения."},
+                {"detail": "invalid_promotion_days"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         if days < 3 or days > 30 or days % 3 != 0:
             return Response(
-                {"detail": "Срок должен быть от 3 до 30 дней с шагом 3 дня."},
+                {"detail": "promotion_days_out_of_range"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -321,7 +321,7 @@ class UrgentCourseView(APIView):
             return Response(
                 {
                     "detail": (
-                        f"Недостаточно средств. Требуется {cost} eC."
+                        "insufficient_balance"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
