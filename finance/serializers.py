@@ -36,7 +36,7 @@ class ForecastSerializer(serializers.ModelSerializer):
 
     def validate_period_month(self, value):
         if not 1 <= value <= 12:
-            raise serializers.ValidationError("Month must be between 1 and 12.")
+            raise serializers.ValidationError("month_out_of_range")
         return value
 
     class Meta:
@@ -75,7 +75,7 @@ class MonthlySummarySerializer(serializers.ModelSerializer):
 
     def validate_month(self, value):
         if not 1 <= value <= 12:
-            raise serializers.ValidationError("Month must be between 1 and 12.")
+            raise serializers.ValidationError("month_out_of_range")
         return value
 
     class Meta:
@@ -114,7 +114,7 @@ class SalaryPaymentSerializer(serializers.ModelSerializer):
 
     def validate_amount(self, value):
         if value <= 0:
-            raise serializers.ValidationError("Сумма выплаты должна быть больше нуля.")
+            raise serializers.ValidationError("payment_amount_positive")
         return value
 
     def get_created_by_name(self, obj):
@@ -184,7 +184,7 @@ class SalaryRecordSerializer(serializers.ModelSerializer):
 
     def validate_month(self, value):
         if not 1 <= value <= 12:
-            raise serializers.ValidationError("Month must be between 1 and 12.")
+            raise serializers.ValidationError("month_out_of_range")
         return value
 
     def validate(self, attrs):
@@ -195,18 +195,18 @@ class SalaryRecordSerializer(serializers.ModelSerializer):
             company = request.user.company
             if not company or employee.company_id != company.id:
                 raise serializers.ValidationError(
-                    {"employee": "Сотрудник должен принадлежать вашей компании."}
+                    {"employee": "employee_company_mismatch"}
                 )
             if employee.role not in (User.Role.TEACHER, User.Role.MANAGER):
                 raise serializers.ValidationError(
-                    {"employee": "Зарплата доступна только преподавателям и менеджерам."}
+                    {"employee": "salary_role_not_supported"}
                 )
 
         for field in ("base_salary", "bonus_amount"):
             value = attrs.get(field)
             if value is not None and value < 0:
                 raise serializers.ValidationError(
-                    {field: "Сумма не может быть отрицательной."}
+                    {field: "amount_cannot_be_negative"}
                 )
 
         if request and employee:
@@ -228,7 +228,7 @@ class SalaryRecordSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(
                         {
                             "non_field_errors": [
-                                "Начисление этому сотруднику за выбранный месяц уже существует."
+                                "salary_record_already_exists"
                             ]
                         }
                     )
