@@ -81,7 +81,7 @@ class PublicLandingLeadCreateView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Full name and phone are required."
+                        "full_name_phone_required"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
