@@ -38,11 +38,11 @@ class MonthlySummaryViewSet(viewsets.ModelViewSet):
         """
         user = request.user
         if user.role != User.Role.COURSE_ADMIN:
-            return Response({'detail': 'Нет доступа'}, status=403)
+            return Response({'detail': 'access_denied'}, status=403)
         company = user.company
 
         if not company:
-            return Response({'detail': 'Компания не найдена'}, status=404)
+            return Response({'detail': 'company_not_found'}, status=404)
 
         year = request.data.get('year', timezone.now().year)
         month = request.data.get('month', timezone.now().month)
@@ -96,7 +96,7 @@ class MonthlySummaryViewSet(viewsets.ModelViewSet):
         )
 
         return Response({
-            'message': 'Создана' if created else 'Обновлена',
+            'message_key': 'summary_created' if created else 'summary_updated',
             'summary': MonthlySummarySerializer(summary).data,
         })
 
@@ -112,10 +112,10 @@ class MonthlySummaryViewSet(viewsets.ModelViewSet):
         elif user.role == User.Role.MANAGER:
             company = user.company
         else:
-            return Response({'detail': 'Нет доступа'}, status=403)
+            return Response({'detail': 'access_denied'}, status=403)
 
         if not company:
-            return Response({'detail': 'Компания не найдена'}, status=404)
+            return Response({'detail': 'company_not_found'}, status=404)
 
         summaries = MonthlySummary.objects.filter(company=company).order_by('-year', '-month')[:12]
         data = MonthlySummarySerializer(summaries, many=True).data
