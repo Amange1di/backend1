@@ -31,8 +31,7 @@ class StudentProfileView(APIView):
         ):
             raise PermissionDenied(
                 (
-                    "Only students can access "
-                    "this profile."
+                    "student_only"
                 )
             )
 
@@ -43,7 +42,7 @@ class StudentProfileView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Student profile not found."
+                        "student_profile_not_found"
                     )
                 },
                 status=status.HTTP_404_NOT_FOUND,
@@ -79,8 +78,7 @@ class StudentProfileView(APIView):
         ):
             raise PermissionDenied(
                 (
-                    "Only students can update "
-                    "this profile."
+                    "student_only"
                 )
             )
 
@@ -91,7 +89,7 @@ class StudentProfileView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Student profile not found."
+                        "student_profile_not_found"
                     )
                 },
                 status=status.HTTP_404_NOT_FOUND,
