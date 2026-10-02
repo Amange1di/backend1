@@ -10,6 +10,11 @@ from core.models import (
 BOOST_COST = 500
 URGENT_COST = 200
 
+# Company Marketplace currency.
+# 1 Coin is valued at 1.5 KGS. Coins are used only for promoting
+# company courses and vacancies inside Marketplace.
+COIN_VALUE_KGS = 1.5
+
 
 def resolve_user_company_name(user) -> str:
     company = getattr(user, "company", None)
