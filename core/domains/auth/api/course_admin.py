@@ -108,7 +108,7 @@ class CourseAdminCreateView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Company name is required."
+                        "company_name_required"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -118,7 +118,7 @@ class CourseAdminCreateView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Phone and address are required."
+                        "company_phone_address_required"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -128,8 +128,7 @@ class CourseAdminCreateView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Manager limit must be "
-                        "0 or more."
+                        "manager_limit_invalid"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -139,7 +138,7 @@ class CourseAdminCreateView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Monthly platform fee must be greater than 0."
+                        "monthly_fee_invalid"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
