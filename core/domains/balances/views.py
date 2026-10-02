@@ -24,8 +24,7 @@ class UserBalanceHistoryView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Доступно только для "
-                        "course_admin и manager."
+                        "staff_only"
                     )
                 },
                 status=status.HTTP_403_FORBIDDEN,
@@ -48,7 +47,7 @@ class UserBalanceHistoryView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Компания не найдена."
+                        "company_not_found"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -62,7 +61,7 @@ class UserBalanceHistoryView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Компания не найдена."
+                        "company_not_found"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
