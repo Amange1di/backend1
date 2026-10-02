@@ -47,14 +47,14 @@ from core.models import (
 
 class Command(BaseCommand):
     help = (
-        "Wipe the local database and seed three realistic companies with "
-        "history from June, August and September through today."
+        "Wipe the local database and seed four production-like companies with "
+        "realistic monthly history, groups, students, finance and marketplace data."
     )
 
-    def _create_demo_user(self, *, password, **kwargs):
+    def _create_seed_user(self, *, password, **kwargs):
         """
-        Create demo users quickly by reusing one already-computed password hash
-        per distinct password. This avoids running expensive bcrypt hashing
+        Create seed users quickly by reusing one already-computed password hash
+        per distinct password. This avoids running expensive password hashing
         hundreds of times during seed generation.
         """
         if password not in self._password_hash_cache:
@@ -108,17 +108,16 @@ class Command(BaseCommand):
                 "phone": "+996 700 610 101",
                 "telegram": "@sanak_it",
                 "instagram": "@sanak_it_academy",
-                "description": (
-                    "IT академия: frontend, backend, mobile, QA жана UI/UX."
-                ),
+                "description": "Практическая IT-академия в Оше с программами по разработке, тестированию и дизайну.",
                 "plan": CompanySubscription.Plan.PRO,
                 "monthly_fee": Decimal("15000.00"),
                 "courses": [
-                    ("Frontend React", 18000, 16, 90, "React, TypeScript, Next.js"),
-                    ("Python Django", 20000, 20, 90, "Python, Django, REST API"),
-                    ("Flutter Mobile", 21000, 18, 90, "Flutter, Dart, mobile development"),
-                    ("QA Engineering", 16000, 14, 80, "Manual QA, API testing, automation basics"),
-                    ("UI/UX Design", 17000, 14, 80, "Figma, UX research, product design"),
+                    ("Frontend React", 18000, 16, 90, "React, TypeScript, Next.js жана командалык долбоорлор."),
+                    ("Python Django", 20000, 20, 90, "Python, Django, REST API жана PostgreSQL."),
+                    ("Flutter Mobile", 21000, 18, 90, "Flutter, Dart жана Android/iOS колдонмолору."),
+                    ("QA Engineering", 16000, 14, 80, "Manual QA, API testing жана automation негиздери."),
+                    ("UI/UX Design", 17000, 14, 80, "Figma, UX research жана продукт дизайн."),
+                    ("Data Analytics", 19000, 16, 90, "Excel, SQL, Power BI жана аналитикалык отчеттор."),
                 ],
                 "jobs": [
                     ("Junior Frontend Developer", 35000, 55000),
@@ -130,49 +129,49 @@ class Command(BaseCommand):
                 "key": "tilordo",
                 "name": "TilOrdo Language Center",
                 "slug": "tilordo-language-center",
-                "start": date(year, 8, 1),
+                "start": date(year, 7, 1),
                 "category": CompanyCategory.LANGUAGES,
                 "district": "Черёмушки",
-                "phone": "+996 700 810 202",
+                "phone": "+996 700 710 202",
                 "telegram": "@tilordo_osh",
                 "instagram": "@tilordo_language",
-                "description": (
-                    "Тил борбору: англис, IELTS, түрк жана корей тилдери."
-                ),
+                "description": "Языковой центр с разговорными программами, подготовкой к экзаменам и небольшими группами.",
                 "plan": CompanySubscription.Plan.GROWTH,
                 "monthly_fee": Decimal("10000.00"),
                 "courses": [
-                    ("English A1-A2", 9000, 12, 80, "General English for beginners"),
-                    ("IELTS Preparation", 14000, 16, 90, "IELTS Academic preparation"),
-                    ("Turkish Language", 10000, 12, 80, "Turkish A1-B1"),
-                    ("Korean Language", 11000, 14, 80, "Korean language and TOPIK basics"),
+                    ("English A1-A2", 9000, 12, 80, "General English для начинающих."),
+                    ("English B1-B2", 11000, 14, 80, "Разговорный английский и академическая лексика."),
+                    ("IELTS Preparation", 14000, 16, 90, "Подготовка к IELTS Academic по четырём навыкам."),
+                    ("Turkish Language", 10000, 12, 80, "Турецкий язык от A1 до B1."),
+                    ("Korean Language", 11000, 14, 80, "Корейский язык и основы TOPIK."),
+                    ("Russian Speaking", 9000, 12, 80, "Практический русский язык для учёбы и работы."),
                 ],
                 "jobs": [
                     ("English Teacher", 30000, 50000),
                     ("IELTS Instructor", 40000, 65000),
+                    ("Korean Language Teacher", 32000, 52000),
                 ],
             },
             {
                 "key": "ishker",
                 "name": "Ishker Business School",
                 "slug": "ishker-business-school",
-                "start": date(year, 9, 1),
+                "start": date(year, 8, 1),
                 "category": CompanyCategory.BUSINESS,
                 "district": "ХБК",
-                "phone": "+996 700 910 303",
+                "phone": "+996 700 810 303",
                 "telegram": "@ishker_school",
                 "instagram": "@ishker_business",
-                "description": (
-                    "Бизнес мектеби: сатуу, SMM, эсеп, аналитика жана ишкердик."
-                ),
-                "plan": CompanySubscription.Plan.START,
-                "monthly_fee": Decimal("7000.00"),
+                "description": "Бизнес-школа для предпринимателей и специалистов по продажам, маркетингу и финансам.",
+                "plan": CompanySubscription.Plan.GROWTH,
+                "monthly_fee": Decimal("10000.00"),
                 "courses": [
-                    ("SMM & Content", 12000, 10, 80, "SMM strategy, content and ads"),
-                    ("Sales Management", 13000, 10, 80, "Sales funnel and negotiation"),
-                    ("Accounting 1C", 15000, 12, 90, "Accounting basics and 1C"),
-                    ("Excel & Analytics", 11000, 8, 80, "Excel, reporting and dashboards"),
-                    ("Entrepreneurship", 16000, 12, 90, "Business model, finance and growth"),
+                    ("SMM & Content", 12000, 10, 80, "SMM стратегия, контент, таргет жана аналитика."),
+                    ("Sales Management", 13000, 10, 80, "Воронка продаж, переговоры и CRM."),
+                    ("Accounting 1C", 15000, 12, 90, "Бухгалтерский учёт и практическая работа в 1C."),
+                    ("Excel & Analytics", 11000, 8, 80, "Excel, отчёты, сводные таблицы и dashboards."),
+                    ("Entrepreneurship", 16000, 12, 90, "Бизнес-модель, финансы, продукт жана масштабирование."),
+                    ("Digital Marketing", 14000, 12, 80, "Performance marketing, контент и рекламные каналы."),
                 ],
                 "jobs": [
                     ("SMM Manager", 30000, 50000),
@@ -180,15 +179,42 @@ class Command(BaseCommand):
                     ("Business Mentor", 45000, 70000),
                 ],
             },
+            {
+                "key": "muras",
+                "name": "Muras Creative Academy",
+                "slug": "muras-creative-academy",
+                "start": date(year, 9, 1),
+                "category": CompanyCategory.CRAFTS,
+                "district": "Юго-Восток",
+                "phone": "+996 700 910 404",
+                "telegram": "@muras_creative",
+                "instagram": "@muras_creative_academy",
+                "description": "Креативная академия с практическими программами по дизайну, медиа и прикладным направлениям.",
+                "plan": CompanySubscription.Plan.START,
+                "monthly_fee": Decimal("7000.00"),
+                "courses": [
+                    ("Graphic Design", 14000, 12, 80, "Айдентика, композиция, типографика жана Adobe tools."),
+                    ("Motion Design", 17000, 14, 90, "After Effects, motion graphics жана анимация."),
+                    ("Photography", 12000, 10, 80, "Камера, свет, композиция жана обработка."),
+                    ("Video Editing", 15000, 12, 90, "Монтаж, звук, цветокоррекция жана storytelling."),
+                    ("Sewing & Fashion", 13000, 14, 90, "Конструирование, крой, пошив жана базовый fashion design."),
+                    ("Interior Design", 18000, 16, 90, "Планировка, визуализация, материалы жана проектирование."),
+                ],
+                "jobs": [
+                    ("Graphic Design Mentor", 35000, 55000),
+                    ("Video Editor", 35000, 60000),
+                    ("Fashion Instructor", 32000, 52000),
+                ],
+            },
         ]
 
-        platform_admin = self._create_demo_user(
-            username="demo_admin",
-            password="DemoAdmin123!",
+        platform_admin =        platform_admin = self._create_seed_user(
+            username="platform_admin",
+            password="Platform2026!",
             role=User.Role.ADMIN,
-            first_name="Аман",
-            last_name="Платформа Админ",
-            email="admin@demo.local",
+            first_name="Азамат",
+            last_name="Сатыбалдиев",
+            email="admin@eduosh.kg",
             is_active=True,
             is_staff=True,
             is_superuser=True,
@@ -201,13 +227,13 @@ class Command(BaseCommand):
             start_date = min(spec["start"], today)
             start_dt = self._at_date(start_date, 9)
 
-            course_admin = self._create_demo_user(
+            course_admin = self._create_seed_user(
                 username=f'{spec["key"]}_admin',
-                password="Demo1234!",
+                password="Company2026!",
                 role=User.Role.COURSE_ADMIN,
                 first_name=spec["name"].split()[0],
                 last_name="Администратор",
-                email=f'{spec["key"]}.admin@demo.local',
+                email=f'{spec["key"]}.admin@eduosh.kg',
                 phone=f"+996 700 {company_index}00 001",
                 is_active=True,
                 must_set_password=False,
@@ -376,11 +402,11 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Database reset and seeded successfully."))
         self.stdout.write("")
         self.stdout.write("Platform admin:")
-        self.stdout.write("  demo_admin / DemoAdmin123!")
+        self.stdout.write("  platform_admin / Platform2026!")
         self.stdout.write("")
         self.stdout.write("Company admins:")
         for spec in company_specs:
-            self.stdout.write(f'  {spec["key"]}_admin / Demo1234!')
+            self.stdout.write(f'  {spec["key"]}_admin / Company2026!')
         self.stdout.write("")
         self.stdout.write("Companies:")
         for company in created_companies:
@@ -421,12 +447,24 @@ class Command(BaseCommand):
         names = [
             ("Айбек", "Токтосунов"),
             ("Нурия", "Абдыкадырова"),
+            ("Элдияр", "Жээнбеков"),
+            ("Айпери", "Маматова"),
+            ("Бекзат", "Осмонов"),
+            ("Арууке", "Сапарова"),
+            ("Темирлан", "Касымов"),
+            ("Мээрим", "Жолдошева"),
+            ("Данияр", "Турсунов"),
+            ("Жанара", "Эргешова"),
+            ("Нурбек", "Асанов"),
+            ("Сезим", "Мамбетова"),
         ]
         result = []
-        for index, (first_name, last_name) in enumerate(names, start=1):
-            user = self._create_demo_user(
+        offset = (company_index - 1) * 3
+        for index in range(1, 4):
+            first_name, last_name = names[(offset + index - 1) % len(names)]
+            user = self._create_seed_user(
                 username=f"{prefix}_manager_{index}",
-                password="Demo1234!",
+                password="Company2026!",
                 role=User.Role.MANAGER,
                 first_name=first_name,
                 last_name=last_name,
@@ -445,7 +483,7 @@ class Command(BaseCommand):
             result.append(user)
         return result
 
-    def _create_courses_and_teachers(
+    def _create_courses_and_teachers(    def _create_courses_and_teachers(
         self,
         *,
         course_admin,
@@ -457,11 +495,14 @@ class Command(BaseCommand):
         courses = []
         teachers = []
         teacher_names = [
-            ("Эрмек", "Садыков"),
-            ("Алина", "Жумабаева"),
-            ("Бекзат", "Осмонов"),
-            ("Айпери", "Маматова"),
-            ("Данияр", "Абдыкадыров"),
+            ("Эрмек", "Садыков"), ("Алина", "Жумабаева"), ("Бекзат", "Осмонов"),
+            ("Айпери", "Маматова"), ("Данияр", "Абдыкадыров"), ("Назгүл", "Токтогулова"),
+            ("Кубаныч", "Жээнбеков"), ("Бермет", "Асанова"), ("Адилет", "Ибраимов"),
+            ("Аяна", "Касымова"), ("Самат", "Эргешов"), ("Салтанат", "Мамбетова"),
+            ("Нурислам", "Турсунов"), ("Элина", "Абдиева"), ("Баястан", "Алиев"),
+            ("Мадина", "Сапарова"), ("Эрбол", "Калыбеков"), ("Асел", "Омуралиева"),
+            ("Азизбек", "Шарипов"), ("Дилноза", "Рахматова"), ("Шахзод", "Каримов"),
+            ("Малика", "Юлдашева"), ("Иван", "Петров"), ("Анна", "Смирнова"),
         ]
 
         for index, course_spec in enumerate(course_specs, start=1):
@@ -480,10 +521,13 @@ class Command(BaseCommand):
             )
             courses.append(course)
 
-            first_name, last_name = teacher_names[(index - 1) % len(teacher_names)]
-            teacher = self._create_demo_user(
+            teacher_offset = sum(ord(char) for char in prefix) % len(teacher_names)
+            first_name, last_name = teacher_names[
+                (teacher_offset + index - 1) % len(teacher_names)
+            ]
+            teacher = self._create_seed_user(
                 username=f"{prefix}_teacher_{index}",
-                password="Demo1234!",
+                password="Company2026!",
                 role=User.Role.TEACHER,
                 first_name=first_name,
                 last_name=last_name,
@@ -530,45 +574,74 @@ class Command(BaseCommand):
         today,
     ):
         result = []
-        schedule_days = ["1,3,5", "2,4,6"]
-        schedule_times = ["10:00", "14:00", "18:00", "19:00"]
+        schedule_days = ["1,3,5", "2,4,6", "1,4,6", "2,5"]
+        schedule_times = ["09:00", "11:00", "14:00", "16:00", "18:00", "19:30"]
+        month_starts = self._month_starts(start_date, today)
 
-        course_group_counts = {}
+        for month_index, month_start in enumerate(month_starts):
+            for course_index, course in enumerate(courses):
+                groups_count = 1 + (
+                    (company.id + course_index + month_index) % 3
+                )
 
-        for index, course in enumerate(courses, start=1):
-            group_start = start_date + timedelta(days=7 + index * 3)
+                base_group_name = course.title
+                company_prefix = f"{company.name} — "
+                if base_group_name.startswith(company_prefix):
+                    base_group_name = base_group_name[len(company_prefix):]
+                base_group_name = base_group_name.strip()
 
-            base_group_name = course.title
-            company_prefix = f"{company.name} — "
-            if base_group_name.startswith(company_prefix):
-                base_group_name = base_group_name[len(company_prefix):]
-            base_group_name = base_group_name.strip()
+                for local_index in range(groups_count):
+                    day_offset = [1, 10, 20][local_index]
+                    group_start = month_start + timedelta(days=day_offset - 1)
+                    if group_start > today:
+                        group_start = today
 
-            course_group_counts[base_group_name] = (
-                course_group_counts.get(base_group_name, 0) + 1
-            )
-            group_number = course_group_counts[base_group_name]
+                    duration_months = max(
+                        2,
+                        min(6, int(round(course.duration_weeks / 4))),
+                    )
+                    group_end = group_start + relativedelta(months=duration_months)
 
-            group = Group.objects.create(
-                company=company,
-                name=f"{base_group_name} {group_number}",
-                course=course,
-                teacher=teachers[index - 1],
-                auditorium=auditoriums[(index - 1) % len(auditoriums)],
-                status=Group.Status.ACTIVE,
-                schedule_days=schedule_days[(index - 1) % len(schedule_days)],
-                schedule_time=schedule_times[(index - 1) % len(schedule_times)],
-                lessons_count=36,
-                lessons_per_month=12,
-                total_months=4,
-                start_date=group_start,
-                end_date=group_start + timedelta(days=120),
-                teacher_percent=Decimal(str(6 + ((index + len(prefix)) % 4))),
-            )
-            Group.objects.filter(pk=group.pk).update(
-                created_at=self._at_date(group_start, 9)
-            )
-            result.append(group)
+                    sequence = (
+                        Group.objects.filter(
+                            company=company,
+                            course=course,
+                        ).count()
+                        + 1
+                    )
+                    group = Group.objects.create(
+                        company=company,
+                        name=(
+                            f"{base_group_name} "
+                            f"{group_start:%y%m}-{sequence:02d}"
+                        ),
+                        course=course,
+                        teacher=teachers[course_index % len(teachers)],
+                        auditorium=auditoriums[
+                            (course_index + local_index + month_index)
+                            % len(auditoriums)
+                        ],
+                        status=Group.Status.ACTIVE,
+                        schedule_days=schedule_days[
+                            (course_index + local_index) % len(schedule_days)
+                        ],
+                        schedule_time=schedule_times[
+                            (course_index + month_index + local_index)
+                            % len(schedule_times)
+                        ],
+                        lessons_count=duration_months * 12,
+                        lessons_per_month=12,
+                        total_months=duration_months,
+                        start_date=group_start,
+                        end_date=group_end,
+                        teacher_percent=Decimal(
+                            str(7 + ((course_index + local_index) % 4))
+                        ),
+                    )
+                    Group.objects.filter(pk=group.pk).update(
+                        created_at=self._at_date(group_start, 9)
+                    )
+                    result.append(group)
         return result
 
     def _create_students(
@@ -583,63 +656,106 @@ class Command(BaseCommand):
         today,
         company_index,
     ):
-        first_names = [
-            "Айдана", "Нурсултан", "Али", "Мээрим", "Баястан", "Диана",
-            "Элдар", "Арууке", "Темирлан", "Сезим", "Адилет", "Жанара",
-            "Азамат", "Наргиза", "Эмир", "Айпери", "Бектур", "Мадина",
-            "Руслан", "Алина", "Эрлан", "Жылдыз", "Кубаныч", "Назгүл",
-            "Ильяз", "Асел", "Нурбек", "Элина", "Самат", "Бермет",
-            "Нурислам", "Аяна", "Дастан", "Арууза", "Ислам", "Элмира",
-            "Байэл", "Салтанат", "Эрбол", "Адина",
+        kyrgyz_first_names = [
+            "Айдана", "Нурсултан", "Мээрим", "Баястан", "Арууке", "Сезим",
+            "Адилет", "Жанара", "Азамат", "Айпери", "Бектур", "Наргиза",
+            "Эрлан", "Жылдыз", "Кубаныч", "Назгүл", "Асел", "Нурбек",
+            "Самат", "Бермет", "Аяна", "Дастан", "Арууза", "Элмира",
+            "Байэл", "Салтанат", "Эрбол", "Адина", "Элдияр", "Каныкей",
+            "Акжол", "Айсулуу", "Бегимай", "Нурэл", "Эрмек", "Чолпон",
+            "Темирлан", "Мадина", "Нурислам", "Керемет",
         ]
-        last_names = [
-            "Абдиева", "Токтогулов", "Осмонов", "Жолдошева", "Садыков",
-            "Мамбетова", "Ибраимов", "Касымова", "Эргешов", "Асанова",
-            "Турсунов", "Абдыева", "Жээнбеков", "Маматова", "Алиев",
+        kyrgyz_last_names = [
+            "Абдиев", "Токтогулов", "Осмонов", "Жолдошев", "Садыков",
+            "Мамбетов", "Ибраимов", "Касымов", "Эргешов", "Асанов",
+            "Турсунов", "Абдыкадыров", "Жээнбеков", "Маматов", "Алиев",
+            "Сапаров", "Калыбеков", "Омуралиев", "Токтосунов", "Кубанычбеков",
+            "Исмаилов", "Бекболотов", "Жумабаев", "Мураталиев", "Сулайманов",
+            "Кожомбердиев", "Талантбеков", "Ниязов", "Анарбеков", "Эсеналиев",
+            "Кудайбердиев", "Шаршенов", "Болотбеков", "Абдрахманов", "Кулматов",
+            "Мырзабеков", "Усенов", "Жапаров", "Токтомушев", "Сыдыков",
+        ]
+        uzbek_first_names = [
+            "Азизбек", "Шахзод", "Жасур", "Бехруз", "Дилшод", "Сардор",
+            "Мухаммад", "Акмал", "Фаррух", "Отабек", "Дилноза", "Малика",
+            "Шахноза", "Нилуфар", "Зухра", "Мафтуна", "Гулноза", "Мадина",
+            "Севара", "Феруза",
+        ]
+        uzbek_last_names = [
+            "Каримов", "Рахматов", "Юлдашев", "Турсунов", "Абдуллаев",
+            "Хасанов", "Рустамов", "Норматов", "Эргашев", "Хакимов",
+            "Саидов", "Умаров", "Исмаилов", "Мирзаев", "Кодиров",
+            "Назаров", "Аббасов", "Хамидов", "Бурханов", "Шарипов",
+        ]
+        other_first_names = [
+            "Иван", "Анна", "Максим", "София", "Алексей", "Мария",
+            "Артур", "Диана", "Тимур", "Алина", "Роман", "Елена",
+            "Давид", "Кристина", "Руслан", "Виктория",
+        ]
+        other_last_names = [
+            "Петров", "Смирнов", "Иванов", "Кузнецов", "Попов", "Соколов",
+            "Морозов", "Волков", "Орлов", "Новиков", "Федоров", "Михайлов",
+            "Беляев", "Григорьев", "Лебедев", "Ковалев",
         ]
 
         result = []
         student_number = 0
-        month_starts = self._month_starts(start_date, today)
 
-        for month_index, month_start in enumerate(month_starts):
-            # Deterministic realistic growth: every company gets 20–40 new
-            # students every month, so charts remain stable between seed runs.
-            students_this_month = 20 + (
-                (company_index * 7 + month_index * 9) % 21
+        def pick_name(index):
+            bucket = index % 100
+            if bucket < 80:
+                first_pool = kyrgyz_first_names
+                last_pool = kyrgyz_last_names
+                local = index
+            elif bucket < 92:
+                first_pool = uzbek_first_names
+                last_pool = uzbek_last_names
+                local = index * 3 + company_index
+            else:
+                first_pool = other_first_names
+                last_pool = other_last_names
+                local = index * 5 + company_index
+
+            first_name = first_pool[local % len(first_pool)]
+            last_name = last_pool[
+                (local // len(first_pool) + local * 7) % len(last_pool)
+            ]
+            return first_name, last_name
+
+        for group_index, group in enumerate(groups):
+            students_count = 6 + (
+                (company_index * 5 + group_index * 7) % 7
             )
 
-            for local_index in range(students_this_month):
+            for local_index in range(students_count):
                 student_number += 1
+                global_index = (
+                    company_index * 10000
+                    + group_index * 20
+                    + local_index
+                )
+                first_name, last_name = pick_name(global_index)
 
-                group_index = (
-                    month_index + local_index + company_index
-                ) % len(groups)
-                group = groups[group_index]
-                course = courses[group_index]
-
-                first_name = first_names[
-                    (student_number + company_index * 3) % len(first_names)
-                ]
-                last_name = last_names[
-                    (student_number + month_index * 2) % len(last_names)
-                ]
-
-                # Spread registrations through the month, but never into future.
-                join_day = 1 + (local_index * 3 + company_index) % 27
-                join_date = month_start + timedelta(days=join_day - 1)
+                join_date = group.start_date + timedelta(
+                    days=min(local_index // 3, 5)
+                )
                 if join_date > today:
                     join_date = today
 
-                user = self._create_demo_user(
-                    username=f"{prefix}_student_{student_number:04d}",
-                    password="Demo1234!",
+                username = (
+                    f"{prefix}.student."
+                    f"{student_number:05d}"
+                )
+                user = self._create_seed_user(
+                    username=username,
+                    password="Company2026!",
                     role=User.Role.STUDENT,
                     first_name=first_name,
                     last_name=last_name,
                     phone=(
                         f"+996 {500 + company_index} "
-                        f"{month_index + 1:02d}{local_index % 100:02d} "
+                        f"{(group_index + 10) % 100:02d}"
+                        f"{local_index:02d} "
                         f"{student_number % 100:02d}"
                     ),
                     company=company,
@@ -656,14 +772,11 @@ class Command(BaseCommand):
                     first_name=first_name,
                     last_name=last_name,
                     phone=user.phone,
-                    telegram=f"@{prefix}_student_{student_number:04d}",
+                    telegram=f"@{prefix}_student_{student_number:05d}",
                     company=company,
                     can_login=True,
-                    primary_course=course,
-                    notes=(
-                        f"Клиент {company.name}, группа {group.name}, "
-                        f"регистрация {join_date:%m.%Y}"
-                    ),
+                    primary_course=group.course,
+                    notes="",
                 )
                 Student.objects.filter(pk=student.pk).update(
                     created_at=self._at_date(join_date, 12)
@@ -674,7 +787,7 @@ class Command(BaseCommand):
 
         return result
 
-    def _create_attendance(self, *, groups, start_date, today):
+    def _create_attendance(    def _create_attendance(self, *, groups, start_date, today):
         statuses = [
             Attendance.Status.PRESENT,
             Attendance.Status.PRESENT,
@@ -771,7 +884,7 @@ class Command(BaseCommand):
                 continue
 
             # В реальной учебной компании расходы обычно меняются вместе с
-            # выручкой. Для demo держим их примерно в диапазоне 48–56%.
+            # выручкой. Для тестовой базы держим их примерно в диапазоне 48–56%.
             expense_ratio = Decimal(
                 str(0.48 + ((month_index + company.id) % 5) * 0.02)
             )
@@ -935,7 +1048,7 @@ class Command(BaseCommand):
             for task_index in range(1, 3):
                 task = HomeworkTask.objects.create(
                     group=group,
-                    teacher=teachers[group_index],
+                    teacher=group.teacher,
                     company=company,
                     lesson_number=task_index * 4,
                     title=f"{group.name}: задание {task_index}",
@@ -1791,7 +1904,7 @@ class Command(BaseCommand):
             Transaction.objects.create(
                 company=company,
                 amount=5000 + index * 500,
-                reason=f"Пополнение demo-баланса {month_start:%m.%Y}",
+                reason=f"Пополнение баланса {month_start:%m.%Y}",
                 transaction_type=Transaction.Type.DEPOSIT,
             )
             if index % 2 == 0:
