@@ -62,8 +62,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         if not company:
             raise PermissionDenied(
                 (
-                    "У вас нет компании "
-                    "для создания расходов."
+                    "company_required_for_expense"
                 )
             )
 
@@ -72,7 +71,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             and serializer.validated_data.get("category") == "salary"
         ):
             raise PermissionDenied(
-                "Менеджер не может создавать расходы по зарплатам."
+                "manager_salary_expense_create_forbidden"
             )
 
         serializer.save(company=company)
@@ -85,6 +84,6 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         )
         if user.role == User.Role.MANAGER and category == "salary":
             raise PermissionDenied(
-                "Менеджер не может изменять расходы по зарплатам."
+                "manager_salary_expense_update_forbidden"
             )
         serializer.save()
