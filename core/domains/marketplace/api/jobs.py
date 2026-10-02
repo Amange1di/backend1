@@ -23,6 +23,7 @@ from ..serializers import (
 )
 from ..services import (
     BOOST_COST,
+    COIN_VALUE_KGS,
     URGENT_COST,
     charge_promotion,
     mark_urgent,
@@ -309,6 +310,11 @@ class UrgentJobView(APIView):
         data = JobVacancySerializer(job).data
         data["promotion_days"] = days
         data["promotion_cost"] = cost
+        data["promotion_cost_coins"] = cost
+        data["promotion_cost_kgs"] = round(
+            cost * COIN_VALUE_KGS,
+            2,
+        )
         return Response(data)
 
 class PublicJobViewSet(
