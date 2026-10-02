@@ -127,6 +127,85 @@ def parse_working_hours(value: str):
     return start, end
 
 
+
+def parse_teacher_working_schedule(
+    working_days: str,
+    working_hours: str,
+):
+    """
+    Return per-weekday working ranges as {weekday: (start_minute, end_minute)}.
+
+    Supports:
+      - working_days="0,1,2,3,4" + working_hours="09:00-18:00"
+      - working_hours="Mon 09:00-18:00, Tue 10:00-19:00, Fri 09:00-17:00"
+    """
+    explicit_days = parse_schedule_days(working_days or "")
+    value = (working_hours or "").strip()
+    schedule = {}
+
+    if not value:
+        return schedule
+
+    simple = re.match(
+        r"^\s*(\d{1,2}[:.]\d{2})\s*[-–—]\s*(\d{1,2}[:.]\d{2})\s*$",
+        value,
+    )
+    if simple:
+        start = parse_time_to_minutes(simple.group(1))
+        end = parse_time_to_minutes(simple.group(2))
+        if start is None or end is None or end <= start:
+            return schedule
+
+        days = explicit_days or set(range(7))
+        return {
+            day: (start, end)
+            for day in days
+        }
+
+    day_map = {
+        "mon": 0,
+        "monday": 0,
+        "tue": 1,
+        "tuesday": 1,
+        "wed": 2,
+        "wednesday": 2,
+        "thu": 3,
+        "thursday": 3,
+        "fri": 4,
+        "friday": 4,
+        "sat": 5,
+        "saturday": 5,
+        "sun": 6,
+        "sunday": 6,
+    }
+
+    for chunk in value.split(","):
+        match = re.match(
+            r"^\s*([A-Za-z]+)\s+(\d{1,2}[:.]\d{2})\s*[-–—]\s*(\d{1,2}[:.]\d{2})\s*$",
+            chunk.strip(),
+        )
+        if not match:
+            continue
+
+        day = day_map.get(match.group(1).lower())
+        start = parse_time_to_minutes(match.group(2))
+        end = parse_time_to_minutes(match.group(3))
+
+        if (
+            day is None
+            or start is None
+            or end is None
+            or end <= start
+        ):
+            continue
+
+        if explicit_days and day not in explicit_days:
+            continue
+
+        schedule[day] = (start, end)
+
+    return schedule
+
 def parse_time_to_minutes(value: str):
     if not value:
         return None
@@ -308,29 +387,69 @@ def ensure_group_schedule_available(
     teacher_working_days = parse_schedule_days(
         getattr(teacher, "working_days", "") or ""
     )
-    if teacher_working_days and not days_set.issubset(teacher_working_days):
+    teacher_schedule = parse_teacher_working_schedule(
+        getattr(teacher, "working_days", "") or "",
+        getattr(teacher, "working_hours", "") or "",
+    )
+
+    # If per-day working hours are configured, they are authoritative.
+    effective_working_days = (
+        set(teacher_schedule.keys())
+        if teacher_schedule
+        else teacher_working_days
+    )
+
+    if (
+        effective_working_days
+        and not days_set.issubset(effective_working_days)
+    ):
         raise PermissionDenied({
             "detail": "teacher_unavailable_day",
             "teacher": str(teacher),
             "requested_days": sorted(days_set),
-            "working_days": sorted(teacher_working_days),
+            "working_days": sorted(effective_working_days),
         })
 
     end_minutes = start_minutes + duration
 
-    teacher_hours = parse_working_hours(
-        getattr(teacher, "working_hours", "") or ""
-    )
-    if teacher_hours:
-        work_start, work_end = teacher_hours
-        if start_minutes < work_start or end_minutes > work_end:
+    if teacher_schedule:
+        invalid_days = []
+        for day in sorted(days_set):
+            work_range = teacher_schedule.get(day)
+            if not work_range:
+                invalid_days.append(day)
+                continue
+
+            work_start, work_end = work_range
+            if (
+                start_minutes < work_start
+                or end_minutes > work_end
+            ):
+                invalid_days.append(day)
+
+        if invalid_days:
             raise PermissionDenied({
                 "detail": "teacher_outside_working_hours",
                 "teacher": str(teacher),
                 "requested_start": schedule_time,
                 "lesson_duration_minutes": duration,
+                "invalid_days": invalid_days,
                 "working_hours": teacher.working_hours,
             })
+    else:
+        teacher_hours = parse_working_hours(
+            getattr(teacher, "working_hours", "") or ""
+        )
+        if teacher_hours:
+            work_start, work_end = teacher_hours
+            if start_minutes < work_start or end_minutes > work_end:
+                raise PermissionDenied({
+                    "detail": "teacher_outside_working_hours",
+                    "teacher": str(teacher),
+                    "requested_start": schedule_time,
+                    "lesson_duration_minutes": duration,
+                    "working_hours": teacher.working_hours,
+                })
     queryset = (
         Group.objects
         .filter(archived_at__isnull=True)
