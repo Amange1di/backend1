@@ -118,7 +118,7 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
             return Response(
                 {
                     "detail": (
-                        "Months count must be between 1 and 6."
+                        "analytics_months_count_invalid"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -131,7 +131,7 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
                 return Response(
                     {
                         "detail": (
-                            "Invalid month format. Use YYYY-MM."
+                            "invalid_month_format"
                         )
                     },
                     status=status.HTTP_400_BAD_REQUEST,
@@ -146,7 +146,7 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
                 return Response(
                     {
                         "detail": (
-                            "Invalid month format. Use YYYY-MM."
+                            "invalid_month_format"
                         )
                     },
                     status=status.HTTP_400_BAD_REQUEST,
