@@ -65,7 +65,7 @@ class MarketplaceJobViewSet(viewsets.ModelViewSet):
             User.Role.MANAGER,
         ):
             raise PermissionDenied(
-                "Only course admins and managers can create jobs."
+                "staff_only"
             )
 
         company = user.company
@@ -78,7 +78,7 @@ class MarketplaceJobViewSet(viewsets.ModelViewSet):
 
         if not company:
             raise PermissionDenied(
-                "No company found. Create a company first."
+                "company_not_found"
             )
 
         serializer.save(company=company)
@@ -92,7 +92,7 @@ class MarketplaceJobViewSet(viewsets.ModelViewSet):
             and job.company.owner != user
         ):
             raise PermissionDenied(
-                "Not allowed for this job."
+                "job_access_denied"
             )
 
         if (
@@ -100,7 +100,7 @@ class MarketplaceJobViewSet(viewsets.ModelViewSet):
             and job.company != user.company
         ):
             raise PermissionDenied(
-                "Not allowed for this job."
+                "job_access_denied"
             )
 
         serializer.save()
@@ -117,7 +117,7 @@ class MyJobsView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Доступно только для course_admin и manager."
+                        "staff_only"
                     )
                 },
                 status=status.HTTP_403_FORBIDDEN,
@@ -166,7 +166,7 @@ class BoostJobView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Доступно только для course_admin и manager."
+                        "staff_only"
                     )
                 },
                 status=status.HTTP_403_FORBIDDEN,
@@ -182,7 +182,7 @@ class BoostJobView(APIView):
             and job.company.owner != user
         ):
             return Response(
-                {"detail": "Недостаточно прав."},
+                {"detail": "access_denied"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -191,7 +191,7 @@ class BoostJobView(APIView):
             and job.company != user.company
         ):
             return Response(
-                {"detail": "Недостаточно прав."},
+                {"detail": "access_denied"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -201,7 +201,7 @@ class BoostJobView(APIView):
             and job.promoted_until > timezone.now()
         ):
             return Response(
-                {"detail": "Эта вакансия уже находится в ТОП."},
+                {"detail": "job_already_promoted"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -219,7 +219,7 @@ class BoostJobView(APIView):
             return Response(
                 {
                     "detail": (
-                        f"Недостаточно средств. Требуется {BOOST_COST} eC."
+                        "insufficient_balance"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -240,7 +240,7 @@ class UrgentJobView(APIView):
             User.Role.MANAGER,
         ):
             return Response(
-                {"detail": "Доступно только для course_admin и manager."},
+                {"detail": "staff_only"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -254,7 +254,7 @@ class UrgentJobView(APIView):
             and job.company.owner != user
         ):
             return Response(
-                {"detail": "Недостаточно прав."},
+                {"detail": "access_denied"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -263,7 +263,7 @@ class UrgentJobView(APIView):
             and job.company != user.company
         ):
             return Response(
-                {"detail": "Недостаточно прав."},
+                {"detail": "access_denied"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -271,13 +271,13 @@ class UrgentJobView(APIView):
             days = int(request.data.get("days", 3))
         except (TypeError, ValueError):
             return Response(
-                {"detail": "Некорректный срок продвижения."},
+                {"detail": "invalid_promotion_days"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         if days < 3 or days > 30 or days % 3 != 0:
             return Response(
-                {"detail": "Срок должен быть от 3 до 30 дней с шагом 3 дня."},
+                {"detail": "promotion_days_out_of_range"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -299,7 +299,7 @@ class UrgentJobView(APIView):
             return Response(
                 {
                     "detail": (
-                        f"Недостаточно средств. Требуется {cost} eC."
+                        "insufficient_balance"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
