@@ -52,8 +52,7 @@ class CrmContactView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Full name and phone "
-                        "are required."
+                        "full_name_phone_required"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -131,7 +130,7 @@ class CrmContactView(APIView):
             {
                 "id": lead.id,
                 "detail": (
-                    "Contact request received."
+                    "contact_request_received"
                 ),
             },
             status=status.HTTP_201_CREATED,
