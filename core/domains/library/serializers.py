@@ -15,6 +15,24 @@ ALLOWED_EXTENSIONS = {
     "png", "jpg", "jpeg", "webp", "zip",
 }
 
+TEACHER_LIBRARY_STORAGE_LIMIT_BYTES = 200 * 1024 * 1024
+
+
+def get_library_storage_used_bytes(user, exclude_item_id=None):
+    items = LibraryItem.objects.filter(created_by=user).exclude(file="")
+    if exclude_item_id:
+        items = items.exclude(pk=exclude_item_id)
+
+    total = 0
+    for item in items.only("id", "file"):
+        if not item.file:
+            continue
+        try:
+            total += item.file.size
+        except (OSError, FileNotFoundError, ValueError):
+            continue
+    return total
+
 
 class LibraryFolderSerializer(serializers.ModelSerializer):
     class Meta:
@@ -74,7 +92,26 @@ class LibraryItemSerializer(serializers.ModelSerializer):
         return bool(request and request.user.is_authenticated and obj.favorites.filter(user=request.user).exists())
 
     def validate_file(self, value):
-        return validate_upload(value, max_bytes=25 * 1024 * 1024, allowed_extensions=ALLOWED_EXTENSIONS)
+        value = validate_upload(
+            value,
+            max_bytes=25 * 1024 * 1024,
+            allowed_extensions=ALLOWED_EXTENSIONS,
+        )
+
+        request = self.context.get("request")
+        user = request.user if request else None
+
+        if user and getattr(user, "role", None) == "teacher":
+            used_bytes = get_library_storage_used_bytes(
+                user,
+                exclude_item_id=getattr(self.instance, "id", None),
+            )
+            if used_bytes + value.size > TEACHER_LIBRARY_STORAGE_LIMIT_BYTES:
+                raise serializers.ValidationError(
+                    "library_storage_limit_exceeded"
+                )
+
+        return value
 
     def validate_folder(self, folder):
         request = self.context["request"]
