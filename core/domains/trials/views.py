@@ -7,8 +7,11 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
-from core.models import LeadAssignment, TrialLead, User
+from core.models import LeadAssignment, Student, TrialLead, User
 from core.permissions import IsCourseAdminOrManager
+
+from core.domains.students.serializers import StudentSerializer
+from core.domains.students.services import normalize_phone
 
 from .serializers import TrialLeadSerializer
 from .services import compute_age_groups
@@ -105,6 +108,133 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
             request,
             *args,
             **kwargs,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="convert-to-student",
+    )
+    def convert_to_student(self, request, pk=None):
+        lead = self.get_object()
+        user = request.user
+
+        if user.role not in (
+            User.Role.COURSE_ADMIN,
+            User.Role.MANAGER,
+        ):
+            raise PermissionDenied(
+                "trial_lead_manage_forbidden"
+            )
+
+        if lead.company != user.company:
+            raise PermissionDenied(
+                "trial_lead_company_forbidden"
+            )
+
+        normalized_phone = normalize_phone(
+            lead.phone or ""
+        )
+        existing_student = None
+
+        if normalized_phone:
+            for student in Student.objects.filter(
+                company=user.company,
+                archived_at__isnull=True,
+            ).iterator():
+                if (
+                    normalize_phone(student.phone or "")
+                    == normalized_phone
+                ):
+                    existing_student = student
+                    break
+
+        if existing_student:
+            lead.converted_to_student = True
+            lead.status = TrialLead.Status.CONVERTED
+            lead.trial_attended = True
+            lead.save(
+                update_fields=[
+                    "converted_to_student",
+                    "status",
+                    "trial_attended",
+                ]
+            )
+
+            return Response(
+                {
+                    "created": False,
+                    "student": StudentSerializer(
+                        existing_student,
+                        context={"request": request},
+                    ).data,
+                }
+            )
+
+        full_name_parts = [
+            part
+            for part in (lead.full_name or "").strip().split()
+            if part
+        ]
+        first_name = (
+            full_name_parts[0]
+            if full_name_parts
+            else "Student"
+        )
+        last_name = " ".join(
+            full_name_parts[1:]
+        )
+
+        group = lead.group_assigned
+        payload = {
+            "first_name": first_name,
+            "last_name": last_name,
+            "phone": lead.phone or "",
+            "notes": lead.comment or "",
+            "group_ids": (
+                [group.id]
+                if group
+                else []
+            ),
+            "primary_course": (
+                group.course_id
+                if group and group.course_id
+                else None
+            ),
+        }
+
+        serializer = StudentSerializer(
+            data=payload,
+            context={"request": request},
+        )
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        student = serializer.save(
+            company=user.company
+        )
+
+        lead.converted_to_student = True
+        lead.status = TrialLead.Status.CONVERTED
+        lead.trial_attended = True
+        lead.save(
+            update_fields=[
+                "converted_to_student",
+                "status",
+                "trial_attended",
+            ]
+        )
+
+        return Response(
+            {
+                "created": True,
+                "student": StudentSerializer(
+                    student,
+                    context={"request": request},
+                ).data,
+            },
+            status=status.HTTP_201_CREATED,
         )
 
     @action(
