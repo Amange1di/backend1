@@ -131,6 +131,7 @@ class HomeworkTaskSerializer(serializers.ModelSerializer):
             "title",
             "description",
             "material_url",
+            "library_item",
             "attachment",
             "attachment_url",
             "attachments",
@@ -153,7 +154,7 @@ class HomeworkTaskSerializer(serializers.ModelSerializer):
             "company",
             "company_id",
         )
-        read_only_fields = ("teacher", "company", "company_id", "created_at")
+        read_only_fields = ("teacher", "company", "company_id", "library_item", "created_at")
         extra_kwargs = {
             "attachment": {
                 "write_only": True,
