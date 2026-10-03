@@ -78,6 +78,15 @@ class HomeworkTask(models.Model):
         blank=True,
         related_name="assigned_homework",
     )
+    library_items = models.ManyToManyField(
+        "LibraryItem",
+        blank=True,
+        related_name="homework_tasks",
+    )
+    library_resource_snapshots = models.JSONField(
+        default=list,
+        blank=True,
+    )
     attachment = models.FileField(
         upload_to=build_homework_upload_path,
         blank=True,
