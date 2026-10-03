@@ -66,6 +66,11 @@ class HomeworkTask(models.Model):
     )
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    material_url = models.URLField(
+        max_length=1000,
+        blank=True,
+        default="",
+    )
     attachment = models.FileField(
         upload_to=build_homework_upload_path,
         blank=True,
