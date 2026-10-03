@@ -1,3 +1,6 @@
+from pathlib import Path
+from uuid import uuid4
+
 from django.db import models
 from django.utils.text import slugify
 
@@ -7,7 +10,9 @@ from .accounts import User
 def build_library_upload_path(instance, filename: str) -> str:
     company = getattr(instance, "company", None)
     prefix = slugify(company.name) if company else "shared"
-    return f"library/{prefix or 'shared'}/{filename}"
+    suffix = Path(filename).suffix.lower()
+    safe_name = f"{uuid4().hex}{suffix}"
+    return f"library/{prefix or 'shared'}/{safe_name}"
 
 
 class LibraryFolder(models.Model):
