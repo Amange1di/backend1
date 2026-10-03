@@ -120,6 +120,15 @@ class HomeworkTaskSerializer(serializers.ModelSerializer):
     company_id = serializers.IntegerField(
         read_only=True,
     )
+    library_items = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=LibraryItem.objects.all(),
+        required=False,
+    )
+    library_resources = serializers.JSONField(
+        source="library_resource_snapshots",
+        read_only=True,
+    )
 
     class Meta:
         model = HomeworkTask
@@ -133,6 +142,8 @@ class HomeworkTaskSerializer(serializers.ModelSerializer):
             "description",
             "material_url",
             "library_item",
+            "library_items",
+            "library_resources",
             "attachment",
             "attachment_url",
             "attachments",
@@ -164,9 +175,7 @@ class HomeworkTaskSerializer(serializers.ModelSerializer):
             },
         }
 
-    def validate_library_item(self, value):
-        if value is None:
-            return value
+    def _validate_library_item_access(self, value):
         request = self.context.get("request")
         user = request.user if request else None
         if (
@@ -178,6 +187,16 @@ class HomeworkTaskSerializer(serializers.ModelSerializer):
         ):
             raise serializers.ValidationError("library_item_access_denied")
         return value
+
+    def validate_library_item(self, value):
+        if value is None:
+            return value
+        return self._validate_library_item_access(value)
+
+    def validate_library_items(self, values):
+        for value in values:
+            self._validate_library_item_access(value)
+        return values
 
     def validate_attachment(self, value):
         return validate_upload(
