@@ -82,7 +82,16 @@ class TrialLeadSerializer(serializers.ModelSerializer):
                 {"trial_date": "trial_date_required"}
             )
 
-        if not converted_value:
+        if converted_value:
+            group = attrs.get(
+                "group_assigned",
+                getattr(instance, "group_assigned", None),
+            )
+            if not group:
+                raise serializers.ValidationError(
+                    {"group_assigned": "trial_group_required_when_converted"}
+                )
+        else:
             attrs["group_assigned"] = None
             attrs["payment_status"] = (
                 TrialLead.PaymentStatus.NOT_PAID
