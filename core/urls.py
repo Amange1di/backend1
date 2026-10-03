@@ -24,6 +24,7 @@ urlpatterns = [
     path("", include("core.domains.trials.urls")),
     path("", include("core.domains.tasks.urls")),
     path("", include("core.domains.homework.urls")),
+    path("", include("core.domains.library.urls")),
     path("", include("core.domains.contracts.urls")),
     path("sync/export/", SyncExportView.as_view(), name="sync-export"),
     path("sync/import/", SyncImportView.as_view(), name="sync-import"),
