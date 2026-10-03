@@ -130,6 +130,7 @@ class HomeworkTaskSerializer(serializers.ModelSerializer):
             "teacher_name",
             "title",
             "description",
+            "material_url",
             "attachment",
             "attachment_url",
             "attachments",
