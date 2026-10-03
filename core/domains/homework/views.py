@@ -293,10 +293,15 @@ class HomeworkSubmissionViewSet(viewsets.ModelViewSet):
                 "student_only"
             )
 
-        student = getattr(
-            user,
-            "student_profile",
-            None,
+        student_profiles = user.student_profiles.filter(
+            archived_at__isnull=True
+        ).order_by("created_at")
+        student = (
+            student_profiles.filter(
+                company_id=user.company_id
+            ).first()
+            if user.company_id
+            else student_profiles.first()
         )
         if not student:
             raise PermissionDenied(
