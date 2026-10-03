@@ -107,6 +107,15 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
             company=user.company,
         )
         self._save_attachments(instance)
+        if (
+            instance.library_item_id
+            and instance.library_item.file
+            and not instance.attachments.exists()
+        ):
+            HomeworkTaskAttachment.objects.create(
+                task=instance,
+                file=instance.library_item.file.name,
+            )
         data = self.get_serializer(instance).data
         headers = self.get_success_headers(data)
 
