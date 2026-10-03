@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
-from core.models import TrialLead, User
+from core.models import LeadAssignment, TrialLead, User
 from core.permissions import IsCourseAdminOrManager
 
 from .serializers import TrialLeadSerializer
@@ -48,9 +48,12 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         user = self.request.user
 
-        if user.role != User.Role.MANAGER:
+        if user.role not in (
+            User.Role.COURSE_ADMIN,
+            User.Role.MANAGER,
+        ):
             raise PermissionDenied(
-                "Only managers can create trial leads."
+                "trial_lead_manage_forbidden"
             )
 
         group = serializer.validated_data.get(
@@ -58,17 +61,26 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
         )
         if group and group.company != user.company:
             raise PermissionDenied(
-                "Not allowed for this group."
+                "trial_group_forbidden"
             )
 
-        serializer.save(company=user.company)
+        lead = serializer.save(company=user.company)
+
+        if user.role == User.Role.MANAGER:
+            LeadAssignment.objects.get_or_create(
+                lead=lead,
+                defaults={"manager": user},
+            )
 
     def perform_update(self, serializer):
         user = self.request.user
 
-        if user.role != User.Role.MANAGER:
+        if user.role not in (
+            User.Role.COURSE_ADMIN,
+            User.Role.MANAGER,
+        ):
             raise PermissionDenied(
-                "Only managers can update trial leads."
+                "trial_lead_manage_forbidden"
             )
 
         group = serializer.validated_data.get(
@@ -82,9 +94,12 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
         serializer.save()
 
     def destroy(self, request, *args, **kwargs):
-        if request.user.role != User.Role.MANAGER:
+        if request.user.role not in (
+            User.Role.COURSE_ADMIN,
+            User.Role.MANAGER,
+        ):
             raise PermissionDenied(
-                "Only managers can delete trial leads."
+                "trial_lead_manage_forbidden"
             )
         return super().destroy(
             request,
