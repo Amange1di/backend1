@@ -1,3 +1,6 @@
+from pathlib import Path
+from uuid import uuid4
+
 from django.db import models
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
@@ -16,11 +19,14 @@ def build_homework_upload_path(instance, filename: str) -> str:
     ):
         company = instance.task.company
 
+    suffix = Path(filename).suffix.lower()
+    safe_name = f"{uuid4().hex}{suffix}"
+
     if not company:
-        return f"homework/shared/{filename}"
+        return f"homework/shared/{safe_name}"
 
     prefix = slugify(company.name) or "shared"
-    return f"homework/{prefix}/{filename}"
+    return f"homework/{prefix}/{safe_name}"
 
 
 class HomeworkTask(models.Model):
