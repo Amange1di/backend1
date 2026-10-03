@@ -73,11 +73,19 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         if (
             user.is_authenticated
+            and user.role == User.Role.TEACHER
+        ):
+            return queryset.filter(
+                groups__teacher=user
+            ).distinct()
+
+        if (
+            user.is_authenticated
             and user.role == User.Role.STUDENT
         ):
             return queryset.filter(user=user)
 
-        return queryset
+        return queryset.none()
 
     def _validate_course_access(
         self,
