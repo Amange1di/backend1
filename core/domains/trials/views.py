@@ -1,7 +1,7 @@
 from calendar import monthrange
 from datetime import date
 
-from django.db import models
+from django.db import models, transaction
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -132,24 +132,124 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
                 "trial_lead_company_forbidden"
             )
 
-        normalized_phone = normalize_phone(
-            lead.phone or ""
-        )
-        existing_student = None
+        if not (
+            lead.converted_to_student
+            or lead.status == TrialLead.Status.CONVERTED
+        ):
+            return Response(
+                {"detail": "trial_not_converted"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        if normalized_phone:
-            for student in Student.objects.filter(
-                company=user.company,
-                archived_at__isnull=True,
-            ).iterator():
-                if (
-                    normalize_phone(student.phone or "")
-                    == normalized_phone
-                ):
-                    existing_student = student
-                    break
+        with transaction.atomic():
+            normalized_phone = normalize_phone(
+                lead.phone or ""
+            )
+            existing_student = None
 
-        if existing_student:
+            if normalized_phone:
+                for student in Student.objects.filter(
+                    company=user.company,
+                    archived_at__isnull=True,
+                ).iterator():
+                    if (
+                        normalize_phone(student.phone or "")
+                        == normalized_phone
+                    ):
+                        existing_student = student
+                        break
+
+            group = lead.group_assigned
+
+            if existing_student:
+                if group:
+                    existing_student.groups.add(group)
+                    if group.course_id:
+                        existing_student.primary_course_id = (
+                            group.course_id
+                        )
+                        existing_student.save(
+                            update_fields=[
+                                "primary_course",
+                            ]
+                        )
+
+                lead.converted_to_student = True
+                lead.status = TrialLead.Status.CONVERTED
+                lead.trial_attended = True
+                lead.save(
+                    update_fields=[
+                        "converted_to_student",
+                        "status",
+                        "trial_attended",
+                    ]
+                )
+
+                return Response(
+                    {
+                        "created": False,
+                        "student": StudentSerializer(
+                            existing_student,
+                            context={"request": request},
+                        ).data,
+                    }
+                )
+
+            full_name_parts = [
+                part
+                for part in (lead.full_name or "").strip().split()
+                if part
+            ]
+            first_name = (
+                full_name_parts[0]
+                if full_name_parts
+                else "Student"
+            )
+            last_name = " ".join(
+                full_name_parts[1:]
+            )
+
+            notes_parts = []
+            if lead.comment:
+                notes_parts.append(lead.comment)
+            if lead.course_interest:
+                notes_parts.append(
+                    f"Интерес к курсу: {lead.course_interest}"
+                )
+            if lead.source:
+                notes_parts.append(
+                    f"Источник: {lead.source}"
+                )
+
+            payload = {
+                "first_name": first_name,
+                "last_name": last_name,
+                "phone": lead.phone or "",
+                "notes": "\n".join(notes_parts),
+                "group_ids": (
+                    [group.id]
+                    if group
+                    else []
+                ),
+                "primary_course": (
+                    group.course_id
+                    if group and group.course_id
+                    else None
+                ),
+            }
+
+            serializer = StudentSerializer(
+                data=payload,
+                context={"request": request},
+            )
+            serializer.is_valid(
+                raise_exception=True
+            )
+
+            student = serializer.save(
+                company=user.company
+            )
+
             lead.converted_to_student = True
             lead.status = TrialLead.Status.CONVERTED
             lead.trial_attended = True
@@ -163,79 +263,14 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
 
             return Response(
                 {
-                    "created": False,
+                    "created": True,
                     "student": StudentSerializer(
-                        existing_student,
+                        student,
                         context={"request": request},
                     ).data,
-                }
+                },
+                status=status.HTTP_201_CREATED,
             )
-
-        full_name_parts = [
-            part
-            for part in (lead.full_name or "").strip().split()
-            if part
-        ]
-        first_name = (
-            full_name_parts[0]
-            if full_name_parts
-            else "Student"
-        )
-        last_name = " ".join(
-            full_name_parts[1:]
-        )
-
-        group = lead.group_assigned
-        payload = {
-            "first_name": first_name,
-            "last_name": last_name,
-            "phone": lead.phone or "",
-            "notes": lead.comment or "",
-            "group_ids": (
-                [group.id]
-                if group
-                else []
-            ),
-            "primary_course": (
-                group.course_id
-                if group and group.course_id
-                else None
-            ),
-        }
-
-        serializer = StudentSerializer(
-            data=payload,
-            context={"request": request},
-        )
-        serializer.is_valid(
-            raise_exception=True
-        )
-
-        student = serializer.save(
-            company=user.company
-        )
-
-        lead.converted_to_student = True
-        lead.status = TrialLead.Status.CONVERTED
-        lead.trial_attended = True
-        lead.save(
-            update_fields=[
-                "converted_to_student",
-                "status",
-                "trial_attended",
-            ]
-        )
-
-        return Response(
-            {
-                "created": True,
-                "student": StudentSerializer(
-                    student,
-                    context={"request": request},
-                ).data,
-            },
-            status=status.HTTP_201_CREATED,
-        )
 
     @action(
         detail=False,
