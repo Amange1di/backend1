@@ -9,6 +9,7 @@ from core.models import (
     HomeworkSubmission,
     HomeworkTask,
     HomeworkTaskAttachment,
+    LibraryItem,
     Student,
     User,
 )
@@ -154,7 +155,7 @@ class HomeworkTaskSerializer(serializers.ModelSerializer):
             "company",
             "company_id",
         )
-        read_only_fields = ("teacher", "company", "company_id", "library_item", "created_at")
+        read_only_fields = ("teacher", "company", "company_id", "created_at")
         extra_kwargs = {
             "attachment": {
                 "write_only": True,
@@ -162,6 +163,21 @@ class HomeworkTaskSerializer(serializers.ModelSerializer):
                 "allow_null": True,
             },
         }
+
+    def validate_library_item(self, value):
+        if value is None:
+            return value
+        request = self.context.get("request")
+        user = request.user if request else None
+        if (
+            not user
+            or user.role != User.Role.TEACHER
+            or value.company_id != user.company_id
+            or value.created_by_id != user.id
+            or value.status == LibraryItem.Status.ARCHIVED
+        ):
+            raise serializers.ValidationError("library_item_access_denied")
+        return value
 
     def validate_attachment(self, value):
         return validate_upload(
