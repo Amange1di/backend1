@@ -107,15 +107,7 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
             company=user.company,
         )
         self._save_attachments(instance)
-        if (
-            instance.library_item_id
-            and instance.library_item.file
-            and not instance.attachments.exists()
-        ):
-            HomeworkTaskAttachment.objects.create(
-                task=instance,
-                file=instance.library_item.file.name,
-            )
+        self._sync_library_resources(instance)
         data = self.get_serializer(instance).data
         headers = self.get_success_headers(data)
 
@@ -144,6 +136,7 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
                 )
             updated = serializer.save()
             self._save_attachments(updated, replace=True)
+            self._sync_library_resources(updated)
             return
 
         if user.role == User.Role.COURSE_ADMIN:
@@ -153,6 +146,7 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
                 )
             updated = serializer.save()
             self._save_attachments(updated, replace=True)
+            self._sync_library_resources(updated)
             return
 
         raise PermissionDenied("access_denied")
@@ -184,6 +178,33 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
         raise PermissionDenied(
             "homework_delete_forbidden"
         )
+
+    def _sync_library_resources(self, instance: HomeworkTask):
+        resources = []
+        existing_files = set(
+            instance.attachments.values_list("file", flat=True)
+        )
+
+        for item in instance.library_items.all():
+            resources.append(
+                {
+                    "id": item.id,
+                    "title": item.title,
+                    "type": item.type,
+                    "url": item.url or "",
+                    "has_file": bool(item.file),
+                }
+            )
+
+            if item.file and item.file.name not in existing_files:
+                HomeworkTaskAttachment.objects.create(
+                    task=instance,
+                    file=item.file.name,
+                )
+                existing_files.add(item.file.name)
+
+        instance.library_resource_snapshots = resources
+        instance.save(update_fields=("library_resource_snapshots",))
 
     def _save_attachments(
         self,
