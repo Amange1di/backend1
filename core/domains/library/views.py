@@ -41,10 +41,7 @@ class LibraryItemViewSet(viewsets.ModelViewSet):
         )
 
         if user.role == User.Role.TEACHER:
-            qs = qs.filter(
-                models.Q(visibility=LibraryItem.Visibility.COMPANY)
-                | models.Q(created_by=user)
-            )
+            qs = qs.filter(created_by=user)
 
         if self.request.query_params.get("include_archived") != "true":
             qs = qs.exclude(status=LibraryItem.Status.ARCHIVED)
@@ -77,7 +74,18 @@ class LibraryItemViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.role not in {User.Role.COURSE_ADMIN, User.Role.TEACHER} or not user.company_id:
             raise PermissionDenied("library_create_forbidden")
-        serializer.save(company=user.company, created_by=user)
+        serializer.save(
+            company=user.company,
+            created_by=user,
+            visibility=(
+                LibraryItem.Visibility.PRIVATE
+                if user.role == User.Role.TEACHER
+                else serializer.validated_data.get(
+                    "visibility",
+                    LibraryItem.Visibility.PRIVATE,
+                )
+            ),
+        )
 
     def perform_update(self, serializer):
         item = self.get_object()
@@ -175,7 +183,10 @@ class LibraryFolderViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.role not in ALLOWED_ROLES or not user.company_id:
             return LibraryFolder.objects.none()
-        return LibraryFolder.objects.filter(company_id=user.company_id).select_related("parent", "course")
+        qs = LibraryFolder.objects.filter(company_id=user.company_id).select_related("parent", "course")
+        if user.role == User.Role.TEACHER:
+            qs = qs.filter(created_by=user)
+        return qs
 
     def perform_create(self, serializer):
         user = self.request.user
