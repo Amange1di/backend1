@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from core.models import (
     Group,
     HomeworkTask,
+    HomeworkTaskAttachment,
     LibraryFavorite,
     LibraryFolder,
     LibraryHomeworkTemplate,
@@ -168,6 +169,11 @@ class LibraryItemViewSet(viewsets.ModelViewSet):
                 is_published=True,
                 library_item=item,
             )
+            if item.file:
+                HomeworkTaskAttachment.objects.create(
+                    task=task,
+                    file=item.file.name,
+                )
             item.usage_count = models.F("usage_count") + 1
             item.save(update_fields=("usage_count", "updated_at"))
             item.refresh_from_db(fields=("usage_count",))
