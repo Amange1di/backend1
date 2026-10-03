@@ -43,40 +43,55 @@ class TrialLeadSerializer(serializers.ModelSerializer):
         read_only_fields = ()
 
     def validate(self, attrs):
+        instance = self.instance
+
         status_value = attrs.get(
             "status",
-            getattr(self.instance, "status", TrialLead.Status.NEW),
+            getattr(instance, "status", TrialLead.Status.NEW),
+        )
+        converted_value = attrs.get(
+            "converted_to_student",
+            getattr(instance, "converted_to_student", False),
         )
 
-        if status_value == TrialLead.Status.ATTENDED:
-            attrs["trial_attended"] = True
-        elif status_value == TrialLead.Status.NOT_ATTENDED:
-            attrs["trial_attended"] = False
-
         if status_value == TrialLead.Status.CONVERTED:
-            attrs["trial_attended"] = True
+            converted_value = True
             attrs["converted_to_student"] = True
 
-        if attrs.get("converted_to_student") is True:
+        if converted_value:
             attrs["status"] = TrialLead.Status.CONVERTED
             attrs["trial_attended"] = True
+            status_value = TrialLead.Status.CONVERTED
+        elif status_value == TrialLead.Status.ATTENDED:
+            attrs["trial_attended"] = True
+        else:
+            attrs["trial_attended"] = False
 
         trial_date = attrs.get(
             "trial_date",
-            getattr(self.instance, "trial_date", None),
+            getattr(instance, "trial_date", None),
         )
-        effective_status = attrs.get("status", status_value)
 
-        if effective_status in (
+        if status_value in (
             TrialLead.Status.TRIAL_SCHEDULED,
             TrialLead.Status.ATTENDED,
             TrialLead.Status.NOT_ATTENDED,
+            TrialLead.Status.CONVERTED,
         ) and not trial_date:
             raise serializers.ValidationError(
                 {"trial_date": "trial_date_required"}
             )
 
-        age = attrs.get("age")
+        if not converted_value:
+            attrs["group_assigned"] = None
+            attrs["payment_status"] = (
+                TrialLead.PaymentStatus.NOT_PAID
+            )
+
+        age = attrs.get(
+            "age",
+            getattr(instance, "age", None),
+        )
         if age is not None and (age < 3 or age > 100):
             raise serializers.ValidationError(
                 {"age": "age_out_of_range"}
