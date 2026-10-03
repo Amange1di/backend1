@@ -71,6 +71,13 @@ class HomeworkTask(models.Model):
         blank=True,
         default="",
     )
+    library_item = models.ForeignKey(
+        "LibraryItem",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_homework",
+    )
     attachment = models.FileField(
         upload_to=build_homework_upload_path,
         blank=True,

@@ -7,6 +7,7 @@ from .leads import TrialLead, LeadAssignment
 from .tasks import TaskLead, Task
 from .landing import LandingPage, LandingSection, LandingHeaderLink
 from .homework import HomeworkTask, HomeworkTaskAttachment, HomeworkSubmission
+from .library import LibraryFolder, LibraryItem, LibraryHomeworkTemplate, LibraryFavorite
 from .applications import ApplicationStatus, ApplicationType, TeacherApplication, StudentApplication
 from .marketplace import CompanyCategory, CompanyCity, Company, JobVacancy, PublicCourse, CourseApplication
 from .contracts import Contract, ContractTemplate
@@ -40,6 +41,10 @@ __all__ = [
     "HomeworkTask",
     "HomeworkTaskAttachment",
     "HomeworkSubmission",
+    "LibraryFolder",
+    "LibraryItem",
+    "LibraryHomeworkTemplate",
+    "LibraryFavorite",
     "ApplicationStatus",
     "ApplicationType",
     "TeacherApplication",
