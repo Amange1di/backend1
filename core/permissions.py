@@ -66,7 +66,7 @@ class IsCourseAdminOrManagerOrStudentReadOnly(BasePermission):
             return False
         if request.user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
             return True
-        if request.user.role == User.Role.STUDENT:
+        if request.user.role in (User.Role.TEACHER, User.Role.STUDENT):
             return request.method in SAFE_METHODS
         return False
 
