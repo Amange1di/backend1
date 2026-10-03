@@ -268,6 +268,12 @@ class AttendanceMarkView(APIView):
             group,
         )
 
+        if target_date > date.today():
+            return Response(
+                {"detail": "attendance_future_date_read_only"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         students = {
             student.id: student
             for student
