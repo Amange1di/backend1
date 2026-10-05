@@ -4,6 +4,7 @@ from .views import (
     CourseAdminCreateView,
     CourseAdminDetailView,
     CourseAdminResetPasswordView,
+    FirstLoginLinkView,
     FirstLoginSetPasswordView,
     LoginView,
     LogoutView,
@@ -37,6 +38,11 @@ urlpatterns = [
         "auth/login/",
         LoginView.as_view(),
         name="auth-login",
+    ),
+    path(
+        "auth/first-login/link/",
+        FirstLoginLinkView.as_view(),
+        name="auth-first-login-link",
     ),
     path(
         "auth/first-login/set-password/",
