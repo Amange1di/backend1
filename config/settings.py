@@ -46,6 +46,8 @@ else:
         "162.62.231.244",
         "localhost",
         "127.0.0.1",
+        # Android Emulator reaches the host machine through this alias.
+        "10.0.2.2",
     ]
 
 # Application definition
