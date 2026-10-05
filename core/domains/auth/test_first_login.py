@@ -26,6 +26,13 @@ class FirstLoginFlowTests(APITestCase):
             )
         )
 
+    def test_one_time_password_has_four_digits_and_one_letter(self):
+        password = self.one_time_password
+        self.assertEqual(len(password), 5)
+        self.assertEqual(sum(char.isdigit() for char in password), 4)
+        self.assertEqual(sum(char.isalpha() for char in password), 1)
+        self.assertEqual(password, password.upper())
+
     def test_login_uses_only_username_and_password(self):
         response = self.client.post(
             "/api/auth/login/",
