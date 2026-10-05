@@ -1,5 +1,6 @@
 from .course_admin import CourseAdminCreateView, CourseAdminDetailView, CourseAdminResetPasswordView
 from .credentials import (
+    FirstLoginLinkView,
     FirstLoginSetPasswordView,
     LoginThrottle,
     LoginView,
@@ -14,6 +15,7 @@ __all__ = [
     "CourseAdminCreateView",
     "CourseAdminDetailView",
     "CourseAdminResetPasswordView",
+    "FirstLoginLinkView",
     "FirstLoginSetPasswordView",
     "LoginThrottle",
     "LoginView",
