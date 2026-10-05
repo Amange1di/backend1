@@ -1,7 +1,8 @@
-import os
 import importlib
 import builtins
+import os
 from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlparse
 
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.translation import gettext_lazy
@@ -123,52 +124,39 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# Database
-# Use PostgreSQL when env vars are provided, otherwise fallback to sqlite3
-DATABASE_URL = os.environ.get("DATABASE_URL")
+# Database. Production must have a Render PostgreSQL URL; never silently use
+# SQLite there because its ephemeral filesystem would make data loss likely.
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 if DATABASE_URL:
-    # Parse DATABASE_URL like: postgres://USER:PASS@HOST:PORT/NAME
     try:
-        import urllib.parse as urlparse
+        database_url = urlparse(DATABASE_URL)
+        if database_url.scheme not in {"postgres", "postgresql"}:
+            raise ValueError("scheme must be postgres or postgresql")
+        if not database_url.hostname or not database_url.path or database_url.path == "/":
+            raise ValueError("host and database name are required")
 
-        url = urlparse.urlparse(DATABASE_URL)
-        DB_NAME = url.path[1:]
-        DB_USER = url.username or ""
-        DB_PASSWORD = url.password or ""
-        DB_HOST = url.hostname or ""
-        DB_PORT = url.port or ""
+        query = parse_qs(database_url.query)
+        options = {}
+        if query.get("sslmode"):
+            options["sslmode"] = query["sslmode"][0]
+
         DATABASES = {
             "default": {
                 "ENGINE": "django.db.backends.postgresql",
-                "NAME": DB_NAME,
-                "USER": DB_USER,
-                "PASSWORD": DB_PASSWORD,
-                "HOST": DB_HOST,
-                "PORT": DB_PORT,
+                "NAME": unquote(database_url.path.lstrip("/")),
+                "USER": unquote(database_url.username or ""),
+                "PASSWORD": unquote(database_url.password or ""),
+                "HOST": database_url.hostname,
+                "PORT": database_url.port or "5432",
+                "CONN_MAX_AGE": 60,
+                "CONN_HEALTH_CHECKS": True,
+                "OPTIONS": options,
             }
         }
-    except Exception as exc:
-        if not DEBUG:
-            raise ImproperlyConfigured(
-                "DATABASE_URL is invalid; refusing to fall back to SQLite in production."
-            ) from exc
-        DATABASES = {
-            "default": {
-                "ENGINE": "django.db.backends.sqlite3",
-                "NAME": BASE_DIR / "db.sqlite3",
-            }
-        }
-elif os.environ.get("DB_ENGINE") == "postgresql":
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": os.environ.get("DB_NAME", "postgres"),
-            "USER": os.environ.get("DB_USER", "postgres"),
-            "PASSWORD": os.environ.get("DB_PASSWORD", ""),
-            "HOST": os.environ.get("DB_HOST", "localhost"),
-            "PORT": os.environ.get("DB_PORT", "5432"),
-        }
-    }
+    except (TypeError, ValueError) as exc:
+        raise ImproperlyConfigured(
+            "DATABASE_URL must be a valid PostgreSQL connection URL."
+        ) from exc
 elif DEBUG:
     DATABASES = {
         "default": {
@@ -178,8 +166,7 @@ elif DEBUG:
     }
 else:
     raise ImproperlyConfigured(
-        "Production database is not configured. "
-        "Set DATABASE_URL or DB_ENGINE=postgresql."
+        "DATABASE_URL is required when DEBUG=False; refusing to use SQLite in production."
     )
 
 # Password validation
