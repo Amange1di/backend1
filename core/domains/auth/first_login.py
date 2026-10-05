@@ -7,14 +7,13 @@ from django.utils import timezone
 from core.models import FirstLoginCredential
 
 
-ALPHABET = string.ascii_letters + string.digits
-
-
-def _generate_password(length=10):
-    return "".join(
-        secrets.choice(ALPHABET)
-        for _ in range(length)
-    )
+def _generate_password():
+    chars = [
+        *(secrets.choice(string.digits) for _ in range(4)),
+        secrets.choice(string.ascii_uppercase),
+    ]
+    secrets.SystemRandom().shuffle(chars)
+    return "".join(chars)
 
 
 def issue_first_login_password(user):
