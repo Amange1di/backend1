@@ -1,3 +1,4 @@
+import hashlib
 import secrets
 import string
 
@@ -66,7 +67,9 @@ def create_first_login_link_token(user):
     return signing.dumps(
         {
             "user_id": user.id,
-            "credential_created_at": credential.created_at.isoformat(),
+            "credential_fingerprint": hashlib.sha256(
+                credential.password_hash.encode("utf-8")
+            ).hexdigest(),
         },
         salt=FIRST_LOGIN_LINK_SALT,
         compress=True,
@@ -84,8 +87,8 @@ def consume_first_login_link_token(token):
         return None
 
     user_id = payload.get("user_id")
-    created_at = payload.get("credential_created_at")
-    if not user_id or not created_at:
+    fingerprint = payload.get("credential_fingerprint")
+    if not user_id or not fingerprint:
         return None
 
     credential = FirstLoginCredential.objects.select_related("user").filter(
@@ -94,7 +97,10 @@ def consume_first_login_link_token(token):
     ).first()
     if not credential:
         return None
-    if credential.created_at.isoformat() != created_at:
+    current_fingerprint = hashlib.sha256(
+        credential.password_hash.encode("utf-8")
+    ).hexdigest()
+    if not secrets.compare_digest(current_fingerprint, fingerprint):
         return None
 
     credential.is_used = True
