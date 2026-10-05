@@ -34,12 +34,15 @@ if not SECRET_KEY:
         )
 
 ALLOWED_HOSTS_ENV = os.environ.get("ALLOWED_HOSTS", "")
+VERCEL_HOST = os.environ.get("VERCEL_URL", "").strip()
 if ALLOWED_HOSTS_ENV:
     ALLOWED_HOSTS = [
         host.strip()
         for host in ALLOWED_HOSTS_ENV.split(",")
         if host.strip()
     ]
+    if VERCEL_HOST and VERCEL_HOST not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(VERCEL_HOST)
 else:
     ALLOWED_HOSTS = [
         "backend1-ritn.onrender.com",
@@ -49,6 +52,8 @@ else:
         # Android Emulator reaches the host machine through this alias.
         "10.0.2.2",
     ]
+    if VERCEL_HOST:
+        ALLOWED_HOSTS.append(VERCEL_HOST)
 
 # Application definition
 INSTALLED_APPS = [
@@ -83,6 +88,7 @@ MIDDLEWARE = [
 ]
 
 # Security headers for production
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = not DEBUG
 SESSION_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_HTTPONLY = True
