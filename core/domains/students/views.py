@@ -21,7 +21,7 @@ from .serializers import (
     TransferGroupSerializer,
 )
 from .services import sync_student_user
-from core.domains.auth.first_login import issue_first_login_password
+from core.domains.auth.first_login import issue_first_login_password, create_first_login_link_token
 
 
 class StudentViewSet(viewsets.ModelViewSet):
@@ -705,6 +705,11 @@ class StudentViewSet(viewsets.ModelViewSet):
                 ),
                 "one_time_password": (
                     one_time_password
+                ),
+                "first_login_token": (
+                    create_first_login_link_token(
+                        student.user
+                    )
                 ),
             }
         )
