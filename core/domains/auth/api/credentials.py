@@ -33,6 +33,8 @@ from core.domains.users.serializers import (
     UserSerializer,
 )
 
+from ..first_login import consume_first_login_link_token
+
 from ..services import (
     ensure_student_access_allowed,
     resolve_support_telegram,
@@ -295,6 +297,37 @@ class LoginView(APIView):
             path="/",
         )
         return response
+
+class FirstLoginLinkView(APIView):
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [LoginThrottle]
+    throttle_scope = "login"
+
+    def post(self, request):
+        link_token = str(request.data.get("token", "")).strip()
+        if not link_token:
+            return Response(
+                {"detail": "first_login_link_required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = consume_first_login_link_token(link_token)
+        if not user or not user.is_active or not user.must_set_password:
+            return Response(
+                {"detail": "first_login_link_invalid_or_expired"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        Token.objects.filter(user=user).delete()
+        token = Token.objects.create(user=user)
+        return Response(
+            {
+                "token": token.key,
+                "user": UserSerializer(user).data,
+                "requires_password_setup": True,
+            }
+        )
+
 
 class FirstLoginSetPasswordView(APIView):
     permission_classes = [
