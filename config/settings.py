@@ -248,6 +248,15 @@ REST_FRAMEWORK = {
 }
 
 # CORS settings from environment variable or safe defaults.
+LOCAL_DEBUG_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8000",
+    "http://10.81.24.178:3000",
+    "http://10.81.24.178:8000",
+]
+
 CORS_ALLOWED_ORIGINS_ENV = os.environ.get("CORS_ALLOWED_ORIGINS", "")
 if CORS_ALLOWED_ORIGINS_ENV:
     CORS_ALLOWED_ORIGINS = [
@@ -256,13 +265,7 @@ if CORS_ALLOWED_ORIGINS_ENV:
         if origin.strip()
     ]
 elif DEBUG:
-    CORS_ALLOWED_ORIGINS = [
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:8000",
-        "http://10.81.24.178:3000",
-        "http://10.81.24.178:8000",
+    CORS_ALLOWED_ORIGINS = LOCAL_DEBUG_ORIGINS + [
         "https://eduosh1.vercel.app",
     ]
 else:
@@ -270,6 +273,11 @@ else:
         "https://eduosh1.vercel.app",
         "https://eduosh.kg",
     ]
+
+if DEBUG:
+    for origin in LOCAL_DEBUG_ORIGINS:
+        if origin not in CORS_ALLOWED_ORIGINS:
+            CORS_ALLOWED_ORIGINS.append(origin)
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = False
@@ -282,11 +290,7 @@ if CSRF_TRUSTED_ORIGINS_ENV:
         if origin.strip()
     ]
 elif DEBUG:
-    CSRF_TRUSTED_ORIGINS = [
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:8000",
+    CSRF_TRUSTED_ORIGINS = LOCAL_DEBUG_ORIGINS + [
         "https://eduosh1.vercel.app",
     ]
 else:
@@ -294,6 +298,11 @@ else:
         "https://eduosh1.vercel.app",
         "https://eduosh.kg",
     ]
+
+if DEBUG:
+    for origin in LOCAL_DEBUG_ORIGINS:
+        if origin not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(origin)
 
 # Sync/import safety limits.
 SYNC_SECRET = os.environ.get("SYNC_SECRET", "").strip()
