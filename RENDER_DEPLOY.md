@@ -40,6 +40,23 @@ For an existing PostgreSQL source, prefer database-level restore to a new Render
 PostgreSQL instance. For SQLite, first create and test a controlled conversion
 copy locally; do not point a production service at a partially imported target.
 
+### Verified SQLite source migration
+
+After `migrate` completes, run this command only in a Render Shell or one-off
+Job. It is never a web-startup command. Its default is a read-only dry-run; it
+requires an explicit `--apply` to write, requires PostgreSQL, refuses a target
+with project records, runs in one transaction, preserves primary keys and M2M
+links, maps ContentType foreign keys by natural key, and resets sequences.
+
+```bash
+python manage.py migrate_local_sqlite --source /secure/path/db.sqlite3
+python manage.py migrate_local_sqlite --source /secure/path/db.sqlite3 --apply
+```
+
+Do not use it to merge, repair, or overwrite a populated target. Transfer the
+SQLite file through an approved private channel; do not place it in Git. It
+copies database paths only, not files beneath `MEDIA_ROOT`.
+
 ## 2. Create and configure Render services
 
 1. Create a Render PostgreSQL instance and keep a Render backup/snapshot before
