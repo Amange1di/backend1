@@ -34,12 +34,25 @@ class Command(BaseCommand):
             raise CommandError(f"Source SQLite does not exist: {path}")
         if connections[DEFAULT_DB_ALIAS].vendor != "postgresql":
             raise CommandError("Target must be PostgreSQL; refusing any other target.")
-        # Start with Django's fully normalized default settings so the dynamic
-        # connection includes required keys such as TIME_ZONE and TEST.
+        # Build a clean SQLite connection instead of inheriting PostgreSQL
+        # OPTIONS such as sslmode, which sqlite3 does not accept.
+        default_settings = connections.databases[DEFAULT_DB_ALIAS]
         connections.databases[SOURCE] = {
-            **connections.databases[DEFAULT_DB_ALIAS],
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": str(path),
+            "ATOMIC_REQUESTS": False,
+            "AUTOCOMMIT": True,
+            "CONN_MAX_AGE": 0,
+            "CONN_HEALTH_CHECKS": False,
+            "OPTIONS": {},
+            "TIME_ZONE": default_settings.get("TIME_ZONE"),
+            "TEST": {
+                "CHARSET": None,
+                "COLLATION": None,
+                "MIGRATE": True,
+                "MIRROR": None,
+                "NAME": None,
+            },
         }
         models = self.models()
         source_counts, target_counts = self.counts(models, SOURCE), self.counts(models, DEFAULT_DB_ALIAS)
