@@ -25,9 +25,18 @@ from core.domains.auth.first_login import issue_first_login_password, create_fir
 
 
 class StudentViewSet(viewsets.ModelViewSet):
-    queryset = Student.objects.filter(
-        archived_at__isnull=True
-    ).order_by("-created_at")
+    queryset = (
+        Student.objects.filter(
+            archived_at__isnull=True
+        )
+        .select_related(
+            "user",
+            "company",
+            "primary_course",
+        )
+        .prefetch_related("groups")
+        .order_by("-created_at")
+    )
     serializer_class = StudentSerializer
     permission_classes = [
         IsCourseAdminOrManagerOrStudentReadOnly
@@ -36,6 +45,13 @@ class StudentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         user = self.request.user
+
+        group_id = self.request.query_params.get("group")
+        if group_id:
+            try:
+                queryset = queryset.filter(groups__id=int(group_id)).distinct()
+            except (TypeError, ValueError):
+                return queryset.none()
 
         if (
             user.is_authenticated
