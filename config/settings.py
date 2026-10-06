@@ -22,7 +22,11 @@ except ImportError:
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
+VERCEL_ENV = os.environ.get("VERCEL_ENV", "").strip().lower()
+DEBUG = (
+    os.environ.get("DEBUG", "False").lower() == "true"
+    and VERCEL_ENV != "production"
+)
 
 # Never silently run production with a predictable signing key.
 SECRET_KEY = os.environ.get("SECRET_KEY", "").strip()
@@ -36,6 +40,14 @@ if not SECRET_KEY:
 
 ALLOWED_HOSTS_ENV = os.environ.get("ALLOWED_HOSTS", "")
 VERCEL_HOST = os.environ.get("VERCEL_URL", "").strip()
+VERCEL_PRODUCTION_HOST = os.environ.get(
+    "VERCEL_PROJECT_PRODUCTION_URL",
+    "",
+).strip()
+PUBLIC_BACKEND_HOST = os.environ.get(
+    "PUBLIC_BACKEND_HOST",
+    "backend1-rust.vercel.app",
+).strip()
 
 LOCAL_DEBUG_HOSTS = [
     "localhost",
@@ -62,8 +74,13 @@ if DEBUG:
         if host not in ALLOWED_HOSTS:
             ALLOWED_HOSTS.append(host)
 
-if VERCEL_HOST and VERCEL_HOST not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append(VERCEL_HOST)
+for host in (
+    VERCEL_HOST,
+    VERCEL_PRODUCTION_HOST,
+    PUBLIC_BACKEND_HOST,
+):
+    if host and host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(host)
 
 # Application definition
 INSTALLED_APPS = [
