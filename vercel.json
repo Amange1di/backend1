@@ -3,7 +3,7 @@
   "buildCommand": "python manage.py collectstatic --noinput",
   "functions": {
     "api/index.py": {
-      "includeFiles": "{config/**,core/**,finance/**,telegram_bot/**,locale/**,staticfiles/**}",
+      "includeFiles": "**/*",
       "excludeFiles": "{backups/**,db.sqlite3,*.sqlite3,crm_data.json,migration_assets/**,media/**,tests/**,**/tests/**,fixtures/**,__fixtures__/**,testdata/**,sample-data/**}",
       "maxDuration": 60
     }
