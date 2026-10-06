@@ -1,0 +1,41 @@
+name: Import demo SQLite to Render PostgreSQL
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Use dry-run first; import-demo writes only to an empty target."
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - import-demo
+
+permissions:
+  contents: read
+
+jobs:
+  migrate-demo-data:
+    runs-on: ubuntu-latest
+    env:
+      DEBUG: "true"
+      DATABASE_URL: ${{ secrets.RENDER_DATABASE_URL }}
+      SOURCE_DB: migration_assets/eduosh-demo.sqlite3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Validate the Render PostgreSQL schema state
+        run: |
+          test -n "$DATABASE_URL"
+          python manage.py check
+          python manage.py showmigrations --plan
+      - name: Inspect source and target without writing data
+        run: python manage.py migrate_local_sqlite --source "$SOURCE_DB"
+      - name: Import demo data once
+        if: ${{ inputs.mode == 'import-demo' }}
+        run: python manage.py migrate_local_sqlite --source "$SOURCE_DB" --apply

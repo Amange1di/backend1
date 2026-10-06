@@ -57,6 +57,13 @@ Do not use it to merge, repair, or overwrite a populated target. Transfer the
 SQLite file through an approved private channel; do not place it in Git. It
 copies database paths only, not files beneath `MEDIA_ROOT`.
 
+For this repository's explicitly approved demo dataset only, the manually run
+GitHub Actions workflow `Import demo SQLite to Render PostgreSQL` uses
+`migration_assets/eduosh-demo.sqlite3`. Set the repository secret
+`RENDER_DATABASE_URL` to the Render **external** PostgreSQL URL. Run it in
+`dry-run` mode first; only `import-demo` writes, and it still refuses a target
+with any project records. This workflow is not for real user data.
+
 ## 2. Create and configure Render services
 
 1. Create a Render PostgreSQL instance and keep a Render backup/snapshot before
