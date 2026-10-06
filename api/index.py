@@ -1,4 +1,7 @@
-"""Vercel Python Runtime entry point for the Django application."""
+"""Vercel Python Runtime entry point for the Django application.
+
+Kept in sync with the current main branch for production deployments.
+"""
 
 import os
 
