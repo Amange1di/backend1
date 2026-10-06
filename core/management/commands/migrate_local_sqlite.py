@@ -22,6 +22,10 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--source", required=True, help="Absolute source db.sqlite3 path")
         parser.add_argument("--apply", action="store_true", help="Actually write; dry-run is default")
+        parser.add_argument(
+            "--allow-nonempty", action="store_true",
+            help="Permit inventory-only dry-run of a populated target; never permits writes.",
+        )
         parser.add_argument("--batch-size", type=int, default=500)
 
     def handle(self, *args, **options):
@@ -42,12 +46,17 @@ class Command(BaseCommand):
         self.print_counts("SOURCE", source_counts)
         self.print_counts("TARGET", target_counts)
         existing = {name: count for name, count in target_counts.items() if count}
-        if existing:
+        if existing and not options["allow_nonempty"]:
             raise CommandError("Target is not empty; refusing merge/overwrite: " + ", ".join(f"{k}={v}" for k, v in existing.items()))
+        if options["allow_nonempty"] and options["apply"]:
+            raise CommandError("--allow-nonempty is inventory-only and cannot be used with --apply.")
         self.check_source_relations(models)
         self.check_content_types(models)
         if not options["apply"]:
-            self.stdout.write(self.style.SUCCESS("Dry-run passed; no target data changed."))
+            message = "Dry-run passed; no target data changed."
+            if existing:
+                message = "Inventory completed for populated target; no target data changed."
+            self.stdout.write(self.style.SUCCESS(message))
             return
         with transaction.atomic(using=DEFAULT_DB_ALIAS):
             type_ids = self.content_type_ids()

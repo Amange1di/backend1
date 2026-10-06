@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Use dry-run first; import-demo writes only to an empty target."
+        description: "Use dry-run first; replace-demo clears the approved Render demo target."
         required: true
         default: dry-run
         type: choice
         options:
           - dry-run
           - import-demo
+          - replace-demo
 
 permissions:
   contents: read
@@ -35,7 +36,15 @@ jobs:
           python manage.py check
           python manage.py showmigrations --plan
       - name: Inspect source and target without writing data
-        run: python manage.py migrate_local_sqlite --source "$SOURCE_DB"
+        run: |
+          if [ "${{ inputs.mode }}" = "replace-demo" ]; then
+            python manage.py migrate_local_sqlite --source "$SOURCE_DB" --allow-nonempty
+          else
+            python manage.py migrate_local_sqlite --source "$SOURCE_DB"
+          fi
+      - name: Clear approved demo target
+        if: ${{ inputs.mode == 'replace-demo' }}
+        run: python manage.py flush --noinput
       - name: Import demo data once
-        if: ${{ inputs.mode == 'import-demo' }}
+        if: ${{ inputs.mode == 'import-demo' || inputs.mode == 'replace-demo' }}
         run: python manage.py migrate_local_sqlite --source "$SOURCE_DB" --apply
