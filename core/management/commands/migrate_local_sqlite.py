@@ -59,6 +59,11 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(message))
             return
         with transaction.atomic(using=DEFAULT_DB_ALIAS):
+            # Django creates PostgreSQL foreign keys as deferrable.  The EduOsh
+            # schema contains valid cycles (for example Company/User), so
+            # validate those references only when the complete import is done.
+            with connections[DEFAULT_DB_ALIAS].cursor() as cursor:
+                cursor.execute("SET CONSTRAINTS ALL DEFERRED")
             type_ids = self.content_type_ids()
             for model in self.order(models):
                 self.copy_model(model, type_ids, options["batch_size"])
@@ -127,8 +132,15 @@ class Command(BaseCommand):
             for child in children[model]:
                 needed[child].discard(model)
                 if not needed[child]: ready.append(child)
-        if len(result) != len(models):
-            raise CommandError("Cyclic model dependencies need manual review: " + ", ".join(m._meta.label for m in models if m not in result))
+        remaining = [m for m in models if m not in result]
+        if remaining:
+            self.stdout.write(
+                "Deferring PostgreSQL constraints for cyclic models: "
+                + ", ".join(m._meta.label for m in remaining)
+            )
+            # The transaction above defers these foreign-key checks until all
+            # records have been copied, which preserves valid cyclic links.
+            result.extend(remaining)
         return result
 
     def copy_model(self, model, type_ids, batch_size):
