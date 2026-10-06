@@ -80,7 +80,7 @@ class Command(BaseCommand):
             type_ids = self.content_type_ids()
             for model in self.order(models):
                 self.copy_model(model, type_ids, options["batch_size"])
-            self.copy_m2m(models)
+            self.copy_m2m(models, options["batch_size"])
             self.reset_sequences(models)
             after = self.counts(models, DEFAULT_DB_ALIAS)
             if after != source_counts:
@@ -170,13 +170,54 @@ class Command(BaseCommand):
         if batch: model._default_manager.using(DEFAULT_DB_ALIAS).bulk_create(batch, batch_size=batch_size)
         self.stdout.write(f"Copied {model._meta.label}")
 
-    def copy_m2m(self, models):
+    def copy_m2m(self, models, batch_size=1000):
+        copied_through = set()
+
         for model in models:
             for field in model._meta.many_to_many:
-                if not field.remote_field.through._meta.auto_created: continue
-                for pk in model._default_manager.using(SOURCE).values_list("pk", flat=True).iterator():
-                    related = getattr(model._default_manager.using(SOURCE).get(pk=pk), field.name).values_list("pk", flat=True)
-                    getattr(model._default_manager.get(pk=pk), field.name).add(*related)
+                through = field.remote_field.through
+
+                if not through._meta.auto_created or through in copied_through:
+                    continue
+
+                copied_through.add(through)
+
+                local_fields = list(through._meta.local_fields)
+                batch = []
+                copied = 0
+
+                queryset = through._default_manager.using(SOURCE).all()
+
+                for source_row in queryset.iterator(chunk_size=batch_size):
+                    target_row = through()
+
+                    for through_field in local_fields:
+                        setattr(
+                            target_row,
+                            through_field.attname,
+                            getattr(source_row, through_field.attname),
+                        )
+
+                    batch.append(target_row)
+
+                    if len(batch) >= batch_size:
+                        through._default_manager.using(DEFAULT_DB_ALIAS).bulk_create(
+                            batch,
+                            batch_size=batch_size,
+                        )
+                        copied += len(batch)
+                        batch.clear()
+
+                if batch:
+                    through._default_manager.using(DEFAULT_DB_ALIAS).bulk_create(
+                        batch,
+                        batch_size=batch_size,
+                    )
+                    copied += len(batch)
+
+                self.stdout.write(
+                    f"Copied M2M {through._meta.label}: {copied}"
+                )
 
     def reset_sequences(self, models):
         with connections[DEFAULT_DB_ALIAS].cursor() as cursor:
