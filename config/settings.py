@@ -36,23 +36,34 @@ if not SECRET_KEY:
 
 ALLOWED_HOSTS_ENV = os.environ.get("ALLOWED_HOSTS", "")
 VERCEL_HOST = os.environ.get("VERCEL_URL", "").strip()
+
+LOCAL_DEBUG_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    # Android Emulator reaches the host machine through this alias.
+    "10.0.2.2",
+    # Current Mac LAN address for testing from phones/other devices.
+    "10.81.24.178",
+]
+
 if ALLOWED_HOSTS_ENV:
     ALLOWED_HOSTS = [
         host.strip()
         for host in ALLOWED_HOSTS_ENV.split(",")
         if host.strip()
     ]
-    if VERCEL_HOST and VERCEL_HOST not in ALLOWED_HOSTS:
-        ALLOWED_HOSTS.append(VERCEL_HOST)
 else:
-    ALLOWED_HOSTS = [
-        "localhost",
-        "127.0.0.1",
-        # Android Emulator reaches the host machine through this alias.
-        "10.0.2.2",
-    ]
-    if VERCEL_HOST:
-        ALLOWED_HOSTS.append(VERCEL_HOST)
+    ALLOWED_HOSTS = LOCAL_DEBUG_HOSTS.copy()
+
+# In development, keep local device access working even when .env overrides
+# ALLOWED_HOSTS with a narrower list.
+if DEBUG:
+    for host in LOCAL_DEBUG_HOSTS:
+        if host not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(host)
+
+if VERCEL_HOST and VERCEL_HOST not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(VERCEL_HOST)
 
 # Application definition
 INSTALLED_APPS = [
@@ -250,6 +261,8 @@ elif DEBUG:
         "http://localhost:3001",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:8000",
+        "http://10.81.24.178:3000",
+        "http://10.81.24.178:8000",
         "https://eduosh1.vercel.app",
     ]
 else:
