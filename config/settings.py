@@ -46,8 +46,6 @@ if ALLOWED_HOSTS_ENV:
         ALLOWED_HOSTS.append(VERCEL_HOST)
 else:
     ALLOWED_HOSTS = [
-        "backend1-ritn.onrender.com",
-        "162.62.231.244",
         "localhost",
         "127.0.0.1",
         # Android Emulator reaches the host machine through this alias.
@@ -124,8 +122,8 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# Database. Production must have a Render PostgreSQL URL; never silently use
-# SQLite there because its ephemeral filesystem would make data loss likely.
+# Database. Production must have a PostgreSQL URL; never silently use SQLite
+# there because serverless filesystems are ephemeral.
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 if DATABASE_URL:
     try:
@@ -190,7 +188,7 @@ USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = "static/"
-# Настройки для Render (WhiteNoise)
+# WhiteNoise serves build-time static files from the read-only Vercel bundle.
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 MEDIA_URL = "/media/"
@@ -258,7 +256,6 @@ else:
     CORS_ALLOWED_ORIGINS = [
         "https://eduosh1.vercel.app",
         "https://eduosh.kg",
-        "https://backend1-ritn.onrender.com",
     ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -283,7 +280,6 @@ else:
     CSRF_TRUSTED_ORIGINS = [
         "https://eduosh1.vercel.app",
         "https://eduosh.kg",
-        "https://backend1-ritn.onrender.com",
     ]
 
 # Sync/import safety limits.
