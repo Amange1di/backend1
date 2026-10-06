@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -8,6 +9,7 @@ from rest_framework.response import Response
 from core.audit import write_audit
 from core.models import (
     Group,
+    Student,
     User,
 )
 from core.permissions import IsCourseAdminOrTeacherReadOnly
@@ -21,9 +23,28 @@ from .services import (
 
 
 class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
-    queryset = Group.objects.filter(
-        archived_at__isnull=True
-    ).order_by("-created_at")
+    queryset = (
+        Group.objects.filter(
+            archived_at__isnull=True
+        )
+        .select_related(
+            "course",
+            "teacher",
+            "auditorium",
+            "company",
+        )
+        .prefetch_related(
+            Prefetch(
+                "students",
+                queryset=(
+                    Student.objects.filter(archived_at__isnull=True)
+                    .select_related("user", "company", "primary_course")
+                    .prefetch_related("groups")
+                ),
+            )
+        )
+        .order_by("-created_at")
+    )
     serializer_class = GroupSerializer
     permission_classes = [
         IsCourseAdminOrTeacherReadOnly
