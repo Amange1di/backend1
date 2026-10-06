@@ -1,31 +1,54 @@
 from django.urls import include, path
 
+from .domains.applications import urls as applications_urls
+from .domains.attendance import urls as attendance_urls
+from .domains.auditoriums import urls as auditoriums_urls
+from .domains.auth import urls as auth_urls
+from .domains.balances import urls as balances_urls
+from .domains.contracts import urls as contracts_urls
+from .domains.courses import urls as courses_urls
+from .domains.finance import urls as finance_urls
+from .domains.groups import urls as groups_urls
+from .domains.homework import urls as homework_urls
+from .domains.landing import urls as landing_urls
+from .domains.library import urls as library_urls
+from .domains.managers import urls as managers_urls
+from .domains.marketplace import urls as marketplace_urls
+from .domains.payments import urls as payments_urls
+from .domains.promo_codes import urls as promo_codes_urls
+from .domains.public import urls as public_urls
+from .domains.students import urls as students_urls
+from .domains.super_admin import urls as super_admin_urls
 from .domains.sync.views import SyncExportView, SyncImportView
+from .domains.tasks import urls as tasks_urls
+from .domains.teachers import urls as teachers_urls
+from .domains.telegram import urls as telegram_urls
+from .domains.trials import urls as trials_urls
 
 urlpatterns = [
-    path("", include("core.domains.balances.urls")),
-    path("", include("core.domains.public.urls")),
-    path("", include("core.domains.promo_codes.urls")),
-    path("", include("core.domains.telegram.urls")),
-    path("", include("core.domains.super_admin.urls")),
-    path("", include("core.domains.auth.urls")),
-    path("", include("core.domains.finance.urls")),
-    path("", include("core.domains.payments.urls")),
-    path("", include("core.domains.attendance.urls")),
-    path("", include("core.domains.auditoriums.urls")),
-    path("", include("core.domains.managers.urls")),
-    path("", include("core.domains.teachers.urls")),
-    path("", include("core.domains.groups.urls")),
-    path("", include("core.domains.students.urls")),
-    path("", include("core.domains.courses.urls")),
-    path("", include("core.domains.landing.urls")),
-    path("", include("core.domains.marketplace.urls")),
-    path("", include("core.domains.applications.urls")),
-    path("", include("core.domains.trials.urls")),
-    path("", include("core.domains.tasks.urls")),
-    path("", include("core.domains.homework.urls")),
-    path("", include("core.domains.library.urls")),
-    path("", include("core.domains.contracts.urls")),
+    path("", include(balances_urls)),
+    path("", include(public_urls)),
+    path("", include(promo_codes_urls)),
+    path("", include(telegram_urls)),
+    path("", include(super_admin_urls)),
+    path("", include(auth_urls)),
+    path("", include(finance_urls)),
+    path("", include(payments_urls)),
+    path("", include(attendance_urls)),
+    path("", include(auditoriums_urls)),
+    path("", include(managers_urls)),
+    path("", include(teachers_urls)),
+    path("", include(groups_urls)),
+    path("", include(students_urls)),
+    path("", include(courses_urls)),
+    path("", include(landing_urls)),
+    path("", include(marketplace_urls)),
+    path("", include(applications_urls)),
+    path("", include(trials_urls)),
+    path("", include(tasks_urls)),
+    path("", include(homework_urls)),
+    path("", include(library_urls)),
+    path("", include(contracts_urls)),
     path("sync/export/", SyncExportView.as_view(), name="sync-export"),
     path("sync/import/", SyncImportView.as_view(), name="sync-import"),
 ]
