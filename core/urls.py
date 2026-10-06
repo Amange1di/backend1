@@ -16,7 +16,7 @@ from .domains.managers import urls as managers_urls
 from .domains.marketplace import urls as marketplace_urls
 from .domains.payments import urls as payments_urls
 from .domains.promo_codes import urls as promo_codes_urls
-from .domains.public import urls as public_urls
+from .domains.public_api import urls as public_urls
 from .domains.students import urls as students_urls
 from .domains.super_admin import urls as super_admin_urls
 from .domains.sync.views import SyncExportView, SyncImportView
