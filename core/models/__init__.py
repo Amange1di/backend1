@@ -8,7 +8,7 @@ from .tasks import TaskLead, Task
 from .landing import LandingPage, LandingSection, LandingHeaderLink
 from .homework import HomeworkTask, HomeworkTaskAttachment, HomeworkSubmission
 from .library import LibraryFolder, LibraryItem, LibraryHomeworkTemplate, LibraryFavorite
-from .applications import ApplicationStatus, ApplicationType, TeacherApplication, StudentApplication
+from .applications import ApplicationStatus, ApplicationType, TeacherApplication, StudentApplication, PlatformApplication
 from .marketplace import CompanyCategory, CompanyCity, Company, JobVacancy, PublicCourse, CourseApplication
 from .contracts import Contract, ContractTemplate
 from .promo import PromoBalance, PromoTransaction, PromoCode, PromoRedemption
@@ -49,6 +49,7 @@ __all__ = [
     "ApplicationType",
     "TeacherApplication",
     "StudentApplication",
+    "PlatformApplication",
     "CompanyCategory",
     "CompanyCity",
     "Company",
