@@ -5,9 +5,15 @@ from .views import (
     MarketplaceApplicationsView,
     StudentApplicationCreateView,
     TeacherApplicationCreateView,
+    PlatformApplicationCreateView,
+    SuperAdminPlatformApplicationsView,
+    SuperAdminPlatformApplicationDetailView,
 )
 
 urlpatterns = [
+    path("platform-applications/", PlatformApplicationCreateView.as_view(), name="platform-application-create"),
+    path("super-admin/applications/", SuperAdminPlatformApplicationsView.as_view(), name="super-admin-platform-applications"),
+    path("super-admin/applications/<int:pk>/", SuperAdminPlatformApplicationDetailView.as_view(), name="super-admin-platform-application-detail"),
     path(
         "marketplace/teacher-applications/",
         TeacherApplicationCreateView.as_view(),
