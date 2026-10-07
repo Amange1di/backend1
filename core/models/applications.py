@@ -125,3 +125,28 @@ class StudentApplication(models.Model):
 
 
 # Marketplace Public Models
+
+
+class PlatformApplication(models.Model):
+    """Application from an education center that wants to use EduOsh."""
+
+    full_name = models.CharField(max_length=200, verbose_name="Full Name")
+    center_name = models.CharField(max_length=200, verbose_name="Education Center")
+    phone = models.CharField(max_length=50, verbose_name="Phone Number")
+    comment = models.TextField(blank=True, verbose_name="Comment")
+    status = models.CharField(
+        max_length=20,
+        choices=ApplicationStatus.choices,
+        default=ApplicationStatus.NEW,
+        verbose_name="Status",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Platform Application"
+        verbose_name_plural = "Platform Applications"
+        ordering = ("-created_at",)
+
+    def __str__(self) -> str:
+        return f"{self.center_name} — {self.full_name}"
