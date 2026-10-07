@@ -4,6 +4,7 @@ from core.models import (
     Company,
     StudentApplication,
     TeacherApplication,
+    PlatformApplication,
 )
 
 
@@ -146,3 +147,41 @@ class StudentApplicationSerializer(
             "created_at",
             "updated_at",
         )
+
+
+class PlatformApplicationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlatformApplication
+        fields = (
+            "id",
+            "full_name",
+            "center_name",
+            "phone",
+            "comment",
+            "status",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "status",
+            "created_at",
+            "updated_at",
+        )
+
+    def validate_full_name(self, value):
+        value = value.strip()
+        if len(value) < 2:
+            raise serializers.ValidationError("full_name_too_short")
+        return value
+
+    def validate_center_name(self, value):
+        value = value.strip()
+        if len(value) < 2:
+            raise serializers.ValidationError("center_name_too_short")
+        return value
+
+    def validate_phone(self, value):
+        value = value.strip()
+        if len(value) < 7:
+            raise serializers.ValidationError("phone_invalid")
+        return value
