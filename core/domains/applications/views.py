@@ -9,12 +9,14 @@ from core.models import (
     Company,
     StudentApplication,
     TeacherApplication,
+    PlatformApplication,
     User,
 )
 
 from .serializers import (
     StudentApplicationSerializer,
     TeacherApplicationSerializer,
+    PlatformApplicationSerializer,
 )
 
 
@@ -178,3 +180,68 @@ class MarketplaceApplicationDetailView(APIView):
         return Response(
             serializer_class(application).data
         )
+
+
+class PlatformApplicationCreateView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = PlatformApplicationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        application = serializer.save()
+        return Response(
+            PlatformApplicationSerializer(application).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class SuperAdminPlatformApplicationsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @staticmethod
+    def _ensure_super_admin(user):
+        if user.role not in (User.Role.SUPER_ADMIN, User.Role.ADMIN):
+            raise PermissionDenied("super_admin_only")
+
+    def get(self, request):
+        self._ensure_super_admin(request.user)
+        queryset = PlatformApplication.objects.all()
+        application_status = request.query_params.get("status")
+        search = request.query_params.get("search", "").strip()
+
+        if application_status:
+            queryset = queryset.filter(status=application_status)
+        if search:
+            queryset = queryset.filter(
+                Q(full_name__icontains=search)
+                | Q(center_name__icontains=search)
+                | Q(phone__icontains=search)
+            )
+
+        return Response(
+            PlatformApplicationSerializer(queryset, many=True).data
+        )
+
+
+class SuperAdminPlatformApplicationDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, pk):
+        SuperAdminPlatformApplicationsView._ensure_super_admin(request.user)
+        application = PlatformApplication.objects.filter(pk=pk).first()
+        if application is None:
+            return Response(
+                {"detail": "application_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        new_status = request.data.get("status")
+        if new_status not in ApplicationStatus.values:
+            return Response(
+                {"status": "invalid_application_status"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        application.status = new_status
+        application.save(update_fields=["status", "updated_at"])
+        return Response(PlatformApplicationSerializer(application).data)
