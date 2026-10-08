@@ -5,7 +5,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from core.audit import write_audit
-from core.models import User
+from core.models import Branch, User
 from core.domains.auth.first_login import issue_first_login_password
 from core.domains.users.serializers import (
     RegisterSerializer,
@@ -70,6 +70,17 @@ class ManagerViewSet(viewsets.ModelViewSet):
                 )
             )
 
+        branch_ids = request.data.get("branch_ids", [])
+        if not isinstance(branch_ids, list) or not branch_ids:
+            raise PermissionDenied("manager_branch_required")
+        branches = Branch.objects.filter(
+            company=user.company,
+            is_active=True,
+            id__in=branch_ids,
+        )
+        if branches.count() != len(set(branch_ids)):
+            raise PermissionDenied("branch_access_denied")
+
         serializer = RegisterSerializer(
             data=request.data,
             context={
@@ -83,6 +94,7 @@ class ManagerViewSet(viewsets.ModelViewSet):
             created_by=user,
             company=user.company,
         )
+        manager.branches.set(branches)
 
         return Response(
             {
