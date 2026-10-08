@@ -27,7 +27,10 @@ class ContractViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         user = self.request.user
-        if user.role == User.Role.COURSE_ADMIN:
+        selected_branch = self.request.COOKIES.get("eduosh_branch")
+        if selected_branch and selected_branch.isdigit():
+            qs = qs.filter(group__branch_id=int(selected_branch))
+        if user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN):
             return qs.filter(company=user.company)
         if user.role == User.Role.MANAGER and user.company:
             return qs.filter(company=user.company)
@@ -35,7 +38,7 @@ class ContractViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        if user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+        if user.role not in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN, User.Role.MANAGER):
             raise PermissionDenied(
                 "staff_only"
             )
@@ -47,6 +50,8 @@ class ContractViewSet(viewsets.ModelViewSet):
         group = serializer.validated_data.get("group")
         if group and group.company != user.company:
             raise PermissionDenied("group_company_mismatch")
+        if group and user.role != User.Role.COMPANY_OWNER and not user.branches.filter(id=group.branch_id).exists():
+            raise PermissionDenied("branch_access_denied")
 
         contract = serializer.save(company=user.company, created_by=user)
         try:
@@ -222,7 +227,7 @@ class ContractTemplateViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         user = self.request.user
-        if user.role == User.Role.COURSE_ADMIN:
+        if user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN):
             return qs.filter(company=user.company)
         if user.role == User.Role.MANAGER and user.company:
             return qs.filter(company=user.company)
@@ -230,7 +235,7 @@ class ContractTemplateViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        if user.role not in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+        if user.role not in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN, User.Role.MANAGER):
             raise PermissionDenied(
                 "staff_only"
             )
