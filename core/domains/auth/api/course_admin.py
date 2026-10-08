@@ -49,7 +49,7 @@ class CourseAdminCreateView(APIView):
 
     def get(self, request):
         admins = User.objects.filter(
-            role__in=(User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN)
+            role=User.Role.COMPANY_OWNER
         ).order_by("-date_joined")
 
         return Response(
@@ -219,7 +219,7 @@ class CourseAdminDetailView(APIView):
         admin = get_object_or_404(
             User,
             pk=pk,
-            role__in=(User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN),
+            role=User.Role.COMPANY_OWNER,
         )
         return Response(
             UserSerializer(admin).data
@@ -229,7 +229,7 @@ class CourseAdminDetailView(APIView):
         admin = get_object_or_404(
             User,
             pk=pk,
-            role__in=(User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN),
+            role=User.Role.COMPANY_OWNER,
         )
         serializer = (
             CourseAdminUpdateSerializer(
@@ -251,7 +251,7 @@ class CourseAdminDetailView(APIView):
         admin = get_object_or_404(
             User,
             pk=pk,
-            role__in=(User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN),
+            role=User.Role.COMPANY_OWNER,
         )
 
         admin.is_active = False
@@ -276,7 +276,7 @@ class CourseAdminResetPasswordView(APIView):
         admin = get_object_or_404(
             User,
             pk=pk,
-            role__in=(User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN),
+            role=User.Role.COMPANY_OWNER,
         )
 
         Token.objects.filter(user=admin).delete()
