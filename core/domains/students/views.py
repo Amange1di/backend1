@@ -124,9 +124,10 @@ class StudentViewSet(viewsets.ModelViewSet):
         if not course:
             return
 
-        allowed = course.admins.filter(
-            id=user.id
-        ).exists()
+        allowed = (
+            user.role == User.Role.COMPANY_OWNER
+            and course.company_id == user.company_id
+        ) or course.admins.filter(id=user.id).exists()
 
         if user.role == User.Role.MANAGER:
             allowed = course.admins.filter(
@@ -145,10 +146,15 @@ class StudentViewSet(viewsets.ModelViewSet):
         groups,
     ):
         for group in groups:
+            if group.company_id != user.company_id:
+                raise PermissionDenied("group_access_denied")
+            if user.role != User.Role.COMPANY_OWNER and not user.branches.filter(id=group.branch_id, is_active=True).exists():
+                raise PermissionDenied("branch_access_denied")
             if group.course:
-                allowed = group.course.admins.filter(
-                    id=user.id
-                ).exists()
+                allowed = (
+                    user.role == User.Role.COMPANY_OWNER
+                    or group.course.admins.filter(id=user.id).exists()
+                )
 
                 if user.role == User.Role.MANAGER:
                     allowed = (
