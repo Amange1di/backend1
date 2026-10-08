@@ -229,6 +229,7 @@ class TeacherCreateSerializer(serializers.Serializer):
         many=True,
         queryset=Branch.objects.filter(is_active=True),
         allow_empty=False,
+        required=False,
     )
 
     def validate_username(self, value):
@@ -298,7 +299,7 @@ class TeacherCreateSerializer(serializers.Serializer):
         )
         branches = validated_data.pop(
             "branch_ids",
-            [],
+            None,
         )
         request = self.context.get("request")
         creator = (
@@ -311,6 +312,20 @@ class TeacherCreateSerializer(serializers.Serializer):
             if creator
             else None
         )
+
+        if branches is None and creator and creator.company:
+            allowed_branches = creator.company.branches.filter(is_active=True)
+            if creator.role != User.Role.COMPANY_OWNER and creator.branches.exists():
+                allowed_branches = allowed_branches.filter(users=creator)
+            selected_branch = request.COOKIES.get("eduosh_branch") if request else None
+            if selected_branch and selected_branch.isdigit():
+                selected = allowed_branches.filter(id=int(selected_branch)).first()
+                branches = [selected] if selected else None
+            elif allowed_branches.count() == 1:
+                branches = [allowed_branches.first()]
+            if not branches:
+                raise serializers.ValidationError({"branch_ids": "branch_required"})
+        branches = branches or []
 
         teacher = User(
             username=validated_data[
@@ -362,7 +377,14 @@ class TeacherCreateSerializer(serializers.Serializer):
         teacher.set_unusable_password()
         teacher.must_set_password = True
         teacher.save()
-        if creator and any(branch.company_id != creator.company_id for branch in branches):
+        if creator and (
+            any(branch.company_id != creator.company_id for branch in branches)
+            or (
+                creator.role != User.Role.COMPANY_OWNER
+                and creator.branches.exists()
+                and any(not creator.branches.filter(id=branch.id).exists() for branch in branches)
+            )
+        ):
             teacher.delete()
             raise serializers.ValidationError({"branch_ids": "branch_access_denied"})
         teacher.branches.set(branches)
@@ -386,6 +408,12 @@ class TeacherUpdateSerializer(serializers.ModelSerializer):
         allow_blank=True,
         max_length=254,
     )
+    branch_ids = serializers.PrimaryKeyRelatedField(
+        source="branches",
+        many=True,
+        queryset=Branch.objects.filter(is_active=True),
+        required=False,
+    )
     course_ids = serializers.PrimaryKeyRelatedField(
         source="teaching_courses",
         many=True,
@@ -408,6 +436,7 @@ class TeacherUpdateSerializer(serializers.ModelSerializer):
             "color",
             "password",
             "course_ids",
+            "branch_ids",
         )
 
     def validate_password(self, value):
