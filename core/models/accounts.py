@@ -27,6 +27,7 @@ class User(AbstractUser):
         blank=True,
         related_name="users",
     )
+    branches = models.ManyToManyField("Branch", related_name="users", blank=True)
     is_student_cabinet_enabled = models.BooleanField(default=True)
     must_set_password = models.BooleanField(default=False)
     max_managers = models.PositiveIntegerField(
