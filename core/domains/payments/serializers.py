@@ -30,6 +30,7 @@ class PaymentSerializer(serializers.ModelSerializer):
             "id",
             "student",
             "group",
+            "branch",
             "company",
             "company_id",
             "received_by",
