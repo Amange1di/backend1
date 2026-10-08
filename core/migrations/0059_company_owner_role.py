@@ -14,7 +14,10 @@ def rollback_company_owners(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-    dependencies = [("core", "0058_multi_branch")]
+    dependencies = [
+        ("core", "0058_multi_branch"),
+        ("core", "0058_payment_received_by"),
+    ]
 
     operations = [
         migrations.AlterField(
