@@ -45,6 +45,9 @@ class StudentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         user = self.request.user
+        selected_branch = self.request.COOKIES.get("eduosh_branch")
+        if selected_branch and selected_branch.isdigit():
+            queryset = queryset.filter(groups__branch_id=int(selected_branch)).distinct()
 
         group_id = self.request.query_params.get("group")
         if group_id:
@@ -55,7 +58,7 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         if (
             user.is_authenticated
-            and user.role == User.Role.COURSE_ADMIN
+            and user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN)
         ):
             return queryset.filter(
                 models.Q(company=user.company)
@@ -183,6 +186,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if user.role in (
+            User.Role.COMPANY_OWNER,
             User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
         ):
@@ -259,6 +263,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if user.role in (
+            User.Role.COMPANY_OWNER,
             User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
         ):
