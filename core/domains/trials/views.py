@@ -35,7 +35,7 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
 
         if (
             user.is_authenticated
-            and user.role == User.Role.COURSE_ADMIN
+            and user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN)
         ):
             return queryset.filter(
                 company=user.company
@@ -55,6 +55,7 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if user.role not in (
+            User.Role.COMPANY_OWNER,
             User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
         ):
@@ -96,6 +97,7 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if user.role not in (
+            User.Role.COMPANY_OWNER,
             User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
         ):
@@ -115,6 +117,7 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         if request.user.role not in (
+            User.Role.COMPANY_OWNER,
             User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
         ):
@@ -137,6 +140,7 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
         user = request.user
 
         if user.role not in (
+            User.Role.COMPANY_OWNER,
             User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
         ):
