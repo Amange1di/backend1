@@ -6,7 +6,7 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 from rest_framework.authtoken.models import Token
 
-from core.models import Company, Course, User
+from core.models import Branch, Company, Course, User
 from core.domains.users.passwords import validate_strong_password
 from core.domains.auth.first_login import issue_first_login_password
 
@@ -225,6 +225,11 @@ class TeacherCreateSerializer(serializers.Serializer):
         queryset=Course.objects.all(),
         allow_empty=False,
     )
+    branch_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Branch.objects.filter(is_active=True),
+        allow_empty=False,
+    )
 
     def validate_username(self, value):
         candidate = value.strip()
@@ -291,6 +296,10 @@ class TeacherCreateSerializer(serializers.Serializer):
             "course_ids",
             [],
         )
+        branches = validated_data.pop(
+            "branch_ids",
+            [],
+        )
         request = self.context.get("request")
         creator = (
             request.user
@@ -353,6 +362,10 @@ class TeacherCreateSerializer(serializers.Serializer):
         teacher.set_unusable_password()
         teacher.must_set_password = True
         teacher.save()
+        if creator and any(branch.company_id != creator.company_id for branch in branches):
+            teacher.delete()
+            raise serializers.ValidationError({"branch_ids": "branch_access_denied"})
+        teacher.branches.set(branches)
         issue_first_login_password(teacher)
 
         if courses:
