@@ -235,6 +235,15 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
         )
 
         branch = serializer.validated_data.get("branch")
+        if not branch:
+            selected_branch = self.request.COOKIES.get("eduosh_branch")
+            allowed = user.company.branches.filter(is_active=True)
+            if user.branches.exists():
+                allowed = allowed.filter(users=user)
+            if selected_branch and selected_branch.isdigit():
+                branch = allowed.filter(id=int(selected_branch)).first()
+            elif allowed.count() == 1:
+                branch = allowed.first()
         if not branch or branch.company_id != user.company_id:
             raise PermissionDenied("branch_access_denied")
         if user.branches.exists() and not user.branches.filter(id=branch.id).exists():
@@ -242,6 +251,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
 
         save_kwargs = {
             "company": user.company,
+            "branch": branch,
             "end_date": end_date,
             "teacher_percent": teacher_percent,
         }
