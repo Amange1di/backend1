@@ -25,7 +25,7 @@ class AuditoriumViewSet(viewsets.ModelViewSet):
 
         if (
             user.is_authenticated
-            and user.role == User.Role.COURSE_ADMIN
+            and user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN)
         ):
             if user.company:
                 return queryset.filter(
