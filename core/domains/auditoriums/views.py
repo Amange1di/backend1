@@ -20,17 +20,22 @@ class AuditoriumViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         user = self.request.user
         selected_branch = self.request.COOKIES.get("eduosh_branch")
-        if selected_branch and selected_branch.isdigit():
-            queryset = queryset.filter(branch_id=int(selected_branch))
+        branch_id = int(selected_branch) if selected_branch and selected_branch.isdigit() else None
 
         if (
             user.is_authenticated
             and user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN)
         ):
             if user.company:
-                return queryset.filter(
-                    company=user.company
-                )
+                queryset = queryset.filter(company=user.company)
+                if user.role == User.Role.COURSE_ADMIN:
+                    allowed = user.branches.filter(is_active=True)
+                    if branch_id:
+                        if not allowed.filter(id=branch_id).exists():
+                            raise PermissionDenied("branch_access_denied")
+                        return queryset.filter(branch_id=branch_id)
+                    return queryset.filter(branch__in=allowed)
+                return queryset.filter(branch_id=branch_id) if branch_id else queryset
             return queryset.none()
 
         if (
@@ -38,9 +43,12 @@ class AuditoriumViewSet(viewsets.ModelViewSet):
             and user.role == User.Role.MANAGER
         ):
             if user.company:
-                return queryset.filter(
-                    company=user.company
-                )
+                allowed = user.branches.filter(is_active=True)
+                if branch_id:
+                    if not allowed.filter(id=branch_id).exists():
+                        raise PermissionDenied("branch_access_denied")
+                    return queryset.filter(company=user.company, branch_id=branch_id)
+                return queryset.filter(company=user.company, branch__in=allowed)
             return queryset.none()
 
         return queryset.none()
@@ -57,7 +65,7 @@ class AuditoriumViewSet(viewsets.ModelViewSet):
         if not branch:
             selected_branch = self.request.COOKIES.get("eduosh_branch")
             allowed = user.company.branches.filter(is_active=True)
-            if user.branches.exists():
+            if user.role != User.Role.COMPANY_OWNER:
                 allowed = allowed.filter(users=user)
             if selected_branch and selected_branch.isdigit():
                 branch = allowed.filter(id=int(selected_branch)).first()
@@ -65,6 +73,6 @@ class AuditoriumViewSet(viewsets.ModelViewSet):
                 branch = allowed.first()
         if not branch or branch.company_id != user.company_id:
             raise PermissionDenied("branch_access_denied")
-        if user.branches.exists() and not user.branches.filter(id=branch.id).exists():
+        if user.role != User.Role.COMPANY_OWNER and not user.branches.filter(id=branch.id, is_active=True).exists():
             raise PermissionDenied("branch_access_denied")
         serializer.save(company=user.company, branch=branch)
