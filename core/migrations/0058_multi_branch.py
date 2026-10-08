@@ -13,7 +13,6 @@ def create_main_branches(apps, schema_editor):
     Expense = apps.get_model("core", "Expense")
     for company in Company.objects.all().iterator():
         branch, _ = Branch.objects.get_or_create(company=company, is_main=True, defaults={"name": "Основной филиал", "is_active": True})
-        User.objects.filter(company=company).update()
         for user in User.objects.filter(company=company):
             user.branches.add(branch)
         Auditorium.objects.filter(company=company, branch__isnull=True).update(branch=branch)
