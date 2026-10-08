@@ -153,6 +153,9 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
             auditorium = serializer.validated_data.get(
                 "auditorium"
             )
+            requested_branch = serializer.validated_data.get("branch")
+            if requested_branch and auditorium and auditorium.branch_id != requested_branch.id:
+                raise PermissionDenied("auditorium_branch_mismatch")
             if (
                 auditorium
                 and auditorium.company
@@ -219,6 +222,11 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
         serializer.validated_data[
             "end_date"
         ] = end_date
+
+        branch_for_schedule = serializer.validated_data.get("branch")
+        auditorium_for_schedule = serializer.validated_data.get("auditorium")
+        if branch_for_schedule and auditorium_for_schedule and auditorium_for_schedule.branch_id != branch_for_schedule.id:
+            raise PermissionDenied("auditorium_branch_mismatch")
 
         ensure_group_schedule_available(
             serializer=serializer,
@@ -454,6 +462,13 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
         serializer.validated_data[
             "end_date"
         ] = end_date
+
+        branch_for_schedule = serializer.validated_data.get("branch", instance.branch)
+        auditorium_for_schedule = serializer.validated_data.get("auditorium", instance.auditorium)
+        if branch_for_schedule and auditorium_for_schedule and auditorium_for_schedule.branch_id != branch_for_schedule.id:
+            raise PermissionDenied("auditorium_branch_mismatch")
+        if user.role != User.Role.COMPANY_OWNER and branch_for_schedule and not user.branches.filter(id=branch_for_schedule.id).exists():
+            raise PermissionDenied("branch_access_denied")
 
         ensure_group_schedule_available(
             serializer=serializer,
