@@ -30,10 +30,14 @@ class TeacherViewSet(viewsets.ModelViewSet):
             .prefetch_related("teaching_courses")
         )
         user = self.request.user
+        selected_branch = self.request.COOKIES.get("eduosh_branch")
+        if selected_branch and selected_branch.isdigit():
+            queryset = queryset.filter(branches__id=int(selected_branch))
 
         if (
             user.is_authenticated
             and user.role in (
+                User.Role.COMPANY_OWNER,
                 User.Role.COURSE_ADMIN,
                 User.Role.MANAGER,
             )
@@ -65,14 +69,9 @@ class TeacherViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         user = request.user
 
-        if user.role == User.Role.ADMIN:
+        if user.role in (User.Role.ADMIN, User.Role.MANAGER):
             raise PermissionDenied(
                 "Admins cannot create teachers."
-            )
-
-        if user.role == User.Role.MANAGER:
-            raise PermissionDenied(
-                "Managers cannot create teachers."
             )
 
         serializer = TeacherCreateSerializer(
@@ -145,7 +144,7 @@ class TeacherViewSet(viewsets.ModelViewSet):
         request,
         pk=None,
     ):
-        if request.user.role != User.Role.COURSE_ADMIN:
+        if request.user.role not in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN):
             raise PermissionDenied(
                 "Only course admins can reset teacher passwords."
             )
