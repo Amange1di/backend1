@@ -29,6 +29,9 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         user = self.request.user
+        selected_branch = self.request.COOKIES.get("eduosh_branch")
+        if selected_branch and selected_branch.isdigit():
+            queryset = queryset.filter(branch_id=int(selected_branch))
 
         if (
             user.is_authenticated
@@ -67,6 +70,11 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
                 "trial_group_forbidden"
             )
 
+        branch = serializer.validated_data.get("branch")
+        if not branch or branch.company_id != user.company_id:
+            raise PermissionDenied("branch_access_denied")
+        if user.branches.exists() and not user.branches.filter(id=branch.id).exists():
+            raise PermissionDenied("branch_access_denied")
         lead = serializer.save(company=user.company)
 
         if user.role == User.Role.MANAGER:
