@@ -57,8 +57,19 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
         if user.role == User.Role.MANAGER:
             if user.company:
+                allowed = user.branches.filter(is_active=True)
+                selected = self.request.COOKIES.get("eduosh_branch")
+                if selected and selected.isdigit():
+                    branch_id = int(selected)
+                    if not allowed.filter(id=branch_id).exists():
+                        raise PermissionDenied("branch_access_denied")
+                    return Expense.objects.filter(
+                        company=user.company,
+                        branch_id=branch_id,
+                    ).exclude(category="salary")
                 return Expense.objects.filter(
-                    company=user.company
+                    company=user.company,
+                    branch__in=allowed,
                 ).exclude(category="salary")
 
         return Expense.objects.none()
