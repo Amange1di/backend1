@@ -25,16 +25,21 @@ class PaymentViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         user = self.request.user
         selected_branch = self.request.COOKIES.get("eduosh_branch")
-        if selected_branch and selected_branch.isdigit():
-            queryset = queryset.filter(branch_id=int(selected_branch))
+        branch_id = int(selected_branch) if selected_branch and selected_branch.isdigit() else None
 
         if (
             user.is_authenticated
             and user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN)
         ):
-            return queryset.filter(
-                company__owner=user
-            ).distinct()
+            queryset = queryset.filter(company=user.company)
+            if user.role == User.Role.COURSE_ADMIN:
+                allowed = user.branches.filter(is_active=True)
+                if branch_id:
+                    if not allowed.filter(id=branch_id).exists():
+                        raise PermissionDenied("branch_access_denied")
+                    return queryset.filter(branch_id=branch_id).distinct()
+                return queryset.filter(branch__in=allowed).distinct()
+            return queryset.filter(branch_id=branch_id).distinct() if branch_id else queryset.distinct()
 
         if (
             user.is_authenticated
@@ -43,9 +48,12 @@ class PaymentViewSet(viewsets.ModelViewSet):
             if not user.company:
                 return queryset.none()
 
-            return queryset.filter(
-                company=user.company
-            ).distinct()
+            allowed = user.branches.filter(is_active=True)
+            if branch_id:
+                if not allowed.filter(id=branch_id).exists():
+                    raise PermissionDenied("branch_access_denied")
+                return queryset.filter(company=user.company, branch_id=branch_id).distinct()
+            return queryset.filter(company=user.company, branch__in=allowed).distinct()
 
         if (
             user.is_authenticated
@@ -184,6 +192,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
             if selected_branch and selected_branch.isdigit():
                 branch = user.company.branches.filter(id=int(selected_branch), is_active=True).first()
         if not branch or branch.company_id != user.company_id:
+            raise PermissionDenied("branch_access_denied")
+        if user.role != User.Role.COMPANY_OWNER and not user.branches.filter(id=branch.id, is_active=True).exists():
             raise PermissionDenied("branch_access_denied")
         if group and group.branch_id and group.branch_id != branch.id:
             raise PermissionDenied("payment_group_branch_mismatch")
