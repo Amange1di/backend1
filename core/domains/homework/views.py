@@ -45,6 +45,9 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         user = self.request.user
+        selected_branch = self.request.COOKIES.get("eduosh_branch")
+        if selected_branch and selected_branch.isdigit():
+            queryset = queryset.filter(group__branch_id=int(selected_branch))
 
         if (
             user.is_authenticated
@@ -80,7 +83,7 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
 
         if (
             user.is_authenticated
-            and user.role == User.Role.COURSE_ADMIN
+            and user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN)
         ):
             return queryset.filter(company=user.company)
 
@@ -139,7 +142,7 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
             self._sync_library_resources(updated)
             return
 
-        if user.role == User.Role.COURSE_ADMIN:
+        if user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN):
             if instance.company != user.company:
                 raise PermissionDenied(
                     "homework_access_denied"
@@ -166,7 +169,7 @@ class HomeworkTaskViewSet(viewsets.ModelViewSet):
             )
 
         if (
-            user.role == User.Role.COURSE_ADMIN
+            user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN)
             and instance.company == user.company
         ):
             return super().destroy(
@@ -265,7 +268,7 @@ class HomeworkSubmissionViewSet(viewsets.ModelViewSet):
 
         if (
             user.is_authenticated
-            and user.role == User.Role.COURSE_ADMIN
+            and user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN)
         ):
             if user.company:
                 return queryset.filter(
