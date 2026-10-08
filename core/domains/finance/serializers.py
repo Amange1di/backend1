@@ -10,6 +10,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "company",
+            "branch",
             "description",
             "amount",
             "category",
