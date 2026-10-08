@@ -36,6 +36,7 @@ class GroupSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "name",
+            "branch",
             "course",
             "course_title",
             "course_price",
