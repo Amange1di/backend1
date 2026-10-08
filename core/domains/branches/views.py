@@ -15,20 +15,20 @@ class BranchViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated or not user.company_id:
             return Branch.objects.none()
         qs = Branch.objects.filter(company_id=user.company_id)
-        if user.role in (User.Role.COURSE_ADMIN, User.Role.ADMIN):
+        if user.role == User.Role.COMPANY_OWNER:
             return qs
         return qs.filter(users=user)
 
     def perform_create(self, serializer):
         user = self.request.user
-        if user.role not in (User.Role.COURSE_ADMIN, User.Role.ADMIN):
+        if user.role != User.Role.COMPANY_OWNER:
             raise PermissionDenied("branch_access_denied")
         serializer.save(company=user.company)
 
     @action(detail=True, methods=["post"])
     def archive(self, request, pk=None):
         branch = self.get_object()
-        if request.user.role not in (User.Role.COURSE_ADMIN, User.Role.ADMIN):
+        if request.user.role != User.Role.COMPANY_OWNER:
             raise PermissionDenied("branch_access_denied")
         if branch.is_main:
             return Response({"code": "cannot_archive_main_branch"}, status=status.HTTP_400_BAD_REQUEST)
