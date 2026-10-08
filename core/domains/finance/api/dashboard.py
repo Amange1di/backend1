@@ -42,7 +42,7 @@ class FinanceDashboardView(APIView):
         from calendar import monthrange
 
         user = request.user
-        if user.role != User.Role.COURSE_ADMIN:
+        if user.role not in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN):
             return Response({'detail': 'access_denied'}, status=403)
         company = user.company
 
@@ -53,11 +53,16 @@ class FinanceDashboardView(APIView):
         first_of_month = date(now.year, now.month, 1)
         end_of_month = date(now.year, now.month, monthrange(now.year, now.month)[1])
         start_of_year = date(now.year, 1, 1)
+        selected_branch = request.COOKIES.get("eduosh_branch")
+        branch_id = int(selected_branch) if selected_branch and selected_branch.isdigit() else None
 
-        monthly_income = Payment.objects.filter(
+        monthly_income_qs = Payment.objects.filter(
             company=company, status='paid',
             paid_at__gte=first_of_month, paid_at__lte=end_of_month
-        ).aggregate(total=Sum('amount'))['total'] or 0
+        )
+        if branch_id:
+            monthly_income_qs = monthly_income_qs.filter(branch_id=branch_id)
+        monthly_income = monthly_income_qs.aggregate(total=Sum('amount'))['total'] or 0
 
         monthly_expenses = Expense.objects.filter(
             company=company,
