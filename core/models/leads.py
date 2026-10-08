@@ -5,6 +5,8 @@ from .accounts import User
 
 
 class TrialLead(models.Model):
+    branch = models.ForeignKey("Branch", on_delete=models.SET_NULL, null=True, blank=True, related_name="trial_leads")
+
     class Status(models.TextChoices):
         NEW = "new", _("New")
         CONTACTED = "contacted", _("Contacted")
