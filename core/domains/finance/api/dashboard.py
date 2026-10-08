@@ -55,6 +55,11 @@ class FinanceDashboardView(APIView):
         start_of_year = date(now.year, 1, 1)
         selected_branch = request.COOKIES.get("eduosh_branch")
         branch_id = int(selected_branch) if selected_branch and selected_branch.isdigit() else None
+        allowed_branch_ids = None
+        if user.role == User.Role.COURSE_ADMIN:
+            allowed_branch_ids = list(user.branches.filter(is_active=True).values_list("id", flat=True))
+            if branch_id and branch_id not in allowed_branch_ids:
+                raise PermissionDenied("branch_access_denied")
 
         monthly_income_qs = Payment.objects.filter(
             company=company, status='paid',
@@ -62,6 +67,8 @@ class FinanceDashboardView(APIView):
         )
         if branch_id:
             monthly_income_qs = monthly_income_qs.filter(branch_id=branch_id)
+        elif allowed_branch_ids is not None:
+            monthly_income_qs = monthly_income_qs.filter(branch_id__in=allowed_branch_ids)
         monthly_income = monthly_income_qs.aggregate(total=Sum('amount'))['total'] or 0
 
         monthly_expenses_qs = Expense.objects.filter(
@@ -70,6 +77,8 @@ class FinanceDashboardView(APIView):
         )
         if branch_id:
             monthly_expenses_qs = monthly_expenses_qs.filter(branch_id=branch_id)
+        elif allowed_branch_ids is not None:
+            monthly_expenses_qs = monthly_expenses_qs.filter(branch_id__in=allowed_branch_ids)
         monthly_expenses = monthly_expenses_qs.aggregate(total=Sum('amount'))['total'] or 0
 
         monthly_total_expenses = float(monthly_expenses)
@@ -80,6 +89,8 @@ class FinanceDashboardView(APIView):
         )
         if branch_id:
             yearly_income_qs = yearly_income_qs.filter(branch_id=branch_id)
+        elif allowed_branch_ids is not None:
+            yearly_income_qs = yearly_income_qs.filter(branch_id__in=allowed_branch_ids)
         yearly_income = yearly_income_qs.aggregate(total=Sum('amount'))['total'] or 0
 
         yearly_expenses_qs = Expense.objects.filter(
@@ -88,6 +99,8 @@ class FinanceDashboardView(APIView):
         )
         if branch_id:
             yearly_expenses_qs = yearly_expenses_qs.filter(branch_id=branch_id)
+        elif allowed_branch_ids is not None:
+            yearly_expenses_qs = yearly_expenses_qs.filter(branch_id__in=allowed_branch_ids)
         yearly_expenses = yearly_expenses_qs.aggregate(total=Sum('amount'))['total'] or 0
 
         yearly_total_expenses = float(yearly_expenses)
@@ -95,11 +108,15 @@ class FinanceDashboardView(APIView):
         total_debt_qs = Payment.objects.filter(company=company, status='debt')
         if branch_id:
             total_debt_qs = total_debt_qs.filter(branch_id=branch_id)
+        elif allowed_branch_ids is not None:
+            total_debt_qs = total_debt_qs.filter(branch_id__in=allowed_branch_ids)
         total_debt = total_debt_qs.aggregate(total=Sum('amount'))['total'] or 0
 
         students_qs = Student.objects.filter(company=company)
         if branch_id:
             students_qs = students_qs.filter(groups__branch_id=branch_id).distinct()
+        elif allowed_branch_ids is not None:
+            students_qs = students_qs.filter(groups__branch_id__in=allowed_branch_ids).distinct()
         students_count = students_qs.count()
 
         from finance.models import Budget
