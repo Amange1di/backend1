@@ -71,7 +71,7 @@ class Company(models.Model):
         "User",
         on_delete=models.CASCADE,
         related_name="companies",
-        limit_choices_to={"role": User.Role.COURSE_ADMIN}
+        limit_choices_to={"role__in": [User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN]}
     )
     
     branch_limit = models.PositiveIntegerField(default=1, verbose_name="Branch limit")
