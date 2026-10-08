@@ -29,7 +29,7 @@ class ManagerViewSet(viewsets.ModelViewSet):
 
         if (
             user.is_authenticated
-            and user.role == User.Role.COURSE_ADMIN
+            and user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN)
         ):
             if user.company:
                 return queryset.filter(
@@ -52,7 +52,7 @@ class ManagerViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         user = request.user
 
-        if user.role != User.Role.COURSE_ADMIN:
+        if user.role not in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN):
             raise PermissionDenied(
                 (
                     "Only course admins can "
@@ -70,14 +70,21 @@ class ManagerViewSet(viewsets.ModelViewSet):
                 )
             )
 
-        branch_ids = request.data.get("branch_ids", [])
-        if not isinstance(branch_ids, list) or not branch_ids:
+        branch_ids = request.data.get("branch_ids")
+        allowed_branches = Branch.objects.filter(company=user.company, is_active=True)
+        if user.role != User.Role.COMPANY_OWNER and user.branches.exists():
+            allowed_branches = allowed_branches.filter(users=user)
+        if not branch_ids:
+            selected_branch = request.COOKIES.get("eduosh_branch")
+            if selected_branch and selected_branch.isdigit():
+                branch_ids = [int(selected_branch)]
+            elif allowed_branches.count() == 1:
+                branch_ids = [allowed_branches.first().id]
+            else:
+                raise PermissionDenied("manager_branch_required")
+        if not isinstance(branch_ids, list):
             raise PermissionDenied("manager_branch_required")
-        branches = Branch.objects.filter(
-            company=user.company,
-            is_active=True,
-            id__in=branch_ids,
-        )
+        branches = allowed_branches.filter(id__in=branch_ids)
         if branches.count() != len(set(branch_ids)):
             raise PermissionDenied("branch_access_denied")
 
@@ -119,7 +126,7 @@ class ManagerViewSet(viewsets.ModelViewSet):
         request,
         pk=None,
     ):
-        if request.user.role != User.Role.COURSE_ADMIN:
+        if request.user.role not in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN):
             raise PermissionDenied(
                 "Only course admins can reset manager passwords."
             )
@@ -140,7 +147,7 @@ class ManagerViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         manager = self.get_object()
-        if request.user.role != User.Role.COURSE_ADMIN:
+        if request.user.role not in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN):
             raise PermissionDenied(
                 "Only course admins can deactivate managers."
             )
