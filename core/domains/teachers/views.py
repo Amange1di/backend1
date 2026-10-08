@@ -31,8 +31,7 @@ class TeacherViewSet(viewsets.ModelViewSet):
         )
         user = self.request.user
         selected_branch = self.request.COOKIES.get("eduosh_branch")
-        if selected_branch and selected_branch.isdigit():
-            queryset = queryset.filter(branches__id=int(selected_branch))
+        branch_id = int(selected_branch) if selected_branch and selected_branch.isdigit() else None
 
         if (
             user.is_authenticated
@@ -43,9 +42,17 @@ class TeacherViewSet(viewsets.ModelViewSet):
             )
         ):
             if user.company:
-                queryset = queryset.filter(
-                    company=user.company
-                )
+                queryset = queryset.filter(company=user.company)
+                if user.role != User.Role.COMPANY_OWNER:
+                    allowed = user.branches.filter(is_active=True)
+                    if branch_id:
+                        if not allowed.filter(id=branch_id).exists():
+                            raise PermissionDenied("branch_access_denied")
+                        queryset = queryset.filter(branches__id=branch_id)
+                    else:
+                        queryset = queryset.filter(branches__in=allowed)
+                elif branch_id:
+                    queryset = queryset.filter(branches__id=branch_id)
             else:
                 queryset = queryset.none()
 
