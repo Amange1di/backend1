@@ -4,6 +4,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from core.models import Branch, User
+from core.domains.users.serializers import RegisterSerializer, UserSerializer
 from .serializers import BranchSerializer
 
 
@@ -24,6 +25,33 @@ class BranchViewSet(viewsets.ModelViewSet):
         if user.role != User.Role.COMPANY_OWNER:
             raise PermissionDenied("branch_access_denied")
         serializer.save(company=user.company)
+
+    @action(detail=True, methods=["post"], url_path="create-admin")
+    def create_admin(self, request, pk=None):
+        branch = self.get_object()
+        if request.user.role != User.Role.COMPANY_OWNER:
+            raise PermissionDenied("branch_access_denied")
+        if branch.users.filter(role=User.Role.COURSE_ADMIN, is_active=True).exists():
+            return Response({"code": "branch_admin_exists"}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = RegisterSerializer(
+            data=request.data,
+            context={"force_role": User.Role.COURSE_ADMIN},
+        )
+        serializer.is_valid(raise_exception=True)
+        admin = serializer.save(
+            created_by=request.user,
+            company=request.user.company,
+        )
+        admin.branches.add(branch)
+        return Response(
+            {
+                "user": UserSerializer(admin).data,
+                "one_time_password": getattr(admin, "_one_time_password", None),
+                "requires_password_setup": True,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(detail=True, methods=["post"])
     def archive(self, request, pk=None):
