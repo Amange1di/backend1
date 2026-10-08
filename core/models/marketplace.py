@@ -74,6 +74,7 @@ class Company(models.Model):
         limit_choices_to={"role": User.Role.COURSE_ADMIN}
     )
     
+    branch_limit = models.PositiveIntegerField(default=1, verbose_name="Branch limit")
     is_active = models.BooleanField(default=True, verbose_name="Is Active")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
