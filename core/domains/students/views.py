@@ -46,8 +46,17 @@ class StudentViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         user = self.request.user
         selected_branch = self.request.COOKIES.get("eduosh_branch")
-        if selected_branch and selected_branch.isdigit():
-            queryset = queryset.filter(groups__branch_id=int(selected_branch)).distinct()
+        branch_id = int(selected_branch) if selected_branch and selected_branch.isdigit() else None
+        if user.is_authenticated and user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            allowed = user.branches.filter(is_active=True)
+            if branch_id:
+                if not allowed.filter(id=branch_id).exists():
+                    raise PermissionDenied("branch_access_denied")
+                queryset = queryset.filter(groups__branch_id=branch_id).distinct()
+            else:
+                queryset = queryset.filter(groups__branch__in=allowed).distinct()
+        elif branch_id and user.is_authenticated and user.role == User.Role.COMPANY_OWNER:
+            queryset = queryset.filter(groups__branch_id=branch_id).distinct()
 
         group_id = self.request.query_params.get("group")
         if group_id:
