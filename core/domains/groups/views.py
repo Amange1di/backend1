@@ -59,7 +59,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
 
         if (
             user.is_authenticated
-            and user.role == User.Role.COURSE_ADMIN
+            and user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN)
         ):
             return queryset.filter(
                 models.Q(course__admins=user)
@@ -102,6 +102,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
         )
 
         if user.role in (
+            User.Role.COMPANY_OWNER,
             User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
         ):
@@ -303,6 +304,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
         old_course = instance.course
 
         if user.role in (
+            User.Role.COMPANY_OWNER,
             User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
         ):
@@ -537,6 +539,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
         user = request.user
 
         if user.role not in (
+            User.Role.COMPANY_OWNER,
             User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
         ):
