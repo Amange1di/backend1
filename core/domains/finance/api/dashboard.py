@@ -64,30 +64,43 @@ class FinanceDashboardView(APIView):
             monthly_income_qs = monthly_income_qs.filter(branch_id=branch_id)
         monthly_income = monthly_income_qs.aggregate(total=Sum('amount'))['total'] or 0
 
-        monthly_expenses = Expense.objects.filter(
+        monthly_expenses_qs = Expense.objects.filter(
             company=company,
             date__gte=first_of_month, date__lte=end_of_month
-        ).aggregate(total=Sum('amount'))['total'] or 0
+        )
+        if branch_id:
+            monthly_expenses_qs = monthly_expenses_qs.filter(branch_id=branch_id)
+        monthly_expenses = monthly_expenses_qs.aggregate(total=Sum('amount'))['total'] or 0
 
         monthly_total_expenses = float(monthly_expenses)
 
-        yearly_income = Payment.objects.filter(
+        yearly_income_qs = Payment.objects.filter(
             company=company, status='paid',
             paid_at__gte=start_of_year, paid_at__lte=end_of_month
-        ).aggregate(total=Sum('amount'))['total'] or 0
+        )
+        if branch_id:
+            yearly_income_qs = yearly_income_qs.filter(branch_id=branch_id)
+        yearly_income = yearly_income_qs.aggregate(total=Sum('amount'))['total'] or 0
 
-        yearly_expenses = Expense.objects.filter(
+        yearly_expenses_qs = Expense.objects.filter(
             company=company,
             date__gte=start_of_year, date__lte=end_of_month
-        ).aggregate(total=Sum('amount'))['total'] or 0
+        )
+        if branch_id:
+            yearly_expenses_qs = yearly_expenses_qs.filter(branch_id=branch_id)
+        yearly_expenses = yearly_expenses_qs.aggregate(total=Sum('amount'))['total'] or 0
 
         yearly_total_expenses = float(yearly_expenses)
 
-        total_debt = Payment.objects.filter(
-            company=company, status='debt'
-        ).aggregate(total=Sum('amount'))['total'] or 0
+        total_debt_qs = Payment.objects.filter(company=company, status='debt')
+        if branch_id:
+            total_debt_qs = total_debt_qs.filter(branch_id=branch_id)
+        total_debt = total_debt_qs.aggregate(total=Sum('amount'))['total'] or 0
 
-        students_count = Student.objects.filter(company=company).count()
+        students_qs = Student.objects.filter(company=company)
+        if branch_id:
+            students_qs = students_qs.filter(groups__branch_id=branch_id).distinct()
+        students_count = students_qs.count()
 
         from finance.models import Budget
         active_budgets_count = Budget.objects.filter(company=company, is_active=True).count()
