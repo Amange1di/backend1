@@ -26,6 +26,15 @@ class BranchViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("branch_access_denied")
         serializer.save(company=user.company)
 
+    def perform_update(self, serializer):
+        if self.request.user.role != User.Role.COMPANY_OWNER:
+            raise PermissionDenied("branch_access_denied")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        # Archiving enforces group and main-branch invariants; hard delete is unsafe.
+        raise PermissionDenied("branch_delete_not_allowed")
+
     @action(detail=True, methods=["post"], url_path="create-admin")
     def create_admin(self, request, pk=None):
         branch = self.get_object()
