@@ -93,7 +93,7 @@ class ContractViewSet(viewsets.ModelViewSet):
     )
     def sign(self, request, pk=None):
         contract = get_object_or_404(Contract, pk=pk)
-        student = getattr(request.user, "student_profile", None)
+        student = Student.objects.filter(user=request.user, can_login=True, archived_at__isnull=True).first()
 
         if not student or contract.student.id != student.id:
             raise PermissionDenied("contract_sign_forbidden")
