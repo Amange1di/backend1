@@ -5,6 +5,7 @@ from rest_framework.test import APITestCase
 
 from core.models import (
     AuditLog,
+    Branch,
     Company,
     CompanyCategory,
     CompanyCity,
@@ -47,6 +48,10 @@ class DataSafetyTests(APITestCase):
         self.admin_a.save(update_fields=["company"])
         self.admin_b.company = self.company_b
         self.admin_b.save(update_fields=["company"])
+        self.branch_a = Branch.objects.create(company=self.company_a, name="Main A", is_main=True)
+        self.branch_b = Branch.objects.create(company=self.company_b, name="Main B", is_main=True)
+        self.admin_a.branches.add(self.branch_a)
+        self.admin_b.branches.add(self.branch_b)
 
         self.student_a = Student.objects.create(
             first_name="Student A",
@@ -134,6 +139,7 @@ class DataSafetyTests(APITestCase):
         payment = Payment.objects.create(
             student=self.student_a,
             company=self.company_a,
+            branch=self.branch_a,
             amount=Decimal("1000.00"),
             status=Payment.Status.PAID,
         )
