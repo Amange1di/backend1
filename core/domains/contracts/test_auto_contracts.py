@@ -84,7 +84,7 @@ class AutoContractOnGroupCreateTests(APITestCase):
 
     def test_contract_amount_matches_course_price(self):
         price = 9999.99
-        course = Course.objects.create(title="Premium English", price=price, duration_weeks=10)
+        course = Course.objects.create(title="Premium English", price=price, duration_weeks=10, lesson_duration_minutes=90)
         course.admins.add(self.admin_user)
         self.teacher.teaching_courses.add(course)
         response = self.client.post("/api/groups/", {
@@ -151,7 +151,7 @@ class AutoContractOnGroupCreateTests(APITestCase):
             "teacher": self.teacher.id, "auditorium": self.room.id,
             "branch": self.branch.id, "start_date": "2026-07-01", "end_date": "2026-09-30",
             "name": "Second Group", "course": self.course.id,
-            "schedule_days": "ПН, СР", "schedule_time": "10:00",
+            "schedule_days": "ПН, СР", "schedule_time": "12:00",
             "lessons_per_month": 8, "total_months": 3,
             "student_ids": [self.student1.id, self.student2.id],
         }, format="json")
