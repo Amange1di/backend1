@@ -42,16 +42,34 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
 
-        if user.role == User.Role.COURSE_ADMIN:
+        if user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN):
             if user.company:
-                return Expense.objects.filter(
-                    company=user.company
-                )
+                qs = Expense.objects.filter(company=user.company)
+                selected = self.request.COOKIES.get("eduosh_branch")
+                if selected and selected.isdigit():
+                    branch_id = int(selected)
+                    if user.role != User.Role.COMPANY_OWNER and not user.branches.filter(id=branch_id, is_active=True).exists():
+                        raise PermissionDenied("branch_access_denied")
+                    return qs.filter(branch_id=branch_id)
+                if user.role != User.Role.COMPANY_OWNER:
+                    return qs.filter(branch__in=user.branches.filter(is_active=True))
+                return qs
 
         if user.role == User.Role.MANAGER:
             if user.company:
+                allowed = user.branches.filter(is_active=True)
+                selected = self.request.COOKIES.get("eduosh_branch")
+                if selected and selected.isdigit():
+                    branch_id = int(selected)
+                    if not allowed.filter(id=branch_id).exists():
+                        raise PermissionDenied("branch_access_denied")
+                    return Expense.objects.filter(
+                        company=user.company,
+                        branch_id=branch_id,
+                    ).exclude(category="salary")
                 return Expense.objects.filter(
-                    company=user.company
+                    company=user.company,
+                    branch__in=allowed,
                 ).exclude(category="salary")
 
         return Expense.objects.none()
@@ -74,7 +92,18 @@ class ExpenseViewSet(viewsets.ModelViewSet):
                 "manager_salary_expense_create_forbidden"
             )
 
-        serializer.save(company=company)
+        branch = serializer.validated_data.get("branch")
+        selected = self.request.COOKIES.get("eduosh_branch")
+        allowed = company.branches.filter(is_active=True)
+        if user.role != User.Role.COMPANY_OWNER:
+            allowed = allowed.filter(users=user)
+        if not branch and selected and selected.isdigit():
+            branch = allowed.filter(id=int(selected)).first()
+        if not branch and allowed.count() == 1:
+            branch = allowed.first()
+        if not branch or not allowed.filter(id=branch.id).exists():
+            raise PermissionDenied("branch_access_denied")
+        serializer.save(company=company, branch=branch)
 
     def perform_update(self, serializer):
         user = self.request.user

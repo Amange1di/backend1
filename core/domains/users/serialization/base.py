@@ -29,6 +29,8 @@ class UserSerializer(serializers.ModelSerializer):
     company_id = serializers.IntegerField(
         read_only=True,
     )
+    branch_ids = serializers.SerializerMethodField(read_only=True)
+    branch_names = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = User
@@ -48,6 +50,8 @@ class UserSerializer(serializers.ModelSerializer):
             "company",
             "company_id",
             "company_name",
+            "branch_ids",
+            "branch_names",
             "is_student_cabinet_enabled",
             "must_set_password",
             "created_by",
@@ -76,6 +80,8 @@ class UserSerializer(serializers.ModelSerializer):
             "company",
             "company_id",
             "company_name",
+            "branch_ids",
+            "branch_names",
             "is_student_cabinet_enabled",
             "must_set_password",
             "created_by",
@@ -88,6 +94,12 @@ class UserSerializer(serializers.ModelSerializer):
             "course_ids",
             "course_titles",
         )
+
+    def get_branch_ids(self, obj):
+        return list(obj.branches.filter(is_active=True).values_list("id", flat=True))
+
+    def get_branch_names(self, obj):
+        return list(obj.branches.filter(is_active=True).values_list("name", flat=True))
 
     def get_managers_count(self, obj):
         if obj.role != User.Role.COURSE_ADMIN:

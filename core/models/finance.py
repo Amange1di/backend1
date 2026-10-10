@@ -4,6 +4,8 @@ from django.utils.translation import gettext_lazy as _
 
 
 class Payment(models.Model):
+    branch = models.ForeignKey("Branch", on_delete=models.SET_NULL, null=True, blank=True, related_name="payments")
+
     class Status(models.TextChoices):
         PAID = "paid", _("Paid")
         DEBT = "debt", _("Debt")
@@ -50,6 +52,7 @@ class Payment(models.Model):
 
 class Expense(models.Model):
     """Расходы компании."""
+    branch = models.ForeignKey("Branch", on_delete=models.SET_NULL, null=True, blank=True, related_name="expenses")
     company = models.ForeignKey(
         "Company",
         on_delete=models.CASCADE,

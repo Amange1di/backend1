@@ -14,6 +14,7 @@ from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
 from core.models import (
+    Branch,
     Company,
     CompanyBalance,
     CompanySubscription,
@@ -48,7 +49,7 @@ class CourseAdminCreateView(APIView):
 
     def get(self, request):
         admins = User.objects.filter(
-            role=User.Role.COURSE_ADMIN
+            role=User.Role.COMPANY_OWNER
         ).order_by("-date_joined")
 
         return Response(
@@ -63,7 +64,7 @@ class CourseAdminCreateView(APIView):
             data=request.data,
             context={
                 "force_role": (
-                    User.Role.COURSE_ADMIN
+                    User.Role.COMPANY_OWNER
                 )
             },
         )
@@ -96,6 +97,16 @@ class CourseAdminCreateView(APIView):
             )
             or 0
         )
+
+        try:
+            branch_limit = int(request.data.get("branch_limit", 1))
+        except (TypeError, ValueError):
+            branch_limit = 0
+        if branch_limit < 1 or branch_limit > 100:
+            return Response(
+                {"detail": "branch_limit_invalid", "min": 1, "max": 100},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             monthly_fee = Decimal(
@@ -158,11 +169,21 @@ class CourseAdminCreateView(APIView):
             description=(
                 f"Company for {company_name}"
             ),
+            branch_limit=branch_limit,
             is_active=True,
         )
 
         user.company = company
-        user.save()
+        user.save(update_fields=["company"])
+        main_branch = Branch.objects.create(
+            company=company,
+            name="Основной филиал",
+            address=address,
+            phone=phone,
+            is_main=True,
+            is_active=True,
+        )
+        user.branches.add(main_branch)
 
         CompanyBalance.objects.create(
             company=company,
@@ -198,7 +219,7 @@ class CourseAdminDetailView(APIView):
         admin = get_object_or_404(
             User,
             pk=pk,
-            role=User.Role.COURSE_ADMIN,
+            role=User.Role.COMPANY_OWNER,
         )
         return Response(
             UserSerializer(admin).data
@@ -208,7 +229,7 @@ class CourseAdminDetailView(APIView):
         admin = get_object_or_404(
             User,
             pk=pk,
-            role=User.Role.COURSE_ADMIN,
+            role=User.Role.COMPANY_OWNER,
         )
         serializer = (
             CourseAdminUpdateSerializer(
@@ -230,7 +251,7 @@ class CourseAdminDetailView(APIView):
         admin = get_object_or_404(
             User,
             pk=pk,
-            role=User.Role.COURSE_ADMIN,
+            role=User.Role.COMPANY_OWNER,
         )
 
         admin.is_active = False
@@ -255,7 +276,7 @@ class CourseAdminResetPasswordView(APIView):
         admin = get_object_or_404(
             User,
             pk=pk,
-            role=User.Role.COURSE_ADMIN,
+            role=User.Role.COMPANY_OWNER,
         )
 
         Token.objects.filter(user=admin).delete()

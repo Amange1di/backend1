@@ -28,10 +28,13 @@ class AttendanceViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         user = self.request.user
+        selected_branch = self.request.COOKIES.get("eduosh_branch")
+        if selected_branch and selected_branch.isdigit():
+            queryset = queryset.filter(group__branch_id=int(selected_branch))
 
         if (
             user.is_authenticated
-            and user.role == User.Role.COURSE_ADMIN
+            and user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN)
         ):
             return queryset.filter(
                 models.Q(
@@ -64,6 +67,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if user.role in (
+            User.Role.COMPANY_OWNER,
             User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
         ):
@@ -111,9 +115,9 @@ class AttendanceMarkView(APIView):
                 "student_access_denied"
             )
 
-        if (
-            user.role == User.Role.COURSE_ADMIN
-        ):
+        if user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN):
+            if user.role == User.Role.COURSE_ADMIN and not user.branches.filter(id=group.branch_id).exists():
+                raise permissions.PermissionDenied("branch_access_denied")
             allowed = False
 
             if group.course:
@@ -222,6 +226,7 @@ class AttendanceMarkView(APIView):
 
     def post(self, request):
         if request.user.role in (
+            User.Role.COMPANY_OWNER,
             User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
         ):

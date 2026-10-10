@@ -71,9 +71,10 @@ class Company(models.Model):
         "User",
         on_delete=models.CASCADE,
         related_name="companies",
-        limit_choices_to={"role": User.Role.COURSE_ADMIN}
+        limit_choices_to={"role__in": [User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN]}
     )
     
+    branch_limit = models.PositiveIntegerField(default=1, verbose_name="Branch limit")
     is_active = models.BooleanField(default=True, verbose_name="Is Active")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

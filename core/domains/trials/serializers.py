@@ -22,6 +22,7 @@ class TrialLeadSerializer(serializers.ModelSerializer):
         model = TrialLead
         fields = (
             "id",
+            "branch",
             "full_name",
             "phone",
             "age",

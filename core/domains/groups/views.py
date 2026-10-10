@@ -53,10 +53,13 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         user = self.request.user
+        selected_branch = self.request.COOKIES.get("eduosh_branch")
+        if selected_branch and selected_branch.isdigit():
+            queryset = queryset.filter(branch_id=int(selected_branch))
 
         if (
             user.is_authenticated
-            and user.role == User.Role.COURSE_ADMIN
+            and user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN)
         ):
             return queryset.filter(
                 models.Q(course__admins=user)
@@ -99,6 +102,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
         )
 
         if user.role in (
+            User.Role.COMPANY_OWNER,
             User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
         ):
@@ -149,6 +153,9 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
             auditorium = serializer.validated_data.get(
                 "auditorium"
             )
+            requested_branch = serializer.validated_data.get("branch")
+            if requested_branch and auditorium and auditorium.branch_id != requested_branch.id:
+                raise PermissionDenied("auditorium_branch_mismatch")
             if (
                 auditorium
                 and auditorium.company
@@ -216,6 +223,11 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
             "end_date"
         ] = end_date
 
+        branch_for_schedule = serializer.validated_data.get("branch")
+        auditorium_for_schedule = serializer.validated_data.get("auditorium")
+        if branch_for_schedule and auditorium_for_schedule and auditorium_for_schedule.branch_id != branch_for_schedule.id:
+            raise PermissionDenied("auditorium_branch_mismatch")
+
         ensure_group_schedule_available(
             serializer=serializer,
         )
@@ -231,8 +243,24 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
             or 0
         )
 
+        branch = serializer.validated_data.get("branch")
+        if not branch:
+            selected_branch = self.request.COOKIES.get("eduosh_branch")
+            allowed = user.company.branches.filter(is_active=True)
+            if user.branches.exists():
+                allowed = allowed.filter(users=user)
+            if selected_branch and selected_branch.isdigit():
+                branch = allowed.filter(id=int(selected_branch)).first()
+            elif allowed.count() == 1:
+                branch = allowed.first()
+        if not branch or branch.company_id != user.company_id:
+            raise PermissionDenied("branch_access_denied")
+        if user.branches.exists() and not user.branches.filter(id=branch.id).exists():
+            raise PermissionDenied("branch_access_denied")
+
         save_kwargs = {
             "company": user.company,
+            "branch": branch,
             "end_date": end_date,
             "teacher_percent": teacher_percent,
         }
@@ -284,6 +312,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
         old_course = instance.course
 
         if user.role in (
+            User.Role.COMPANY_OWNER,
             User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
         ):
@@ -434,6 +463,13 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
             "end_date"
         ] = end_date
 
+        branch_for_schedule = serializer.validated_data.get("branch", instance.branch)
+        auditorium_for_schedule = serializer.validated_data.get("auditorium", instance.auditorium)
+        if branch_for_schedule and auditorium_for_schedule and auditorium_for_schedule.branch_id != branch_for_schedule.id:
+            raise PermissionDenied("auditorium_branch_mismatch")
+        if user.role != User.Role.COMPANY_OWNER and branch_for_schedule and not user.branches.filter(id=branch_for_schedule.id).exists():
+            raise PermissionDenied("branch_access_denied")
+
         ensure_group_schedule_available(
             serializer=serializer,
             instance=instance,
@@ -518,6 +554,7 @@ class GroupViewSet(GroupLifecycleMixin, viewsets.ModelViewSet):
         user = request.user
 
         if user.role not in (
+            User.Role.COMPANY_OWNER,
             User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
         ):

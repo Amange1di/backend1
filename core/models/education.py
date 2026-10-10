@@ -29,6 +29,7 @@ class Course(models.Model):
         return self.title
 
 class Auditorium(models.Model):
+    branch = models.ForeignKey("Branch", on_delete=models.SET_NULL, null=True, blank=True, related_name="auditoriums")
     name = models.CharField(max_length=200)
     number = models.CharField(max_length=50, blank=True)
     company = models.ForeignKey(
@@ -80,6 +81,8 @@ class Student(models.Model):
         return f"{self.first_name} {self.last_name}".strip()
 
 class Group(models.Model):
+    branch = models.ForeignKey("Branch", on_delete=models.SET_NULL, null=True, blank=True, related_name="groups")
+
     class Status(models.TextChoices):
         PENDING = "pending", _("Ожидает подтверждения")
         ACTIVE = "active", _("Активна")

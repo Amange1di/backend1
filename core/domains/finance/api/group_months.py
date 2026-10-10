@@ -42,15 +42,23 @@ class GroupMonthViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+        if user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN, User.Role.MANAGER):
             if user.company:
                 qs = GroupMonth.objects.filter(group__company=user.company)
+                if user.role != User.Role.COMPANY_OWNER:
+                    qs = qs.filter(group__branch__in=user.branches.filter(is_active=True))
             else:
                 return GroupMonth.objects.none()
         elif user.role == User.Role.TEACHER:
             qs = GroupMonth.objects.filter(group__teacher=user)
         else:
             return GroupMonth.objects.none()
+        selected = self.request.COOKIES.get("eduosh_branch")
+        if selected and selected.isdigit():
+            branch_id = int(selected)
+            if user.role != User.Role.COMPANY_OWNER and not user.branches.filter(id=branch_id, is_active=True).exists():
+                raise PermissionDenied("branch_access_denied")
+            qs = qs.filter(group__branch_id=branch_id)
         # Фильтр по группе, если передан параметр ?group=ID
         group_id = self.request.query_params.get("group")
         if group_id and group_id.isdigit():
@@ -106,6 +114,7 @@ class GroupMonthViewSet(viewsets.ModelViewSet):
                 defaults={
                     "amount": instance.teacher_salary,
                     "category": "salary",
+                    "branch": group.branch,
                     "date": instance.completed_at.date() if instance.completed_at else timezone.localdate(),
                 },
             )

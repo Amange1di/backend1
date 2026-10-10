@@ -15,6 +15,7 @@ class AuditoriumSerializer(serializers.ModelSerializer):
         model = Auditorium
         fields = (
             "id",
+            "branch",
             "name",
             "number",
             "company",

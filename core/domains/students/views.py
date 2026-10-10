@@ -45,6 +45,18 @@ class StudentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         user = self.request.user
+        selected_branch = self.request.COOKIES.get("eduosh_branch")
+        branch_id = int(selected_branch) if selected_branch and selected_branch.isdigit() else None
+        if user.is_authenticated and user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+            allowed = user.branches.filter(is_active=True)
+            if branch_id:
+                if not allowed.filter(id=branch_id).exists():
+                    raise PermissionDenied("branch_access_denied")
+                queryset = queryset.filter(groups__branch_id=branch_id).distinct()
+            else:
+                queryset = queryset.filter(groups__branch__in=allowed).distinct()
+        elif branch_id and user.is_authenticated and user.role == User.Role.COMPANY_OWNER:
+            queryset = queryset.filter(groups__branch_id=branch_id).distinct()
 
         group_id = self.request.query_params.get("group")
         if group_id:
@@ -55,7 +67,7 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         if (
             user.is_authenticated
-            and user.role == User.Role.COURSE_ADMIN
+            and user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN)
         ):
             return queryset.filter(
                 models.Q(company=user.company)
@@ -112,9 +124,10 @@ class StudentViewSet(viewsets.ModelViewSet):
         if not course:
             return
 
-        allowed = course.admins.filter(
-            id=user.id
-        ).exists()
+        allowed = (
+            user.role == User.Role.COMPANY_OWNER
+            and course.company_id == user.company_id
+        ) or course.admins.filter(id=user.id).exists()
 
         if user.role == User.Role.MANAGER:
             allowed = course.admins.filter(
@@ -133,10 +146,15 @@ class StudentViewSet(viewsets.ModelViewSet):
         groups,
     ):
         for group in groups:
+            if group.company_id != user.company_id:
+                raise PermissionDenied("group_access_denied")
+            if user.role != User.Role.COMPANY_OWNER and not user.branches.filter(id=group.branch_id, is_active=True).exists():
+                raise PermissionDenied("branch_access_denied")
             if group.course:
-                allowed = group.course.admins.filter(
-                    id=user.id
-                ).exists()
+                allowed = (
+                    user.role == User.Role.COMPANY_OWNER
+                    or group.course.admins.filter(id=user.id).exists()
+                )
 
                 if user.role == User.Role.MANAGER:
                     allowed = (
@@ -183,6 +201,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if user.role in (
+            User.Role.COMPANY_OWNER,
             User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
         ):
@@ -259,6 +278,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if user.role in (
+            User.Role.COMPANY_OWNER,
             User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
         ):

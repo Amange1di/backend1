@@ -30,18 +30,29 @@ class TeacherViewSet(viewsets.ModelViewSet):
             .prefetch_related("teaching_courses")
         )
         user = self.request.user
+        selected_branch = self.request.COOKIES.get("eduosh_branch")
+        branch_id = int(selected_branch) if selected_branch and selected_branch.isdigit() else None
 
         if (
             user.is_authenticated
             and user.role in (
+                User.Role.COMPANY_OWNER,
                 User.Role.COURSE_ADMIN,
                 User.Role.MANAGER,
             )
         ):
             if user.company:
-                queryset = queryset.filter(
-                    company=user.company
-                )
+                queryset = queryset.filter(company=user.company)
+                if user.role != User.Role.COMPANY_OWNER:
+                    allowed = user.branches.filter(is_active=True)
+                    if branch_id:
+                        if not allowed.filter(id=branch_id).exists():
+                            raise PermissionDenied("branch_access_denied")
+                        queryset = queryset.filter(branches__id=branch_id)
+                    else:
+                        queryset = queryset.filter(branches__in=allowed)
+                elif branch_id:
+                    queryset = queryset.filter(branches__id=branch_id)
             else:
                 queryset = queryset.none()
 
@@ -65,14 +76,9 @@ class TeacherViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         user = request.user
 
-        if user.role == User.Role.ADMIN:
+        if user.role in (User.Role.ADMIN, User.Role.MANAGER):
             raise PermissionDenied(
                 "Admins cannot create teachers."
-            )
-
-        if user.role == User.Role.MANAGER:
-            raise PermissionDenied(
-                "Managers cannot create teachers."
             )
 
         serializer = TeacherCreateSerializer(
@@ -145,7 +151,7 @@ class TeacherViewSet(viewsets.ModelViewSet):
         request,
         pk=None,
     ):
-        if request.user.role != User.Role.COURSE_ADMIN:
+        if request.user.role not in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN):
             raise PermissionDenied(
                 "Only course admins can reset teacher passwords."
             )

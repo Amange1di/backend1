@@ -12,12 +12,13 @@ class IsAdmin(BasePermission):
 
 class IsCourseAdmin(BasePermission):
     def has_permission(self, request, view) -> bool:
-        return request.user.is_authenticated and request.user.role == User.Role.COURSE_ADMIN
+        return request.user.is_authenticated and request.user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN)
 
 
 class IsCourseAdminOrManager(BasePermission):
     def has_permission(self, request, view) -> bool:
         return request.user.is_authenticated and request.user.role in (
+            User.Role.COMPANY_OWNER,
             User.Role.COURSE_ADMIN,
             User.Role.MANAGER,
         )
@@ -27,7 +28,7 @@ class IsCourseAdminOrManagerReadOnly(BasePermission):
     def has_permission(self, request, view) -> bool:
         if not request.user.is_authenticated:
             return False
-        if request.user.role == User.Role.COURSE_ADMIN:
+        if request.user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN):
             return True
         if request.user.role == User.Role.MANAGER:
             return request.method in SAFE_METHODS
@@ -38,7 +39,7 @@ class IsCourseAdminOrTeacherReadOnly(BasePermission):
     def has_permission(self, request, view) -> bool:
         if not request.user.is_authenticated:
             return False
-        if request.user.role == User.Role.COURSE_ADMIN:
+        if request.user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN):
             return True
         if request.user.role == User.Role.MANAGER:
             return True
@@ -55,7 +56,7 @@ class IsTeacherOrCourseAdminReadOnly(BasePermission):
             return False
         if request.user.role == User.Role.TEACHER:
             return True
-        if request.user.role == User.Role.COURSE_ADMIN:
+        if request.user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN):
             return request.method in SAFE_METHODS
         return False
 
@@ -64,7 +65,7 @@ class IsCourseAdminOrManagerOrStudentReadOnly(BasePermission):
     def has_permission(self, request, view) -> bool:
         if not request.user.is_authenticated:
             return False
-        if request.user.role in (User.Role.COURSE_ADMIN, User.Role.MANAGER):
+        if request.user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN, User.Role.MANAGER):
             return True
         if request.user.role in (User.Role.TEACHER, User.Role.STUDENT):
             return request.method in SAFE_METHODS
@@ -75,7 +76,7 @@ class IsCourseAdminOrStudentReadOnly(BasePermission):
     def has_permission(self, request, view) -> bool:
         if not request.user.is_authenticated:
             return False
-        if request.user.role == User.Role.COURSE_ADMIN:
+        if request.user.role in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN):
             return True
         if request.user.role == User.Role.STUDENT:
             return request.method in SAFE_METHODS

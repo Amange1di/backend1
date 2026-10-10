@@ -5,6 +5,7 @@ from .domains.attendance import urls as attendance_urls
 from .domains.auditoriums import urls as auditoriums_urls
 from .domains.auth import urls as auth_urls
 from .domains.balances import urls as balances_urls
+from .domains.branches import urls as branches_urls
 from .domains.contracts import urls as contracts_urls
 from .domains.courses import urls as courses_urls
 from .domains.finance import urls as finance_urls
@@ -26,6 +27,7 @@ from .domains.telegram import urls as telegram_urls
 from .domains.trials import urls as trials_urls
 
 urlpatterns = [
+    path("", include(branches_urls)),
     path("", include(balances_urls)),
     path("", include(public_urls)),
     path("", include(promo_codes_urls)),
