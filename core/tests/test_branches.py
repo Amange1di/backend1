@@ -63,3 +63,27 @@ class BranchTests(TestCase):
         response = self.client.get("/api/branches/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual({item["id"] for item in response.data}, {self.main.id})
+
+    def test_non_owner_cannot_update_branch(self):
+        admin = User.objects.create_user(
+            username="course-admin-branch-test",
+            password="StrongPass123!",
+            role=User.Role.COURSE_ADMIN,
+        )
+        admin.company = self.company
+        admin.save(update_fields=["company"])
+        admin.branches.add(self.main)
+        self.client.force_authenticate(admin)
+        response = self.client.patch(
+            f"/api/branches/{self.main.id}/",
+            {"name": "Unauthorized"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.main.refresh_from_db()
+        self.assertEqual(self.main.name, "Main")
+
+    def test_owner_cannot_hard_delete_branch(self):
+        response = self.client.delete(f"/api/branches/{self.main.id}/")
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(Branch.objects.filter(pk=self.main.pk).exists())
