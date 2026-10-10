@@ -87,3 +87,24 @@ class BranchTests(TestCase):
         response = self.client.delete(f"/api/branches/{self.main.id}/")
         self.assertEqual(response.status_code, 403)
         self.assertTrue(Branch.objects.filter(pk=self.main.pk).exists())
+
+    def test_owner_cannot_disable_main_branch_via_patch(self):
+        response = self.client.patch(
+            f"/api/branches/{self.main.id}/",
+            {"is_active": False, "is_main": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.main.refresh_from_db()
+        self.assertTrue(self.main.is_active)
+        self.assertTrue(self.main.is_main)
+
+    def test_owner_cannot_create_second_main_branch(self):
+        response = self.client.post(
+            "/api/branches/",
+            {"name": "Second", "is_main": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        created = Branch.objects.get(pk=response.data["id"])
+        self.assertFalse(created.is_main)
