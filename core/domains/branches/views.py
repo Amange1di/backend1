@@ -2,6 +2,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 
 from core.models import Branch, User
 from core.domains.users.serializers import RegisterSerializer, UserSerializer
@@ -9,6 +10,7 @@ from .serializers import BranchSerializer
 
 
 class BranchViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
     serializer_class = BranchSerializer
 
     def get_queryset(self):
