@@ -5,7 +5,7 @@ from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from core.models import Company, Contract, ContractTemplate, Course, Group, Student, User
+from core.models import Branch, Company, Contract, ContractTemplate, Course, Group, Student, User
 
 
 @override_settings(
@@ -32,6 +32,8 @@ class AutoContractOnGroupCreateTests(APITestCase):
         )
         self.admin_user.company = self.company
         self.admin_user.save(update_fields=["company"])
+        self.branch = Branch.objects.create(company=self.company, name="Main", is_main=True)
+        self.admin_user.branches.add(self.branch)
         self.course = Course.objects.create(
             title="English Course", price=5000, duration_weeks=12, lesson_duration_minutes=90,
         )
@@ -107,6 +109,7 @@ class AutoContractOnGroupCreateTests(APITestCase):
             company=self.company, created_by=self.admin_user,
             password=make_password("manager123", hasher="pbkdf2_sha256"),
         )
+        manager.branches.add(self.branch)
         from rest_framework.authtoken.models import Token
         token, _ = Token.objects.get_or_create(user=manager)
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
