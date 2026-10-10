@@ -108,3 +108,22 @@ class BranchTests(TestCase):
         self.assertEqual(response.status_code, 201)
         created = Branch.objects.get(pk=response.data["id"])
         self.assertFalse(created.is_main)
+
+    def test_anonymous_user_cannot_list_branches(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get("/api/branches/")
+        self.assertIn(response.status_code, (401, 403))
+
+    def test_course_admin_cannot_create_branch(self):
+        admin = User.objects.create_user(
+            username="course-admin-create-test",
+            password="StrongPass123!",
+            role=User.Role.COURSE_ADMIN,
+        )
+        admin.company = self.company
+        admin.save(update_fields=["company"])
+        admin.branches.add(self.main)
+        self.client.force_authenticate(admin)
+        response = self.client.post("/api/branches/", {"name": "Forbidden"}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Branch.objects.filter(company=self.company, name="Forbidden").exists())
