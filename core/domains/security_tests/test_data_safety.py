@@ -63,6 +63,8 @@ class DataSafetyTests(APITestCase):
             phone="2001",
             company=self.company_b,
         )
+        group = Group.objects.create(name="Branch A Group", company=self.company_a, branch=self.branch_a)
+        group.students.add(self.student_a)
 
     def test_course_admin_cannot_read_other_company_student(self):
         self.client.force_authenticate(
