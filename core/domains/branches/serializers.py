@@ -8,7 +8,7 @@ class BranchSerializer(serializers.ModelSerializer):
     class Meta:
         model = Branch
         fields = ("id", "company", "name", "address", "phone", "email", "is_main", "is_active", "can_archive", "created_at", "updated_at")
-        read_only_fields = ("company", "created_at", "updated_at", "can_archive")
+        read_only_fields = ("company", "is_main", "is_active", "created_at", "updated_at", "can_archive")
 
     def get_can_archive(self, obj):
         return not obj.is_main and obj.is_active
