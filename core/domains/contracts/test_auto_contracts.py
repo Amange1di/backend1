@@ -5,7 +5,7 @@ from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from core.models import Branch, Company, Contract, ContractTemplate, Course, Group, Student, User
+from core.models import Auditorium, Branch, Company, Contract, ContractTemplate, Course, Group, Student, User
 
 
 @override_settings(
@@ -38,6 +38,9 @@ class AutoContractOnGroupCreateTests(APITestCase):
             title="English Course", price=5000, duration_weeks=12, lesson_duration_minutes=90,
         )
         self.course.admins.add(self.admin_user)
+        self.teacher = User.objects.create_user(username="contract-teacher", role=User.Role.TEACHER, company=self.company)
+        self.teacher.teaching_courses.add(self.course)
+        self.room = Auditorium.objects.create(name="Room 1", company=self.company, branch=self.branch)
         self.student1 = Student.objects.create(
             first_name="John", last_name="Doe", phone="555-0101", company=self.company,
         )
@@ -50,6 +53,8 @@ class AutoContractOnGroupCreateTests(APITestCase):
 
     def test_contracts_created_for_students_on_group_create(self):
         response = self.client.post("/api/groups/", {
+            "teacher": self.teacher.id, "auditorium": self.room.id,
+            "branch": self.branch.id, "start_date": "2026-07-01", "end_date": "2026-09-30",
             "name": "Test Group A1", "course": self.course.id,
             "schedule_days": "ПН, СР", "schedule_time": "10:00",
             "lessons_per_month": 8, "total_months": 3,
@@ -68,6 +73,8 @@ class AutoContractOnGroupCreateTests(APITestCase):
 
     def test_no_contracts_without_students(self):
         response = self.client.post("/api/groups/", {
+            "teacher": self.teacher.id, "auditorium": self.room.id,
+            "branch": self.branch.id, "start_date": "2026-07-01", "end_date": "2026-09-30",
             "name": "Empty Group", "course": self.course.id,
             "schedule_days": "ПН, СР", "schedule_time": "10:00",
             "lessons_per_month": 8, "total_months": 3, "student_ids": [],
@@ -79,7 +86,10 @@ class AutoContractOnGroupCreateTests(APITestCase):
         price = 9999.99
         course = Course.objects.create(title="Premium English", price=price, duration_weeks=10)
         course.admins.add(self.admin_user)
+        self.teacher.teaching_courses.add(course)
         response = self.client.post("/api/groups/", {
+            "teacher": self.teacher.id, "auditorium": self.room.id,
+            "branch": self.branch.id, "start_date": "2026-07-01", "end_date": "2026-09-30",
             "name": "Premium Group", "course": course.id,
             "schedule_days": "ПН, СР", "schedule_time": "10:00",
             "lessons_per_month": 8, "total_months": 3,
@@ -91,6 +101,8 @@ class AutoContractOnGroupCreateTests(APITestCase):
 
     def test_contract_has_correct_dates(self):
         response = self.client.post("/api/groups/", {
+            "teacher": self.teacher.id, "auditorium": self.room.id,
+            "branch": self.branch.id, "start_date": "2026-07-01", "end_date": "2026-09-30",
             "name": "Dated Group", "course": self.course.id,
             "schedule_days": "ПН, СР", "schedule_time": "10:00",
             "lessons_per_month": 8, "total_months": 3,
@@ -114,6 +126,8 @@ class AutoContractOnGroupCreateTests(APITestCase):
         token, _ = Token.objects.get_or_create(user=manager)
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
         response = self.client.post("/api/groups/", {
+            "teacher": self.teacher.id, "auditorium": self.room.id,
+            "branch": self.branch.id, "start_date": "2026-07-01", "end_date": "2026-09-30",
             "name": "Manager Group", "course": self.course.id,
             "schedule_days": "ПН, СР", "schedule_time": "10:00",
             "lessons_per_month": 8, "total_months": 3,
@@ -125,6 +139,8 @@ class AutoContractOnGroupCreateTests(APITestCase):
 
     def test_new_group_same_students_creates_new_contracts(self):
         r1 = self.client.post("/api/groups/", {
+            "teacher": self.teacher.id, "auditorium": self.room.id,
+            "branch": self.branch.id, "start_date": "2026-07-01", "end_date": "2026-09-30",
             "name": "First Group", "course": self.course.id,
             "schedule_days": "ПН, СР", "schedule_time": "10:00",
             "lessons_per_month": 8, "total_months": 3,
@@ -132,6 +148,8 @@ class AutoContractOnGroupCreateTests(APITestCase):
         }, format="json")
         self.assertEqual(r1.status_code, status.HTTP_201_CREATED)
         r2 = self.client.post("/api/groups/", {
+            "teacher": self.teacher.id, "auditorium": self.room.id,
+            "branch": self.branch.id, "start_date": "2026-07-01", "end_date": "2026-09-30",
             "name": "Second Group", "course": self.course.id,
             "schedule_days": "ПН, СР", "schedule_time": "10:00",
             "lessons_per_month": 8, "total_months": 3,
@@ -143,6 +161,8 @@ class AutoContractOnGroupCreateTests(APITestCase):
 
     def test_no_auto_contract_on_group_update(self):
         r = self.client.post("/api/groups/", {
+            "teacher": self.teacher.id, "auditorium": self.room.id,
+            "branch": self.branch.id, "start_date": "2026-07-01", "end_date": "2026-09-30",
             "name": "Update Test Group", "course": self.course.id,
             "schedule_days": "ПН, СР", "schedule_time": "10:00",
             "lessons_per_month": 8, "total_months": 3,
