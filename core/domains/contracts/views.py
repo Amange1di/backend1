@@ -271,7 +271,7 @@ class StudentContractsView(APIView):
                 "student_only"
             )
 
-        student = getattr(request.user, "student_profile", None)
+        student = Student.objects.filter(user=request.user, can_login=True, archived_at__isnull=True).first()
         if not student:
             return Response(
                 {"detail": "student_profile_not_found"},
