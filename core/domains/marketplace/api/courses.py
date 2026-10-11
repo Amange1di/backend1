@@ -29,6 +29,7 @@ from ..services import (
     mark_urgent,
     promote_item,
 )
+from core.permissions import can_manage_company
 
 class MarketplaceCourseViewSet(viewsets.ModelViewSet):
     queryset = (
@@ -61,9 +62,9 @@ class MarketplaceCourseViewSet(viewsets.ModelViewSet):
             return queryset.filter(is_active=True)
 
         if user.role == User.Role.COURSE_ADMIN:
-            return queryset.filter(
-                company__owner=user
-            )
+            if can_manage_company(user, user.company):
+                return queryset.filter(company=user.company)
+            return queryset.none()
 
         if user.role == User.Role.MANAGER:
             company_id = (
@@ -116,10 +117,7 @@ class MarketplaceCourseViewSet(viewsets.ModelViewSet):
         user = self.request.user
         course = self.get_object()
 
-        if (
-            user.role == User.Role.COURSE_ADMIN
-            and course.company.owner != user
-        ):
+        if user.role == User.Role.COURSE_ADMIN and not can_manage_company(user, course.company):
             raise PermissionDenied(
                 "course_access_denied"
             )
@@ -200,10 +198,7 @@ class BoostCourseView(APIView):
             pk=pk,
         )
 
-        if (
-            user.role == User.Role.COURSE_ADMIN
-            and course.company.owner != user
-        ):
+        if user.role == User.Role.COURSE_ADMIN and not can_manage_company(user, course.company):
             return Response(
                 {"detail": "access_denied"},
                 status=status.HTTP_403_FORBIDDEN,

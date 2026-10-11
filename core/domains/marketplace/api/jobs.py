@@ -29,6 +29,7 @@ from ..services import (
     mark_urgent,
     promote_item,
 )
+from core.permissions import can_manage_company
 
 class MarketplaceJobViewSet(viewsets.ModelViewSet):
     queryset = JobVacancy.objects.all().order_by(
@@ -46,9 +47,9 @@ class MarketplaceJobViewSet(viewsets.ModelViewSet):
             return queryset.filter(is_active=True)
 
         if user.role == User.Role.COURSE_ADMIN:
-            return queryset.filter(
-                company__owner=user
-            )
+            if can_manage_company(user, user.company):
+                return queryset.filter(company=user.company)
+            return queryset.none()
 
         if user.role == User.Role.MANAGER:
             if user.company:
@@ -88,10 +89,7 @@ class MarketplaceJobViewSet(viewsets.ModelViewSet):
         user = self.request.user
         job = self.get_object()
 
-        if (
-            user.role == User.Role.COURSE_ADMIN
-            and job.company.owner != user
-        ):
+        if user.role == User.Role.COURSE_ADMIN and not can_manage_company(user, job.company):
             raise PermissionDenied(
                 "job_access_denied"
             )
@@ -178,10 +176,7 @@ class BoostJobView(APIView):
             pk=pk,
         )
 
-        if (
-            user.role == User.Role.COURSE_ADMIN
-            and job.company.owner != user
-        ):
+        if user.role == User.Role.COURSE_ADMIN and not can_manage_company(user, job.company):
             return Response(
                 {"detail": "access_denied"},
                 status=status.HTTP_403_FORBIDDEN,

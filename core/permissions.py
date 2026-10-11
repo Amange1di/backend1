@@ -3,10 +3,31 @@ from rest_framework.permissions import BasePermission, SAFE_METHODS
 from .models import User
 
 
+def can_manage_company(user, company) -> bool:
+    """Return whether a user controls the whole company, never another one."""
+    if not user.is_authenticated or not company or user.company_id != company.id:
+        return False
+    if user.role == User.Role.COMPANY_OWNER:
+        return True
+    return (
+        user.role == User.Role.COURSE_ADMIN
+        and company.branches.filter(is_active=True).count() <= 1
+    )
+
+
 class IsAdmin(BasePermission):
     def has_permission(self, request, view) -> bool:
         return request.user.is_authenticated and (
             request.user.role == User.Role.ADMIN or request.user.is_superuser
+        )
+
+
+class IsSuperAdmin(BasePermission):
+    """Restrict platform-wide data to Django superusers only."""
+
+    def has_permission(self, request, view) -> bool:
+        return bool(
+            request.user.is_authenticated and request.user.is_superuser
         )
 
 

@@ -20,6 +20,13 @@ class BranchViewSet(viewsets.ModelViewSet):
         qs = Branch.objects.filter(company_id=user.company_id)
         if user.role == User.Role.COMPANY_OWNER:
             return qs
+        # A legacy/small company may have no separate owner. Its only branch
+        # administrator is allowed to manage that one-company context.
+        if (
+            user.role == User.Role.COURSE_ADMIN
+            and qs.filter(is_active=True).count() == 1
+        ):
+            return qs
         return qs.filter(users=user)
 
     def perform_create(self, serializer):

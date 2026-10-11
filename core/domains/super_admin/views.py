@@ -24,23 +24,15 @@ from core.models import (
     TrialLead,
     User,
 )
-from core.permissions import IsAdmin, IsCourseAdmin
+from core.permissions import IsAdmin, IsSuperAdmin
 
 
 class DashboardView(APIView):
-    permission_classes = [IsAdmin | IsCourseAdmin]
+    permission_classes = [IsSuperAdmin]
 
     def get(self, request):
         students = Student.objects.all()
         payments = Payment.objects.all()
-
-        if request.user.role == User.Role.COURSE_ADMIN:
-            if not request.user.company_id:
-                students = students.none()
-                payments = payments.none()
-            else:
-                students = students.filter(company_id=request.user.company_id)
-                payments = payments.filter(company_id=request.user.company_id)
 
         total_students = students.count()
         total_income = (
