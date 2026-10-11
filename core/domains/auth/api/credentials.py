@@ -431,6 +431,7 @@ class MeView(APIView):
         data = UserSerializer(
             request.user
         ).data
+        data["is_superuser"] = request.user.is_superuser
 
         if (
             request.user.is_superuser

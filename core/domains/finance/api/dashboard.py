@@ -20,7 +20,7 @@ from core.models import (
     UserBalance,
     UserTransaction,
 )
-from core.permissions import IsCourseAdmin
+from core.permissions import IsCourseAdminOrManager
 
 from ..serializers import (
     ExpenseSerializer,
@@ -34,7 +34,7 @@ class FinanceDashboardView(APIView):
     Дашборд финансовой сводки.
     GET /api/finance/dashboard/
     """
-    permission_classes = [IsCourseAdmin]
+    permission_classes = [IsCourseAdminOrManager]
 
     def get(self, request):
         from django.db.models import Sum
@@ -42,7 +42,11 @@ class FinanceDashboardView(APIView):
         from calendar import monthrange
 
         user = request.user
-        if user.role not in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN):
+        if user.role not in (
+            User.Role.COMPANY_OWNER,
+            User.Role.COURSE_ADMIN,
+            User.Role.MANAGER,
+        ):
             return Response({'detail': 'access_denied'}, status=403)
         company = user.company
 
