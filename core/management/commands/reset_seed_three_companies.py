@@ -1,8 +1,10 @@
+import re
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
 
+from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.core.management import call_command
@@ -408,6 +410,7 @@ class Command(BaseCommand):
             year=year,
         )
 
+        self._anonymize_demo_phones()
         self.stdout.write(self.style.SUCCESS("Database reset and seeded successfully."))
         self.stdout.write("")
         self.stdout.write("Platform admin:")
@@ -426,6 +429,60 @@ class Command(BaseCommand):
                 "All previous database data was deleted before seeding."
             )
         )
+
+    def _anonymize_demo_phones(self):
+        """Make every seeded phone non-dialable, including landing JSON content."""
+        counter = 0
+        replacements = {}
+        phone_pattern = re.compile(r"\\+996[\\s\\-()]*\\d(?:[\\s\\-()]*\\d){8}")
+
+        def fake(value):
+            nonlocal counter
+            if not value:
+                return value
+            key = str(value)
+            if key not in replacements:
+                counter += 1
+                replacements[key] = f"+996 000 {counter // 1000 % 1000:03d} {counter % 1000:03d}"
+            return replacements[key]
+
+        def sanitize_json(value):
+            if isinstance(value, dict):
+                return {k: sanitize_json(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [sanitize_json(v) for v in value]
+            if isinstance(value, str):
+                return phone_pattern.sub(lambda match: fake(match.group()), value)
+            return value
+
+        for model in apps.get_models():
+            phone_fields = [
+                field for field in model._meta.concrete_fields
+                if field.name in {"phone", "phone_number", "mobile", "whatsapp", "contact_phone"}
+                and field.get_internal_type() in {"CharField", "TextField"}
+            ]
+            json_fields = [
+                field for field in model._meta.concrete_fields
+                if field.get_internal_type() == "JSONField"
+            ]
+            if not phone_fields and not json_fields:
+                continue
+            for obj in model.objects.all().iterator():
+                changes = []
+                for field in phone_fields:
+                    current = getattr(obj, field.name)
+                    if current:
+                        setattr(obj, field.name, fake(current))
+                        changes.append(field.name)
+                for field in json_fields:
+                    current = getattr(obj, field.name)
+                    cleaned = sanitize_json(current)
+                    if cleaned != current:
+                        setattr(obj, field.name, cleaned)
+                        changes.append(field.name)
+                if changes:
+                    obj.save(update_fields=changes)
+        self.stdout.write(f"Demo phone numbers anonymized: {counter} (non-dialable +996 000 prefix)")
 
     def _at_date(self, value, hour=9):
         return timezone.make_aware(
