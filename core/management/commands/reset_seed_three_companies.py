@@ -809,11 +809,13 @@ class Command(BaseCommand):
             return True
 
         for month_index, month_start in enumerate(month_starts):
-            for course_index, course in enumerate(courses):
-                groups_count = 1 + (
-                    (company.id + course_index + month_index) % 3
-                )
-
+            # Four months of gradual intake: 4, 3, 2, then 1 new group
+            # per company (across all five courses), not per course.
+            groups_this_month = max(1, 4 - month_index)
+            for monthly_group_index in range(groups_this_month):
+                course_index = (sum(max(1, 4 - i) for i in range(month_index)) + monthly_group_index) % len(courses)
+                course = courses[course_index]
+                groups_count = 1
                 base_group_name = course.title
                 company_prefix = f"{company.name} — "
                 if base_group_name.startswith(company_prefix):
@@ -826,7 +828,7 @@ class Command(BaseCommand):
                 lesson_duration = course.lesson_duration_minutes or 90
 
                 for local_index in range(groups_count):
-                    day_offset = [1, 10, 20][local_index]
+                    day_offset = [1, 8, 15, 22][monthly_group_index]
                     group_start = month_start + timedelta(days=day_offset - 1)
                     if group_start > today:
                         group_start = today
