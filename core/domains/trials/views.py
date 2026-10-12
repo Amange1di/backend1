@@ -2,6 +2,7 @@ from calendar import monthrange
 from datetime import date
 
 from django.db import models, transaction
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -58,6 +59,29 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
             return queryset.filter(company=user.company, branch__in=allowed)
 
         return queryset.none()
+
+    @action(detail=True, methods=["post"], url_path="claim")
+    def claim(self, request, pk=None):
+        if request.user.role != User.Role.MANAGER:
+            raise PermissionDenied("manager_only")
+        with transaction.atomic():
+            lead = self.get_queryset().select_for_update().get(pk=pk)
+            assignment, created = LeadAssignment.objects.get_or_create(
+                lead=lead, defaults={"manager": request.user}
+            )
+            if assignment.manager_id and assignment.manager_id != request.user.id:
+                return Response(
+                    {"detail": "lead_already_claimed", "assigned_manager_id": assignment.manager_id},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if not assignment.manager_id:
+                assignment.manager = request.user
+                assignment.claimed_at = timezone.now()
+                assignment.save(update_fields=["manager", "claimed_at"])
+            if lead.status == TrialLead.Status.NEW:
+                lead.status = TrialLead.Status.CONTACTED
+                lead.save(update_fields=["status"])
+        return Response(self.get_serializer(lead).data)
 
     def perform_create(self, serializer):
         user = self.request.user
