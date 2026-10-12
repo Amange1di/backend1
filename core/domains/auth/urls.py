@@ -1,4 +1,5 @@
 from django.urls import path
+from core.domains.company_branding import CompanyLogoView
 
 from .views import (
     CourseAdminCreateView,
@@ -14,6 +15,7 @@ from .views import (
 )
 
 urlpatterns = [
+    path("auth/company-logo/", CompanyLogoView.as_view(), name="auth-company-logo"),
     path(
         "auth/register/",
         RegisterView.as_view(),
