@@ -91,7 +91,6 @@ class StudentApplication(models.Model):
     learning_goal = models.CharField(
         max_length=300, blank=True, verbose_name="Learning Goal"
     )
-    budget = models.CharField(max_length=100, blank=True, verbose_name="Budget")
     schedule_preference = models.CharField(
         max_length=100, blank=True, verbose_name="Schedule Preference"
     )
