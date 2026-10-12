@@ -7,13 +7,13 @@ from core.models import (
 )
 
 
-BOOST_COST = 500
-URGENT_COST = 200
+BOOST_COST = 20
+URGENT_COST = 10
 
 # Company Marketplace currency.
-# 1 Coin is valued at 1.5 KGS. Coins are used only for promoting
+# 1 Bix is valued at 5 KGS. Bix are used only for promoting
 # company courses and vacancies inside Marketplace.
-COIN_VALUE_KGS = 1.5
+COIN_VALUE_KGS = 5
 
 
 def resolve_user_company_name(user) -> str:
