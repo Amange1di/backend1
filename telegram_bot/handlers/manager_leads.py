@@ -1,3 +1,4 @@
+from asgiref.sync import sync_to_async
 """
 Manager handlers.
 
@@ -30,9 +31,7 @@ from ..helpers import (
     _update_task_status,
     _get_lead_by_id,
     _get_lead_assignment,
-    _create_lead_assignment,
-    _update_lead_assignment,
-    _update_lead_status_contacted,
+    _claim_lead_once,
 )
 from ..notifications import send_task_status_changed_notification
 
@@ -60,28 +59,22 @@ async def claim_lead(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text=query.message.text + "\n\n❌ Лид не найден (возможно, удалён).")
         return
 
-    existing = await _get_lead_assignment(lead)
-    if existing and existing.manager:
-        manager_name = (
-            f"{existing.manager.first_name} {existing.manager.last_name}".strip()
-            or existing.manager.username
-        )
-        await query.edit_message_reply_markup(reply_markup=None)
-        await query.edit_message_text(text=query.message.text + f"\n\n⚠️ Лид уже взят менеджером: {manager_name}")
-        return
-
     try:
         manager = await _get_user_by_chat_id(chat_id)
     except User.DoesNotExist:
-        await query.answer("❌ Вы не зарегистрированы. Используйте /start ваш_username", show_alert=True)
+        await query.answer("Вы не зарегистрированы.", show_alert=True)
         return
-
-    if existing:
-        await _update_lead_assignment(existing, manager)
-    else:
-        await _create_lead_assignment(lead, manager)
-
-    await _update_lead_status_contacted(lead)
+    if manager.role != User.Role.MANAGER or manager.company_id != lead.company_id:
+        await query.answer("Нет доступа к заявке.", show_alert=True)
+        return
+    if lead.branch_id and not await sync_to_async(manager.branches.filter(id=lead.branch_id, is_active=True).exists)():
+        await query.answer("Заявка другого филиала.", show_alert=True)
+        return
+    success, owner = await _claim_lead_once(lead, manager)
+    if not success:
+        owner_name = f"{owner.first_name} {owner.last_name}".strip() or owner.username
+        await query.answer(f"Заявка уже у менеджера: {owner_name}", show_alert=True)
+        return
 
     manager_name = f"{manager.first_name} {manager.last_name}".strip() or manager.username
 
