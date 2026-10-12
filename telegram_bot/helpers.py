@@ -314,15 +314,23 @@ def _get_lead_assignment(lead: TrialLead):
 
 
 @sync_to_async
-def _create_lead_assignment(lead: TrialLead, manager: User):
-    return LeadAssignment.objects.create(lead=lead, manager=manager)
-
-
-@sync_to_async
-def _update_lead_assignment(existing, manager: User):
-    existing.manager = manager
-    existing.claimed_at = timezone.now()
-    existing.save(update_fields=["manager", "claimed_at"])
+def _claim_lead_once(lead: TrialLead, manager: User):
+    from django.db import transaction
+    with transaction.atomic():
+        locked = TrialLead.objects.select_for_update().get(pk=lead.pk)
+        assignment, _ = LeadAssignment.objects.get_or_create(
+            lead=locked, defaults={"manager": manager}
+        )
+        if assignment.manager_id and assignment.manager_id != manager.pk:
+            return False, assignment.manager
+        if not assignment.manager_id:
+            assignment.manager = manager
+            assignment.claimed_at = timezone.now()
+            assignment.save(update_fields=["manager", "claimed_at"])
+        if locked.status == TrialLead.Status.NEW:
+            locked.status = TrialLead.Status.CONTACTED
+            locked.save(update_fields=["status"])
+        return True, manager
 
 
 @sync_to_async
