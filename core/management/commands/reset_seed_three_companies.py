@@ -458,7 +458,7 @@ class Command(BaseCommand):
         """Make every seeded phone non-dialable, including landing JSON content."""
         counter = 0
         replacements = {}
-        phone_pattern = re.compile(r"\\+996[\\s\\-()]*\\d(?:[\\s\\-()]*\\d){8}")
+        phone_pattern = re.compile(r"\+996[\s()\-]*\d(?:[\s()\-]*\d){8}")
 
         def fake(value):
             nonlocal counter
