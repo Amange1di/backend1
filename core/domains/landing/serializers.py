@@ -99,6 +99,13 @@ class LandingPageSerializer(serializers.ModelSerializer):
     company_id = serializers.IntegerField(
         read_only=True,
     )
+    company_data = serializers.SerializerMethodField()
+
+    def get_company_data(self, obj):
+        company = obj.company
+        if not company:
+            return None
+        return {"id": company.id, "name": company.name, "logo": company.logo_data or None}
 
     class Meta:
         model = LandingPage
@@ -108,6 +115,7 @@ class LandingPageSerializer(serializers.ModelSerializer):
             "slug",
             "company",
             "company_id",
+            "company_data",
             "owner",
             "status",
             "moderation_comment",
@@ -123,6 +131,7 @@ class LandingPageSerializer(serializers.ModelSerializer):
         read_only_fields = (
             "company",
             "company_id",
+            "company_data",
             "owner",
             "status",
             "moderation_comment",
@@ -355,6 +364,7 @@ class LandingPublicPageSerializer(
             "id": obj.company.id,
             "name": obj.company.name,
             "slug": obj.company.slug,
+            "logo": obj.company.logo_data or None,
             "phone": obj.company.phone,
             "telegram": obj.company.telegram,
             "whatsapp": obj.company.whatsapp,
