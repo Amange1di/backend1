@@ -331,6 +331,9 @@ class Command(BaseCommand):
                 today=today,
             )
 
+            for index, group in enumerate(groups):
+                group.branch = branches[index % len(branches)]
+                group.save(update_fields=["branch"])
             students = self._create_students(
                 company=company,
                 course_admin=course_admin,
@@ -375,6 +378,9 @@ class Command(BaseCommand):
                 today=today,
                 company_index=company_index,
             )
+            for lead in TrialLead.objects.filter(company=company, branch__isnull=True):
+                lead.branch = branches[0]
+                lead.save(update_fields=["branch"])
             self._create_homework(
                 company=company,
                 groups=groups,
