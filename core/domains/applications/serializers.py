@@ -131,7 +131,6 @@ class StudentApplicationSerializer(
             "course_interest",
             "experience_level",
             "learning_goal",
-            "budget",
             "schedule_preference",
             "source",
             "company",
