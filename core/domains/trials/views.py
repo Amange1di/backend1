@@ -494,6 +494,50 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
                 }
             )
 
+        scoped = self.get_queryset().filter(
+            created_at__date__in=[]
+        )
+        # Aggregate across the exact selected calendar months.
+        selected = models.Q()
+        for _, year, month in parsed_months:
+            selected |= models.Q(created_at__year=year, created_at__month=month)
+        scoped = self.get_queryset().filter(selected)
+        source_totals = {
+            "landing": scoped.filter(source__startswith="landing:").count(),
+            "marketplace": scoped.filter(source__startswith="marketplace").count(),
+            "other": scoped.exclude(
+                models.Q(source__startswith="landing:") |
+                models.Q(source__startswith="marketplace")
+            ).count(),
+        }
+        manager_performance = list(
+            scoped.filter(assignment__manager__isnull=False)
+            .values("assignment__manager_id", "assignment__manager__first_name",
+                    "assignment__manager__last_name", "assignment__manager__username")
+            .annotate(
+                total=models.Count("id"),
+                converted=models.Count("id", filter=models.Q(status=TrialLead.Status.CONVERTED)),
+            ).order_by("-converted", "-total")
+        )
+        for item in manager_performance:
+            item["name"] = (
+                (item.pop("assignment__manager__first_name") or "") + " " +
+                (item.pop("assignment__manager__last_name") or "")
+            ).strip() or item.pop("assignment__manager__username", "")
+            item.pop("assignment__manager__username", None)
+            item["manager_id"] = item.pop("assignment__manager_id")
+            item["conversion_rate"] = round(item["converted"] * 100 / item["total"], 1) if item["total"] else 0
+        pipeline = {
+            "new": scoped.filter(status=TrialLead.Status.NEW).count(),
+            "contacted": scoped.filter(status=TrialLead.Status.CONTACTED).count(),
+            "trial": scoped.filter(status__in=[
+                TrialLead.Status.TRIAL_SCHEDULED, TrialLead.Status.ATTENDED,
+                TrialLead.Status.NOT_ATTENDED
+            ]).count(),
+            "converted": scoped.filter(status=TrialLead.Status.CONVERTED).count(),
+        }
+        assigned = scoped.filter(assignment__manager__isnull=False).count()
+
         summary_rate = round(
             (
                 converted_total
@@ -525,5 +569,10 @@ class TrialLeadViewSet(viewsets.ModelViewSet):
                 "monthly_data": monthly_data,
                 "sources": sources_by_month,
                 "age_groups": ages_by_month,
+                "pipeline": pipeline,
+                "source_totals": source_totals,
+                "assigned_leads": assigned,
+                "unassigned_leads": total_leads - assigned,
+                "manager_performance": manager_performance,
             }
         )
