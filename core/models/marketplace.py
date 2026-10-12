@@ -36,6 +36,7 @@ class Company(models.Model):
         null=True,
         verbose_name="Logo"
     )
+    logo_data = models.TextField(blank=True, default="", help_text="Small company logo as a validated data URL")
     description = models.TextField(verbose_name="Description")
     category = models.CharField(
         max_length=20,
