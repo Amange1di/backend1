@@ -15,6 +15,8 @@ from finance.models import Budget, BudgetCategory, MonthlySummary, SalaryRecord
 
 from core.models import (
     Attendance,
+    Branch,
+    LandingHeaderLink,
     Auditorium,
     Company,
     CompanyBalance,
@@ -98,6 +100,7 @@ class Command(BaseCommand):
         self._password_hash_cache = {}
         today = timezone.localdate()
         year = today.year
+        four_month_start = date((today - relativedelta(months=3)).year, (today - relativedelta(months=3)).month, 1)
 
         company_specs = [
             {
@@ -232,7 +235,7 @@ class Command(BaseCommand):
         ]
 
         for company_index, spec in enumerate(company_specs, start=1):
-            start_date = min(spec["start"], today)
+            start_date = four_month_start
             start_dt = self._at_date(start_date, 9)
 
             admin_first_name, admin_last_name = admin_names[company_index - 1]
@@ -275,6 +278,17 @@ class Command(BaseCommand):
             course_admin.company = company
             course_admin.save(update_fields=["company"])
             created_companies.append(company)
+            company.branch_limit = 2 if company_index == 1 else 1
+            company.save(update_fields=["branch_limit"])
+            branches = []
+            for branch_index in range(company.branch_limit):
+                branches.append(Branch.objects.create(
+                    company=company,
+                    name="Главный филиал" if branch_index == 0 else "Второй филиал",
+                    is_main=branch_index == 0,
+                    is_active=True,
+                ))
+            course_admin.branches.add(*branches)
 
             managers = self._create_managers(
                 course_admin=course_admin,
@@ -284,15 +298,19 @@ class Command(BaseCommand):
                 start_date=start_date,
             )
 
+            for index, manager in enumerate(managers):
+                manager.branches.add(branches[index % len(branches)])
             course_data = self._create_courses_and_teachers(
                 course_admin=course_admin,
                 company=company,
                 prefix=spec["key"],
-                course_specs=spec["courses"],
+                course_specs=spec["courses"][:5],
                 start_date=start_date,
             )
             courses = course_data["courses"]
             teachers = course_data["teachers"]
+            for index, teacher in enumerate(teachers):
+                teacher.branches.add(branches[index % len(branches)])
             teachers_by_course = course_data["teachers_by_course"]
 
             auditoriums = self._create_auditoriums(
@@ -526,7 +544,7 @@ class Command(BaseCommand):
         ]
         result = []
         offset = (company_index - 1) * 3
-        for index in range(1, 4):
+        for index in range(1, (company_index % 3) + 2):
             first_name, last_name = names[(offset + index - 1) % len(names)]
             user = self._create_seed_user(
                 username=f"{prefix}_manager_{index}",
@@ -1785,6 +1803,30 @@ class Command(BaseCommand):
                 order=order,
                 content=section_content,
             )
+
+        # Published pages and shared navigation for each company.
+        LandingHeaderLink.objects.create(company=company, label="Главная", target_page=active_page, order=0)
+        page_specs = [
+            ("Курсы", "courses", LandingSection.SectionType.COURSE_GRID),
+            ("Преподаватели", "teachers", LandingSection.SectionType.TEACHER_SLIDER),
+            ("О нас", "about", LandingSection.SectionType.ABOUT),
+            ("Контакты", "contacts", LandingSection.SectionType.CONTACTS),
+        ]
+        for order, (label, suffix, section_type) in enumerate(page_specs, 1):
+            page = LandingPage.objects.create(
+                title=f"{company.name} — {label}",
+                slug=f"{company.slug}-{suffix}",
+                company=company, owner=course_admin,
+                status=LandingPage.Status.ACTIVE,
+                submitted_at=self._at_date(start_date, 10),
+                moderated_at=self._at_date(start_date, 11),
+                moderated_by=platform_admin,
+                published_at=self._at_date(start_date, 12),
+            )
+            LandingSection.objects.create(page=page, section_type=LandingSection.SectionType.HERO, order=0, content={"title": label, "subtitle": company.name})
+            LandingSection.objects.create(page=page, section_type=section_type, order=1, content={"title": label, "description": company.description, "phone": company.phone, "telegram": company.telegram})
+            LandingSection.objects.create(page=page, section_type=LandingSection.SectionType.LEAD_FORM, order=2, content={"title": "Оставить заявку"})
+            LandingHeaderLink.objects.create(company=company, label=label, target_page=page, order=order)
 
         # Every company has its own current moderation item.
         submitted_date = max(start_date, today - timedelta(days=2))
