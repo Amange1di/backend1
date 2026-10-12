@@ -327,6 +327,9 @@ class Command(BaseCommand):
                 count=max(6, len(courses)),
                 start_date=start_date,
             )
+            for index, auditorium in enumerate(auditoriums):
+                auditorium.branch = branches[index % len(branches)]
+                auditorium.save(update_fields=["branch"])
 
             groups = self._create_groups(
                 company=company,
@@ -340,7 +343,7 @@ class Command(BaseCommand):
             )
 
             for index, group in enumerate(groups):
-                group.branch = branches[index % len(branches)]
+                group.branch = group.auditorium.branch
                 group.save(update_fields=["branch"])
             students = self._create_students(
                 company=company,
