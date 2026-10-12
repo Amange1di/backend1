@@ -235,7 +235,15 @@ class Command(BaseCommand):
         ]
 
         for company_index, spec in enumerate(company_specs, start=1):
-            start_date = four_month_start
+            # Companies opened at different times, not all four months ago.
+            # First: 4 months, second/third: 3 months, fourth: 15 days.
+            company_opened = [
+                today - relativedelta(months=4),
+                today - relativedelta(months=3),
+                today - relativedelta(months=3),
+                today - timedelta(days=15),
+            ]
+            start_date = company_opened[company_index - 1]
             start_dt = self._at_date(start_date, 9)
 
             admin_first_name, admin_last_name = admin_names[company_index - 1]
