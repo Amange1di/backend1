@@ -57,6 +57,7 @@ class LandingPage(models.Model):
 
 class LandingSection(models.Model):
     class SectionType(models.TextChoices):
+        HEADER = "header", _("Header")
         HERO = "hero", _("Hero Section")
         ABOUT = "about", _("About Us")
         COURSE_GRID = "course_grid", _("Course Grid")
