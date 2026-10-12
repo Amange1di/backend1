@@ -8,6 +8,7 @@ from core.models import (
     ApplicationStatus,
     Company,
     StudentApplication,
+    TrialLead,
     TeacherApplication,
     PlatformApplication,
     User,
@@ -68,6 +69,20 @@ class StudentApplicationCreateView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         application = serializer.save()
+        # Every marketplace course enquiry also enters the company's CRM.
+        # Resolve the company server-side from the validated application.
+        if application.company_id:
+            branch = application.company.branches.filter(is_active=True).order_by("-is_main", "id").first()
+            TrialLead.objects.create(
+                company=application.company,
+                branch=branch,
+                full_name=application.full_name,
+                phone=application.phone,
+                age=application.age,
+                course_interest=application.course_interest,
+                source="marketplace:course",
+                comment=application.learning_goal or "",
+            )
         return Response(
             StudentApplicationSerializer(application).data,
             status=status.HTTP_201_CREATED,
