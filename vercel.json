@@ -1,4 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "python manage.py verify_schema_contract && python manage.py collectstatic --noinput"
+  "buildCommand": "python manage.py migrate --plan && python manage.py verify_schema_contract && python manage.py collectstatic --noinput"
 }
