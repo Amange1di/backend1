@@ -118,6 +118,7 @@ class PublicLandingLeadCreateView(APIView):
             source=f"landing:{page.slug}",
             comment=safe_comment,
             company=page.company,
+            branch=page.company.branches.filter(is_active=True).order_by("-is_main", "id").first() if page.company_id else None,
         )
 
         return Response(
