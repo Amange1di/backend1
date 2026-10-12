@@ -2197,34 +2197,21 @@ class Command(BaseCommand):
         )
 
         for month_start in month_starts:
-            if month_start.month == 12:
-                period_end = date(month_start.year + 1, 1, 1) - timedelta(days=1)
-            else:
-                period_end = date(
-                    month_start.year,
-                    month_start.month + 1,
-                    1,
-                ) - timedelta(days=1)
-
-            is_current = month_start == current_month
-            paid = not is_current or today.day >= 5
-
+            period_end = month_start + relativedelta(months=1) - timedelta(days=1)
+            # A company cannot pay before its opening date.
+            payment_date = max(month_start + timedelta(days=4), start_date)
+            is_paid = payment_date <= today
             CompanyPlatformPayment.objects.create(
                 company=company,
                 subscription=subscription,
                 amount=monthly_fee,
-                period_start=month_start,
+                period_start=max(month_start, start_date),
                 period_end=period_end,
-                due_date=month_start + timedelta(days=4),
-                paid_at=(
-                    self._at_date(month_start + timedelta(days=4), 11)
-                    if paid
-                    else None
-                ),
+                due_date=payment_date,
+                paid_at=self._at_date(payment_date, 11) if is_paid else None,
                 status=(
                     CompanyPlatformPayment.Status.PAID
-                    if paid
-                    else CompanyPlatformPayment.Status.PENDING
+                    if is_paid else CompanyPlatformPayment.Status.PENDING
                 ),
                 note=f"Оплата тарифа {subscription.get_plan_display()}",
             )
