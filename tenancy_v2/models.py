@@ -26,6 +26,7 @@ class CompanyMembership(models.Model):
     company = models.ForeignKey(TenantCompany, on_delete=models.CASCADE, related_name='memberships')
     role = models.CharField(max_length=20, choices=Role.choices)
     active = models.BooleanField(default=True)
+    branch_id = models.BigIntegerField(null=True, blank=True, db_index=True)
 
     class Meta:
         constraints = [
