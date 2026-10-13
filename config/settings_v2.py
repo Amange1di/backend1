@@ -10,3 +10,5 @@ from .tenant_v2 import build_v2_databases
 DATABASES = build_v2_databases()
 INSTALLED_APPS = [*INSTALLED_APPS, "tenancy_v2", "operations_v2"]
 DATABASE_ROUTERS = ["config.router_v2.V2Router"]
+
+ROOT_URLCONF = "config.urls_v2"
