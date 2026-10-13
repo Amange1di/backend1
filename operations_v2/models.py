@@ -41,3 +41,5 @@ class TenantAttendance(models.Model):
 
 # Register the schedule model with Django's app model discovery.
 from .schedule_models import TenantLesson  # noqa: E402,F401
+
+from .finance_models import TenantFinanceEntry  # noqa: E402,F401
