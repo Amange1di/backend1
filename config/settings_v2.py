@@ -1,9 +1,4 @@
-"""Isolated v2 settings: explicitly opt in with DJANGO_SETTINGS_MODULE.
-
-Do not point any of these URLs at the existing production database.
-The legacy core app still uses cross-model relations; multi-tenant ORM
-routing is deliberately NOT enabled until models are separated and audited.
-"""
+"""Opt-in isolated v2 settings. Never use production DB credentials."""
 import os
 
 if os.environ.get("EDUOSH_V2_ISOLATED") != "true":
@@ -13,4 +8,5 @@ from .settings import *  # noqa: F403,F401,E402
 from .tenant_v2 import build_v2_databases
 
 DATABASES = build_v2_databases()
-DATABASE_ROUTERS = []
+INSTALLED_APPS = [*INSTALLED_APPS, "tenancy_v2", "operations_v2"]
+DATABASE_ROUTERS = ["config.router_v2.V2Router"]
