@@ -38,3 +38,6 @@ class TenantAttendance(models.Model):
         constraints = [
             models.UniqueConstraint(fields=['group', 'student', 'date'], name='v2_unique_attendance')
         ]
+
+# Register the schedule model with Django's app model discovery.
+from .schedule_models import TenantLesson  # noqa: E402,F401
