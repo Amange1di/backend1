@@ -7,13 +7,12 @@ from core.models import (
 )
 
 
-BOOST_COST = 20
-URGENT_COST = 10
+BOOST_COST = 100
+URGENT_COST = 50
 
-# Company Marketplace currency.
-# 1 Bix is valued at 5 KGS. Bix are used only for promoting
-# company courses and vacancies inside Marketplace.
-COIN_VALUE_KGS = 5
+# Marketplace balances and promotion costs are denominated directly in KGS.
+# Keep the legacy API field names for backward compatibility.
+COIN_VALUE_KGS = 1
 
 
 def resolve_user_company_name(user) -> str:
