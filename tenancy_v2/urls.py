@@ -7,6 +7,7 @@ from .attendance_views import CompanyAttendanceView
 from .schedule_views import CompanyScheduleView
 from .finance_views import CompanyFinanceView
 from .learning_views import CompanyLibraryView, CompanyHomeworkView
+from .learning_write_views import CompanyLibraryCreateView, CompanyHomeworkCreateView
 
 urlpatterns = [
     path('companies/', MyCompaniesView.as_view(), name='v2-my-companies'),
@@ -19,4 +20,6 @@ urlpatterns = [
     path('companies/<int:company_id>/finance/', CompanyFinanceView.as_view(), name='v2-company-finance'),
     path('companies/<int:company_id>/library/', CompanyLibraryView.as_view(), name='v2-company-library'),
     path('companies/<int:company_id>/homework/', CompanyHomeworkView.as_view(), name='v2-company-homework'),
+    path('companies/<int:company_id>/library/create/', CompanyLibraryCreateView.as_view(), name='v2-library-create'),
+    path('companies/<int:company_id>/homework/create/', CompanyHomeworkCreateView.as_view(), name='v2-homework-create'),
 ]
