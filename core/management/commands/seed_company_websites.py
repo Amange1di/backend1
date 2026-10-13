@@ -5,7 +5,7 @@ Usage:
   python manage.py seed_company_websites
   python manage.py seed_company_websites --company-id 4
 """
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils.text import slugify
 
@@ -55,18 +55,28 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument("--company-id", type=int, default=None)
+        parser.add_argument("--replace-existing", action="store_true", help="Delete and rebuild existing company landing pages (requires --company-id).")
 
     def handle(self, *args, **options):
+        if options["replace_existing"] and options["company_id"] is None:
+            raise CommandError("--replace-existing requires --company-id to avoid deleting other companies.")
         companies = Company.objects.filter(is_active=True).order_by("id")
         if options["company_id"] is not None:
             companies = companies.filter(pk=options["company_id"])
         created = skipped = 0
 
         for company in companies.iterator():
-            if LandingPage.objects.filter(company=company).exists():
+            if LandingPage.objects.filter(company=company).exists() and not options["replace_existing"]:
                 skipped += 1
                 self.stdout.write(f"SKIP {company.pk}: {company.name} (site exists)")
                 continue
+
+            if options["replace_existing"]:
+                existing_pages = LandingPage.objects.filter(company=company)
+                if options["dry_run"]:
+                    self.stdout.write(f"WOULD REPLACE {company.pk}: {company.name} ({existing_pages.count()} pages)")
+                    created += 1
+                    continue
 
             base = (slugify(company.slug, allow_unicode=False) or f"company-{company.pk}")[:130]
             slug = base
@@ -82,9 +92,11 @@ class Command(BaseCommand):
 
             with transaction.atomic():
                 # Recheck under the transaction; never overwrite a customized site.
-                if LandingPage.objects.filter(company=company).exists():
+                if LandingPage.objects.filter(company=company).exists() and not options["replace_existing"]:
                     skipped += 1
                     continue
+                if options["replace_existing"]:
+                    LandingPage.objects.filter(company=company).delete()
                 owner = company.owner if company.owner.role == "course_admin" else None
                 page = LandingPage.objects.create(
                     company=company,
