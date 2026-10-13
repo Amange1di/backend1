@@ -67,7 +67,7 @@ class CompanyHomeworkCreateView(APIView):
                 ).first()
                 if library_item is None:
                     return Response({"detail": "Library item not found in group branch"}, status=400)
-            with transaction.atomic():
+            with transaction.atomic(using=group._state.db):
                 task = TenantHomework.objects.create(
                     group=group, library_item=library_item,
                     title=values["title"],
