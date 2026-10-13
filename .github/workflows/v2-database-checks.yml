@@ -1,0 +1,69 @@
+name: API v2 database checks
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop-v2]
+    paths:
+      - 'config/**'
+      - 'tenancy_v2/**'
+      - 'operations_v2/**'
+      - 'tests/test_*v2*.py'
+      - '.github/workflows/v2-database-checks.yml'
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: v2test
+          POSTGRES_PASSWORD: v2test
+          POSTGRES_DB: central_v2
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U v2test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DEBUG: 'false'
+      SECRET_KEY: 'ci-v2-only-do-not-use-in-production-very-long-key'
+      EDUOSH_V2_ISOLATED: 'true'
+      DJANGO_SETTINGS_MODULE: config.settings_v2
+      DATABASE_URL: postgresql://v2test:v2test@127.0.0.1:5432/central_v2
+      EDUOSH_V2_CENTRAL_DATABASE_URL: postgresql://v2test:v2test@127.0.0.1:5432/central_v2
+      EDUOSH_V2_DEMO_DATABASE_URL: postgresql://v2test:v2test@127.0.0.1:5432/tenant_v2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install -r requirements.txt
+      - name: Create isolated tenant database
+        run: |
+          PGPASSWORD=v2test psql -h 127.0.0.1 -U v2test -d central_v2 -c "CREATE DATABASE tenant_v2"
+      - name: Django system checks
+        run: python manage.py check
+      - name: Ensure migrations match models
+        run: python manage.py makemigrations --check --dry-run
+      - name: Apply central schema
+        run: python manage.py migrate --database=default --noinput
+      - name: Apply tenant schema
+        run: python manage.py migrate --database=tenant_demo --noinput
+      - name: Assert physical database isolation
+        run: |
+          python - <<'PY'
+          import django
+          django.setup()
+          from django.db import connections
+          with connections['default'].cursor() as c:
+              c.execute("select to_regclass('tenancy_v2_tenantcompany'), to_regclass('operations_v2_tenantbranch')")
+              central = c.fetchone()
+          with connections['tenant_demo'].cursor() as c:
+              c.execute("select to_regclass('tenancy_v2_tenantcompany'), to_regclass('operations_v2_tenantbranch'), to_regclass('core_user')")
+              tenant = c.fetchone()
+          assert central[0] and central[1] is None, central
+          assert tenant[0] is None and tenant[1] and tenant[2] is None, tenant
+          PY
+      - name: Unit tests
+        run: python manage.py test tests.test_router_v2 tests.test_tenant_v2_config
