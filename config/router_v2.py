@@ -1,10 +1,11 @@
-"""Database router for new v2 apps only; legacy apps are untouched."""
+"""Database router for isolated v2 apps."""
 from django.core.exceptions import PermissionDenied
+from django.db import connections
 from .tenant_context_v2 import current_tenant
 
 
 class V2Router:
-    central_apps = {'identity_v2', 'tenancy_v2', 'catalog_v2'}
+    central_apps = {'tenancy_v2'}
     tenant_apps = {'operations_v2'}
 
     def db_for_read(self, model, **hints):
@@ -19,10 +20,10 @@ class V2Router:
             return 'default'
         if label in self.tenant_apps:
             alias = current_tenant()
-            if not alias:
-                raise PermissionDenied('Tenant context required')
+            if not alias or alias not in connections.databases or alias == 'default':
+                raise PermissionDenied('Valid tenant context required')
             return alias
-        return None
+        return 'default'
 
     def allow_relation(self, obj1, obj2, **hints):
         labels = {obj1._meta.app_label, obj2._meta.app_label}
@@ -34,5 +35,5 @@ class V2Router:
         if app_label in self.central_apps:
             return db == 'default'
         if app_label in self.tenant_apps:
-            return db.startswith('tenant_')
-        return None
+            return db.startswith('tenant_') and db in connections.databases
+        return db == 'default'
