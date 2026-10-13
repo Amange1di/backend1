@@ -11,7 +11,10 @@ def fake_model(label):
 
 class V2RouterTests(SimpleTestCase):
     def test_central_database(self):
-        self.assertEqual(V2Router().db_for_read(fake_model('identity_v2')), 'default')
+        self.assertEqual(V2Router().db_for_read(fake_model('tenancy_v2')), 'default')
+
+    def test_legacy_stays_central(self):
+        self.assertEqual(V2Router().db_for_write(fake_model('core')), 'default')
 
     def test_tenant_requires_context(self):
         with self.assertRaises(PermissionDenied):
@@ -29,6 +32,8 @@ class V2RouterTests(SimpleTestCase):
 
     def test_migration_partition(self):
         router = V2Router()
-        self.assertTrue(router.allow_migrate('default', 'identity_v2'))
+        self.assertTrue(router.allow_migrate('default', 'tenancy_v2'))
         self.assertFalse(router.allow_migrate('default', 'operations_v2'))
+        self.assertFalse(router.allow_migrate('tenant_demo', 'tenancy_v2'))
+        self.assertFalse(router.allow_migrate('tenant_demo', 'core'))
         self.assertTrue(router.allow_migrate('tenant_demo', 'operations_v2'))
