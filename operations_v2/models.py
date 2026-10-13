@@ -43,3 +43,5 @@ class TenantAttendance(models.Model):
 from .schedule_models import TenantLesson  # noqa: E402,F401
 
 from .finance_models import TenantFinanceEntry  # noqa: E402,F401
+
+from .learning_models import TenantLibraryItem, TenantHomework  # noqa: E402,F401
