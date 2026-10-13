@@ -15,6 +15,11 @@ class CompanyBranchesView(APIView):
                 company_id=membership.company_id,
                 active=True,
             ).order_by("name")
+            if membership.role not in ("owner", "admin"):
+                if membership.branch_id is None:
+                    branches = branches.none()
+                else:
+                    branches = branches.filter(id=membership.branch_id)
             return Response([
                 {"id": item.id, "name": item.name, "company_id": item.company_id}
                 for item in branches
