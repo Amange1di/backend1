@@ -97,7 +97,7 @@ class Command(BaseCommand):
                     continue
                 if options["replace_existing"]:
                     LandingPage.objects.filter(company=company).delete()
-                owner = company.owner if company.owner.role == "course_admin" else None
+                owner = company.owner if company.owner.role in ("course_admin", "company_owner") else None
                 page = LandingPage.objects.create(
                     company=company,
                     owner=owner,
