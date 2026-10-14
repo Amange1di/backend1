@@ -1,6 +1,7 @@
 import bleach
 
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
@@ -13,6 +14,7 @@ from rest_framework.views import APIView
 from core.models import (
     LandingHeaderLink,
     LandingPage,
+    LandingContentAgreement,
     TrialLead,
     User,
 )
@@ -73,6 +75,8 @@ class LandingPageViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
+        if self.request.data.get('agreement_accepted') is not True or self.request.data.get('agreement_version') != '1.0':
+            raise PermissionDenied('landing_agreement_required')
 
         if user.role not in (User.Role.COURSE_ADMIN, User.Role.COMPANY_OWNER):
             raise PermissionDenied(
@@ -88,10 +92,9 @@ class LandingPageViewSet(viewsets.ModelViewSet):
                 )
             )
 
-        serializer.save(
-            owner=user,
-            company=user.company,
-        )
+        with transaction.atomic():
+            page = serializer.save(owner=user, company=user.company)
+            LandingContentAgreement.objects.create(company=user.company, user=user, page=page, action="create", agreement_version="1.0")
 
     def perform_update(self, serializer):
         page = self.get_object()
@@ -171,21 +174,19 @@ class LandingPageViewSet(viewsets.ModelViewSet):
                 )
             )
 
+        if request.data.get("agreement_accepted") is not True or request.data.get("agreement_version") != "1.0":
+            raise PermissionDenied("landing_agreement_required")
+
         validate_landing_page_for_publication(
             page,
             user,
         )
-        page.status = LandingPage.Status.PENDING
-        page.moderation_comment = ""
-        page.submitted_at = timezone.now()
-        page.save(
-            update_fields=[
-                "status",
-                "moderation_comment",
-                "submitted_at",
-                "updated_at",
-            ]
-        )
+        with transaction.atomic():
+            page.status = LandingPage.Status.PENDING
+            page.moderation_comment = ""
+            page.submitted_at = timezone.now()
+            page.save(update_fields=["status", "moderation_comment", "submitted_at", "updated_at"])
+            LandingContentAgreement.objects.create(company=page.company, user=user, page=page, action="submit", agreement_version="1.0")
 
         return Response(
             self.get_serializer(page).data
@@ -297,6 +298,25 @@ class LandingPageViewSet(viewsets.ModelViewSet):
         return Response(
             self.get_serializer(page).data
         )
+
+class LandingAgreementHistoryView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if user.role not in (User.Role.COMPANY_OWNER, User.Role.COURSE_ADMIN) or not user.company_id:
+            raise PermissionDenied("company_agreements_forbidden")
+        records = LandingContentAgreement.objects.filter(company_id=user.company_id).select_related("user", "page").order_by("-accepted_at", "-id")[:200]
+        return Response([{
+            "id": record.id,
+            "action": record.action,
+            "agreement_version": record.agreement_version,
+            "accepted_at": record.accepted_at.isoformat(),
+            "user_name": record.user.get_full_name() or record.user.username if record.user else "—",
+            "page_title": record.page.title if record.page else None,
+            "page_id": record.page_id,
+        } for record in records])
+
 
 class LandingHeaderLinkViewSet(
     viewsets.ModelViewSet
