@@ -1,6 +1,7 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
+from .api.management import LandingAgreementHistoryView
 from .views import (
     LandingHeaderLinkViewSet,
     LandingPageViewSet,
@@ -21,6 +22,7 @@ router.register(
 )
 
 urlpatterns = [
+    path('landing-agreements/', LandingAgreementHistoryView.as_view(), name='landing-agreements'),
     path(
         "public/landing-pages/<slug:slug>/",
         PublicLandingDetailView.as_view(),
