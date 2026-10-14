@@ -231,17 +231,14 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 # Frontend URL (for Telegram bot login button and other links)
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://eduosh1.vercel.app")
 
+# New passwords use Argon2id; older BCrypt/PBKDF2 hashes remain verifiable
+# and Django upgrades them automatically after successful authentication.
 PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.BCryptSHA256PasswordHasher",
     "django.contrib.auth.hashers.PBKDF2PasswordHasher",
     "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
 ]
-
-try:
-    importlib.import_module("bcrypt")
-except ImportError:
-    pass
-else:
-    PASSWORD_HASHERS.insert(0, "django.contrib.auth.hashers.BCryptSHA256PasswordHasher")
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
