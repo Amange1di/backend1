@@ -36,7 +36,7 @@ class LandingPageViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         user = self.request.user
 
-        if user.role == User.Role.COURSE_ADMIN:
+        if user.role in (User.Role.COURSE_ADMIN, User.Role.COMPANY_OWNER):
             return queryset.filter(
                 company=user.company
             )
@@ -74,7 +74,7 @@ class LandingPageViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         user = self.request.user
 
-        if user.role != User.Role.COURSE_ADMIN:
+        if user.role not in (User.Role.COURSE_ADMIN, User.Role.COMPANY_OWNER):
             raise PermissionDenied(
                 "course_admin_only"
             )
@@ -97,7 +97,7 @@ class LandingPageViewSet(viewsets.ModelViewSet):
         page = self.get_object()
         user = self.request.user
 
-        if user.role == User.Role.COURSE_ADMIN:
+        if user.role in (User.Role.COURSE_ADMIN, User.Role.COMPANY_OWNER):
             if page.company != user.company:
                 raise PermissionDenied(
                     "landing_access_denied"
@@ -119,7 +119,7 @@ class LandingPageViewSet(viewsets.ModelViewSet):
         user = request.user
 
         if (
-            user.role == User.Role.COURSE_ADMIN
+            user.role in (User.Role.COURSE_ADMIN, User.Role.COMPANY_OWNER)
             and page.company != user.company
         ):
             raise PermissionDenied(
@@ -130,6 +130,7 @@ class LandingPageViewSet(viewsets.ModelViewSet):
             user.role
             not in (
                 User.Role.COURSE_ADMIN,
+                User.Role.COMPANY_OWNER,
                 User.Role.ADMIN,
             )
             and not user.is_superuser
@@ -154,7 +155,7 @@ class LandingPageViewSet(viewsets.ModelViewSet):
         user = request.user
 
         if (
-            user.role != User.Role.COURSE_ADMIN
+            user.role not in (User.Role.COURSE_ADMIN, User.Role.COMPANY_OWNER)
             or page.company != user.company
         ):
             raise PermissionDenied(
@@ -311,7 +312,7 @@ class LandingHeaderLinkViewSet(
         queryset = super().get_queryset()
         user = self.request.user
 
-        if user.role == User.Role.COURSE_ADMIN:
+        if user.role in (User.Role.COURSE_ADMIN, User.Role.COMPANY_OWNER):
             return queryset.filter(
                 company=user.company
             )
@@ -337,7 +338,7 @@ class LandingHeaderLinkViewSet(
     def perform_create(self, serializer):
         user = self.request.user
 
-        if user.role != User.Role.COURSE_ADMIN:
+        if user.role not in (User.Role.COURSE_ADMIN, User.Role.COMPANY_OWNER):
             raise PermissionDenied(
                 (
                     "landing_header_course_admin_only"
@@ -351,7 +352,7 @@ class LandingHeaderLinkViewSet(
         user = self.request.user
 
         if (
-            user.role != User.Role.COURSE_ADMIN
+            user.role not in (User.Role.COURSE_ADMIN, User.Role.COMPANY_OWNER)
             or link.company != user.company
         ):
             raise PermissionDenied(
@@ -367,7 +368,7 @@ class LandingHeaderLinkViewSet(
 
         if (
             request.user.role
-            != User.Role.COURSE_ADMIN
+            not in (User.Role.COURSE_ADMIN, User.Role.COMPANY_OWNER)
             or link.company
             != request.user.company
         ):
