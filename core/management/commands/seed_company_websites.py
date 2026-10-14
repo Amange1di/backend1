@@ -1,115 +1,108 @@
-"""Create editable draft websites for companies without touching existing pages.
-
-Usage:
-  python manage.py seed_company_websites --dry-run
-  python manage.py seed_company_websites
-  python manage.py seed_company_websites --company-id 4
-"""
-from django.core.management.base import BaseCommand, CommandError
+"""Generate a four-page public website for each company without overwriting existing pages."""
+from django.core.management.base import BaseCommand
 from django.db import transaction
-from django.utils.text import slugify
+from django.utils import timezone
 
-from core.models import Company, LandingPage, LandingSection
+from core.models import Company, LandingHeaderLink, LandingPage, LandingSection
+
+# Stable remote images; every image is an ordinary editable URL.
+IMAGES = {
+    "hero": "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1600&q=85",
+    "about": "https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1200&q=85",
+    "courses": "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1200&q=85",
+    "contacts": "https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=1200&q=85",
+}
+
+PAGES = (
+    ("home", "Главная"),
+    ("courses", "Курсы"),
+    ("about", "О компании"),
+    ("contacts", "Контакты"),
+)
 
 
-def initial_sections(company):
-    courses = list(company.courses.filter(is_active=True).order_by("id")[:12])
-    course_items = [
-        {
-            "title": course.title,
-            "description": course.description,
-            "price": str(course.price),
-            "slug": course.slug,
-        }
-        for course in courses
-    ]
-    return [
-        ("header", {"title": company.name, "logo": company.logo.url if company.logo else ""}),
-        ("hero", {
-            "title": company.name,
-            "subtitle": company.description or "Откройте новые возможности через обучение.",
-            "buttonText": "Посмотреть курсы",
-        }),
-        ("about", {"title": "О нас", "description": company.description or ""}),
-        ("course_grid", {"title": "Наши курсы", "courses": course_items}),
-        ("benefits", {"title": "Почему выбирают нас", "items": []}),
-        ("teacher_slider", {"title": "Преподаватели", "items": []}),
-        ("testimonials", {"title": "Отзывы", "items": []}),
-        ("faq", {"title": "Частые вопросы", "items": []}),
-        ("contacts", {
-            "title": "Контакты",
-            "city": company.city,
-            "district": company.district,
-            "phone": company.phone,
-            "instagram": company.instagram,
-            "telegram": company.telegram,
-            "whatsapp": company.whatsapp,
-        }),
-        ("lead_form", {"title": "Записаться на курс", "companyId": company.pk}),
-    ]
+def sections_for(company, kind):
+    description = company.description or "Обучение и развитие вместе с нами."
+    contact = {
+        "title": "Контакты",
+        "phone": company.phone or "",
+        "city": company.city or "",
+        "address": company.district or "",
+        "telegram": company.telegram or "",
+        "whatsapp": company.whatsapp or "",
+        "instagram": company.instagram or "",
+    }
+    header = ("header", {"title": company.name, "header_title": company.name, "header_logo_url": company.logo_data or "", "header_phone": company.phone or ""})
+    hero = ("hero", {"title": company.name if kind == "home" else dict(PAGES)[kind], "subtitle": description, "background_url": IMAGES["hero" if kind == "home" else kind], "button_label": "Посмотреть курсы", "button_href": "#courses"})
+    catalog = ("course_grid", {"title": "Наши курсы"})
+    lead = ("lead_form", {"title": "Оставить заявку", "companyId": company.pk})
+    if kind == "home":
+        return [header, hero, ("about", {"title": "О компании", "body": description, "image_url": IMAGES["about"]}), catalog, lead, ("contacts", contact)]
+    if kind == "courses":
+        return [header, hero, catalog, lead]
+    if kind == "about":
+        return [header, hero, ("about", {"title": "О нас", "body": description, "image_url": IMAGES["about"]}), ("benefits", {"title": "Почему выбирают нас", "items": []}), ("teacher_slider", {"title": "Наша команда"})]
+    return [header, hero, ("contacts", contact), lead]
+
+
+def create_company_website(company, *, publish=True, dry_run=False):
+    """Create a complete website only if this company has no landing pages."""
+    if LandingPage.objects.filter(company_id=company.pk).exists():
+        return []
+    if dry_run:
+        return [f"{company.slug}-{key}" for key, _ in PAGES]
+    with transaction.atomic():
+        # Lock company to make concurrent seed and creation attempts idempotent.
+        company = Company.objects.select_for_update().get(pk=company.pk)
+        if LandingPage.objects.filter(company_id=company.pk).exists():
+            return []
+        owner = company.owner if company.owner.role in ("company_owner", "course_admin") else None
+        result = []
+        for key, title in PAGES:
+            base = f"{company.slug}-{key}"[:138]
+            slug = base
+            index = 2
+            while LandingPage.objects.filter(slug=slug).exists():
+                slug = f"{base[:135]}-{index}"
+                index += 1
+            page = LandingPage.objects.create(
+                company=company,
+                owner=owner,
+                title=f"{company.name} — {title}"[:200],
+                slug=slug,
+                status=LandingPage.Status.ACTIVE if publish else LandingPage.Status.DRAFT,
+                published_at=timezone.now() if publish else None,
+            )
+            LandingSection.objects.bulk_create([
+                LandingSection(page=page, section_type=type_, order=position, content=content)
+                for position, (type_, content) in enumerate(sections_for(company, key))
+            ])
+            result.append(page)
+        LandingHeaderLink.objects.bulk_create([
+            LandingHeaderLink(company=company, target_page=page, label=label, order=i)
+            for i, ((_, label), page) in enumerate(zip(PAGES, result))
+        ])
+        return result
 
 
 class Command(BaseCommand):
-    help = "Create draft landing websites for companies without overwriting existing sites."
+    help = "Create four-page websites for companies without existing landings. Existing pages are never changed."
 
     def add_arguments(self, parser):
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument("--company-id", type=int, default=None)
-        parser.add_argument("--replace-existing", action="store_true", help="Delete and rebuild existing company landing pages (requires --company-id).")
+        parser.add_argument("--draft", action="store_true", help="Create unpublished drafts instead of public pages")
 
     def handle(self, *args, **options):
-        if options["replace_existing"] and options["company_id"] is None:
-            raise CommandError("--replace-existing requires --company-id to avoid deleting other companies.")
         companies = Company.objects.filter(is_active=True).order_by("id")
         if options["company_id"] is not None:
             companies = companies.filter(pk=options["company_id"])
         created = skipped = 0
-
         for company in companies.iterator():
-            if LandingPage.objects.filter(company=company).exists() and not options["replace_existing"]:
+            pages = create_company_website(company, publish=not options["draft"], dry_run=options["dry_run"])
+            if not pages:
                 skipped += 1
-                self.stdout.write(f"SKIP {company.pk}: {company.name} (site exists)")
                 continue
-
-            if options["replace_existing"]:
-                existing_pages = LandingPage.objects.filter(company=company)
-                if options["dry_run"]:
-                    self.stdout.write(f"WOULD REPLACE {company.pk}: {company.name} ({existing_pages.count()} pages)")
-                    created += 1
-                    continue
-
-            base = (slugify(company.slug, allow_unicode=False) or f"company-{company.pk}")[:130]
-            slug = base
-            suffix = 1
-            while LandingPage.objects.filter(slug=slug).exists():
-                suffix += 1
-                slug = f"{base[:125]}-{suffix}"
-
-            if options["dry_run"]:
-                self.stdout.write(f"WOULD CREATE {company.pk}: {company.name} ({slug})")
-                created += 1
-                continue
-
-            with transaction.atomic():
-                # Recheck under the transaction; never overwrite a customized site.
-                if LandingPage.objects.filter(company=company).exists() and not options["replace_existing"]:
-                    skipped += 1
-                    continue
-                if options["replace_existing"]:
-                    LandingPage.objects.filter(company=company).delete()
-                owner = company.owner if company.owner.role in ("course_admin", "company_owner") else None
-                page = LandingPage.objects.create(
-                    company=company,
-                    owner=owner,
-                    title=company.name[:200],
-                    slug=slug,
-                    status=LandingPage.Status.DRAFT,
-                )
-                LandingSection.objects.bulk_create([
-                    LandingSection(page=page, section_type=section_type, order=index, content=data)
-                    for index, (section_type, data) in enumerate(initial_sections(company))
-                ])
             created += 1
-            self.stdout.write(self.style.SUCCESS(f"CREATED {company.pk}: {slug} (draft)"))
-
-        self.stdout.write(f"Done. {'Would create' if options['dry_run'] else 'Created'}: {created}; skipped: {skipped}")
+            self.stdout.write(f"{'WOULD CREATE' if options['dry_run'] else 'CREATED'} {company.pk} {company.name}: {', '.join(str(p.slug) if hasattr(p, 'slug') else p for p in pages)}")
+        self.stdout.write(f"Companies created: {created}, skipped: {skipped}")
