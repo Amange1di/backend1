@@ -11,7 +11,7 @@ from .homework import HomeworkTask, HomeworkTaskAttachment, HomeworkSubmission
 from .library import LibraryFolder, LibraryItem, LibraryHomeworkTemplate, LibraryFavorite
 from .applications import ApplicationStatus, ApplicationType, TeacherApplication, StudentApplication, PlatformApplication
 from .marketplace import CompanyCategory, CompanyCity, Company, JobVacancy, PublicCourse, CourseApplication
-from .contracts import Contract, ContractTemplate
+from .contracts import Contract, ContractTemplate, DocumentDispatch, DocumentReceipt
 from .promo import PromoBalance, PromoTransaction, PromoCode, PromoRedemption
 from .audit import AuditLog
 from .billing import CompanySubscription, CompanyPlatformPayment
@@ -61,6 +61,8 @@ __all__ = [
     "CourseApplication",
     "Contract",
     "ContractTemplate",
+    "DocumentDispatch",
+    "DocumentReceipt",
     "PromoBalance",
     "PromoTransaction",
     "PromoCode",
