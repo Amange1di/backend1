@@ -127,3 +127,20 @@ def build_homework_upload_path(instance, filename: str) -> str:
         return f"homework/shared/{filename}"
     prefix = slugify(company.name) or "shared"
     return f"homework/{prefix}/{filename}"
+
+class LandingContentAgreement(models.Model):
+    """Immutable record of a company's consent for a landing action."""
+    class Action(models.TextChoices):
+        CREATE = "create", "Landing page creation"
+        SUBMIT = "submit", "Submission for moderation"
+
+    company = models.ForeignKey("Company", on_delete=models.CASCADE, related_name="landing_agreements")
+    user = models.ForeignKey("User", on_delete=models.SET_NULL, null=True, related_name="landing_agreements")
+    page = models.ForeignKey("LandingPage", on_delete=models.SET_NULL, null=True, related_name="agreements")
+    action = models.CharField(max_length=10, choices=Action.choices)
+    agreement_version = models.CharField(max_length=20, default="1.0")
+    accepted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-accepted_at", "-id")
+        indexes = [models.Index(fields=["company", "-accepted_at"], name="landing_agreement_comp_idx")]
