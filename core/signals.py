@@ -191,3 +191,21 @@ def student_created(sender, instance, created, **kwargs):
         _run_async(send_new_student_notification(instance))
     except ImportError:
         logger.warning("telegram_bot module not available, skipping notification")
+
+
+@receiver(post_save, sender="core.Company")
+def create_default_company_website(sender, instance, created, **kwargs):
+    """Give each new company its own editable public website after commit."""
+    if not created or not instance.is_active:
+        return
+    from django.db import transaction
+    from core.management.commands.seed_company_websites import create_company_website
+
+    company_id = instance.pk
+    def seed():
+        from core.models import Company
+        company = Company.objects.filter(pk=company_id, is_active=True).first()
+        if company:
+            create_company_website(company)
+
+    transaction.on_commit(seed)
