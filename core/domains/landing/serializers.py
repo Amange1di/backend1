@@ -73,7 +73,7 @@ class LandingHeaderLinkSerializer(serializers.ModelSerializer):
 
         if (
             user
-            and user.role == User.Role.COURSE_ADMIN
+            and user.role in (User.Role.COURSE_ADMIN, User.Role.COMPANY_OWNER)
             and value.company
             and value.company != user.company
         ):
@@ -175,7 +175,7 @@ class LandingPageSerializer(serializers.ModelSerializer):
         user = request.user if request else None
         if (
             user
-            and user.role == User.Role.COURSE_ADMIN
+            and user.role in (User.Role.COURSE_ADMIN, User.Role.COMPANY_OWNER)
             and len(value) > user.max_blocks
         ):
             raise serializers.ValidationError(
