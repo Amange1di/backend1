@@ -148,3 +148,27 @@ class ContractTemplate(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} — {self.company.name}"
+
+
+class DocumentDispatch(models.Model):
+    company = models.ForeignKey("Company", on_delete=models.CASCADE, related_name="document_dispatches")
+    template = models.ForeignKey("ContractTemplate", on_delete=models.PROTECT, related_name="dispatches")
+    title = models.CharField(max_length=200)
+    content_snapshot = models.TextField()
+    created_by = models.ForeignKey("User", null=True, on_delete=models.SET_NULL, related_name="sent_documents")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+
+
+class DocumentReceipt(models.Model):
+    dispatch = models.ForeignKey("DocumentDispatch", on_delete=models.CASCADE, related_name="receipts")
+    recipient = models.ForeignKey("User", on_delete=models.CASCADE, related_name="document_receipts")
+    sent_at = models.DateTimeField(auto_now_add=True)
+    viewed_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["dispatch", "recipient"], name="unique_dispatch_recipient")]
+        ordering = ("-sent_at",)
