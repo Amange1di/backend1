@@ -31,3 +31,21 @@ class LoginViewTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("token", response.data)
         self.assertEqual(response.data["user"]["id"], user.id)
+
+    def test_student_login_normalizes_phone(self):
+        password = "testpass123"
+        user = User.objects.create(
+            username="996700123456",
+            phone="+996 700 123 456",
+            role=User.Role.STUDENT,
+            password=make_password(password, hasher="pbkdf2_sha256"),
+        )
+
+        response = self.client.post(
+            "/api/auth/login/",
+            {"username": "996 (700) 123-456", "password": password},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["user"]["id"], user.id)

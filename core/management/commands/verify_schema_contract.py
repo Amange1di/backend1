@@ -2,6 +2,7 @@
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
 from django.db.migrations.recorder import MigrationRecorder
 
 
@@ -12,6 +13,23 @@ class Command(BaseCommand):
     )
 
     def handle(self, *args, **options):
+        # ``migrate --plan`` is informational: it exits successfully even
+        # when the plan contains unapplied operations. A Vercel deployment
+        # must never ship Django code whose migrations have not yet been
+        # applied to the configured PostgreSQL database.
+        executor = MigrationExecutor(connection)
+        pending = executor.migration_plan(executor.loader.graph.leaf_nodes())
+        if pending:
+            pending_names = ", ".join(
+                f"{migration.app_label}.{migration.name}"
+                for migration, _ in pending
+            )
+            raise CommandError(
+                "Unapplied migrations: "
+                f"{pending_names}. Stop deployment and apply the reviewed "
+                "production migration procedure before retrying."
+            )
+
         migration = ("core", "0058_multi_branch")
         applied = set(MigrationRecorder.Migration.objects.values_list("app", "name"))
         if migration not in applied:
